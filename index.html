@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>InspectApp · Transformándonos</title>
+<meta name="theme-color" content="#0F2A4A">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230F2A4A'/%3E%3Cpath d='M14 34c0-9 12-12 20-8l7 4 4 5c-5 3-9 3-12 2-6 4-15 4-19-3z' fill='%2322B07D'/%3E%3Ccircle cx='38' cy='31' r='2.6' fill='%23fff'/%3E%3Cpath d='M14 34c-5 2-6 11 0 12 4 1 5-5 1-5' fill='none' stroke='%2322B07D' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --navy:#0F2A4A; --navy-2:#1A3A6B; --green:#22B07D; --green-d:#178A61; --teal:#2BB3A6;
+  --bg:#F4F6F9; --card:#FFFFFF; --text:#14202E; --muted:#5B6878; --line:#E1E6ED;
+  --red:#C8102E; --red-bg:#FDECEF; --amber:#B7791F; --amber-bg:#FEF6E4; --ok-bg:#E7F7F0;
+  --r:12px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 Inter,system-ui,sans-serif}
+button,input,select{font:inherit}
+a{color:var(--navy-2)}
+.hidden{display:none!important}
+
+/* Barra superior */
+.top{background:var(--navy);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:5}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.2px}
+.brand small{display:block;font-weight:400;opacity:.7;font-size:12px;letter-spacing:0}
+.top .sp{flex:1}
+.top button{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 10px;cursor:pointer}
+
+/* Pestañas */
+.tabs{display:flex;gap:4px;padding:0 12px;background:var(--navy-2);overflow-x:auto}
+.tabs button{background:none;border:0;color:rgba(255,255,255,.7);padding:12px 14px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tabs button.on{color:#fff;border-bottom-color:var(--green)}
+
+main{max-width:980px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:14px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:17px;margin:0 0 12px}
+.muted{color:var(--muted)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+/* Formularios */
+label{display:block;font-size:13px;font-weight:500;margin:12px 0 4px}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+input:focus,select:focus{outline:2px solid var(--green);border-color:transparent}
+.btn{background:var(--green);color:#fff;border:0;border-radius:8px;padding:11px 16px;font-weight:600;cursor:pointer}
+.btn:hover{background:var(--green-d)}
+.btn.sec{background:#fff;color:var(--navy-2);border:1px solid var(--line)}
+.btn.danger{background:#fff;color:var(--red);border:1px solid #F3C1CB}
+.btn.sm{padding:6px 10px;font-size:13px;font-weight:500}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.full{width:100%}
+.err{color:var(--red);font-size:13px;margin-top:8px;min-height:1em}
+.okmsg{color:var(--green-d);font-size:13px;margin-top:8px}
+
+/* Login */
+.auth{min-height:100vh;display:grid;place-items:center;padding:20px;background:linear-gradient(160deg,var(--navy) 0%,var(--navy-2) 60%,#145B5A 100%)}
+.auth .card{width:100%;max-width:420px;padding:26px}
+.auth .logo{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.auth .logo b{font-size:20px;display:block}
+.seg{display:flex;background:var(--bg);border-radius:10px;padding:4px;margin:12px 0 4px}
+.seg button{flex:1;border:0;background:none;padding:8px;border-radius:8px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:#fff;color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.link{background:none;border:0;color:var(--navy-2);cursor:pointer;padding:0;text-decoration:underline;font-size:13px}
+
+/* Licencia */
+.banner{border-radius:var(--r);padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:flex-start;border:1px solid}
+.banner.trial{background:var(--ok-bg);border-color:#BFE8D5}
+.banner.warn{background:var(--amber-bg);border-color:#F4DDA9}
+.banner.off{background:var(--red-bg);border-color:#F3C1CB}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:6px;flex:none}
+.trial .dot{background:var(--green)} .warn .dot{background:var(--amber)} .off .dot{background:var(--red)}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{background:var(--bg);border-radius:10px;padding:12px}
+.stat b{display:block;font-size:22px}
+.stat span{font-size:12px;color:var(--muted)}
+
+/* Tablas */
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:8px 6px}
+.tbl td{border-bottom:1px solid var(--line);padding:9px 6px;vertical-align:middle}
+.tblwrap{overflow-x:auto}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:500}
+.p-activa{background:var(--ok-bg);color:var(--green-d)}
+.p-por_vencer{background:var(--amber-bg);color:var(--amber)}
+.p-vencida,.p-suspendida{background:var(--red-bg);color:var(--red)}
+.p-prueba{background:#E8EEF8;color:var(--navy-2)}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:20px;letter-spacing:3px;background:var(--bg);padding:8px 14px;border-radius:8px;display:inline-block}
+
+/* Modal */
+.modal{position:fixed;inset:0;background:rgba(15,42,74,.45);display:grid;place-items:center;padding:16px;z-index:20}
+.modal .card{width:100%;max-width:440px;margin:0}
+
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;z-index:30;font-size:14px}
+.ro input,.ro select{background:var(--bg)}
+@media (max-width:600px){ .hide-sm{display:none} main{padding:12px} }
+</style>
+</head>
+<body>
+
+<!-- ====================== LOGIN / REGISTRO ====================== -->
+<section id="v-auth" class="auth hidden">
+  <div class="card">
+    <div class="logo">
+      <span id="logo-auth"></span>
+      <div><b>InspectApp</b><span class="muted">por Transformándonos</span></div>
+    </div>
+
+    <!-- Ingresar -->
+    <form id="f-login">
+      <h2>Ingresar</h2>
+      <label>Email</label><input name="email" type="email" required autocomplete="email">
+      <label>Contraseña</label><input name="password" type="password" required autocomplete="current-password">
+      <div class="err" id="e-login"></div>
+      <button class="btn full">Ingresar</button>
+      <p class="row" style="justify-content:space-between;margin:14px 0 0">
+        <button type="button" class="link" data-go="f-signup">Crear cuenta · 15 días gratis</button>
+        <button type="button" class="link" data-go="f-forgot">Olvidé mi contraseña</button>
+      </p>
+    </form>
+
+    <!-- Registro -->
+    <form id="f-signup" class="hidden">
+      <h2>Crear cuenta</h2>
+      <div class="seg" id="seg-signup">
+        <button type="button" class="on" data-mode="nueva">Empresa nueva</button>
+        <button type="button" data-mode="individual">Individual</button>
+        <button type="button" data-mode="codigo">Tengo un código</button>
+      </div>
+      <p class="muted" id="signup-hint" style="font-size:13px;margin:6px 0 0">Probás InspectApp 15 días gratis. Después, tu información queda disponible para consulta hasta que actives la licencia.</p>
+      <label>Nombre y apellido</label><input name="full_name" required>
+      <div id="w-org"><label>Nombre de la empresa</label><input name="org_name"></div>
+      <div id="w-code" class="hidden"><label>Código de la empresa</label><input name="join_code" style="text-transform:uppercase" placeholder="Te lo da el administrador"></div>
+      <label>Email</label><input name="email" type="email" required autocomplete="email">
+      <label>Contraseña (mínimo 8 caracteres)</label><input name="password" type="password" minlength="8" required autocomplete="new-password">
+      <div class="err" id="e-signup"></div>
+      <button class="btn full">Crear cuenta</button>
+      <p style="margin:14px 0 0"><button type="button" class="link" data-go="f-login">Ya tengo cuenta</button></p>
+    </form>
+
+    <!-- Recuperar -->
+    <form id="f-forgot" class="hidden">
+      <h2>Recuperar contraseña</h2>
+      <p class="muted" style="font-size:13px">Te mandamos un mail con un enlace para elegir una contraseña nueva.</p>
+      <label>Email</label><input name="email" type="email" required>
+      <div class="err" id="e-forgot"></div>
+      <button class="btn full">Enviar enlace</button>
+      <p style="margin:14px 0 0"><button type="button" class="link" data-go="f-login">Volver</button></p>
+    </form>
+
+    <!-- Nueva contraseña (llega desde el mail) -->
+    <form id="f-newpass" class="hidden">
+      <h2>Elegí tu contraseña nueva</h2>
+      <label>Contraseña nueva</label><input name="password" type="password" minlength="8" required autocomplete="new-password">
+      <div class="err" id="e-newpass"></div>
+      <button class="btn full">Guardar</button>
+    </form>
+  </div>
+</section>
+
+<!-- ====================== APLICACIÓN ====================== -->
+<section id="v-app" class="hidden">
+  <header class="top">
+    <div class="brand"><span id="logo-top"></span><div>InspectApp<small id="org-name">—</small></div></div>
+    <div class="sp"></div>
+    <span class="hide-sm" id="user-email" style="font-size:13px;opacity:.8"></span>
+    <button id="b-logout">Salir</button>
+  </header>
+  <nav class="tabs" id="tabs">
+    <button data-tab="t-home" class="on">Inicio</button>
+    <button data-tab="t-org" id="tab-org">Mi empresa</button>
+    <button data-tab="t-admin" id="tab-admin" class="hidden">Panel de licencias</button>
+  </nav>
+
+  <main>
+    <div id="lic-banner"></div>
+
+    <!-- Inicio -->
+    <div id="t-home">
+      <div class="card">
+        <h1 id="hello">Hola</h1>
+        <p class="muted" style="margin:0">Esta es la base de InspectApp. Las inspecciones, sitios y estadísticas se suman en las próximas etapas.</p>
+      </div>
+      <div class="card">
+        <h2>Tu licencia</h2>
+        <div class="stats" id="lic-stats"></div>
+      </div>
+    </div>
+
+    <!-- Mi empresa -->
+    <div id="t-org" class="hidden">
+      <div class="card" id="c-invite">
+        <h2>Sumar usuarios</h2>
+        <p class="muted" style="margin-top:0">Pasale este código a cada persona de tu equipo. Al crear su cuenta elige “Tengo un código” y lo ingresa.</p>
+        <div class="row"><span class="code" id="join-code">—</span>
+          <button class="btn sec sm" id="b-copy">Copiar</button>
+          <button class="btn sec sm" id="b-rotate">Generar otro</button></div>
+        <p class="muted" style="font-size:13px;margin-bottom:0" id="seat-info"></p>
+      </div>
+      <div class="card">
+        <h2>Usuarios</h2>
+        <div class="tblwrap"><table class="tbl">
+          <thead><tr><th>Nombre</th><th class="hide-sm">Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="members"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- Panel de licencias (superadmin) -->
+    <div id="t-admin" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h2 style="margin:0">Empresas y licencias</h2>
+          <input id="q-org" placeholder="Buscar empresa o mail" style="max-width:260px"></div>
+        <div class="stats" id="adm-stats" style="margin-top:14px"></div>
+      </div>
+      <div class="card">
+        <div class="tblwrap"><table class="tbl">
+          <thead><tr><th>Empresa</th><th>Tipo</th><th>Usuarios</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="orgs"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- Editor de licencia -->
+<div class="modal hidden" id="m-lic">
+  <form class="card" id="f-lic">
+    <h2 id="m-lic-title">Licencia</h2>
+    <p class="muted" style="margin-top:-6px;font-size:13px" id="m-lic-sub"></p>
+    <label>Tipo</label>
+    <select name="kind"><option value="empresa">Empresa</option><option value="individual">Individual</option></select>
+    <label>Cupo de usuarios</label><input name="seat_limit" type="number" min="1" required>
+    <label>Vence el</label><input name="expires" type="date" required>
+    <div class="row" style="margin-top:8px">
+      <button type="button" class="btn sec sm" data-add="30">+30 días</button>
+      <button type="button" class="btn sec sm" data-add="365">+1 año</button>
+    </div>
+    <label>Notas (pago, contacto, etc.)</label><input name="notes">
+    <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" name="suspended" style="width:auto"> Suspendida (pasa a solo lectura ya mismo)</label>
+    <div class="err" id="e-lic"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button type="button" class="btn sec" id="b-lic-cancel">Cancelar</button>
+      <button class="btn">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<script>
+/* =================== CONFIGURACIÓN =================== */
+const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
+/* ===================================================== */
+
+const LOGO = (s=34) => `<svg width="${s}" height="${s}" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#22B07D" fill-opacity=".14"/><path d="M14 34c0-9 12-12 20-8l7 4 4 5c-5 3-9 3-12 2-6 4-15 4-19-3z" fill="#22B07D"/><path d="M20 26l3-4 3 3 3-4 3 3" fill="none" stroke="#2BB3A6" stroke-width="2" stroke-linejoin="round"/><circle cx="38" cy="31" r="2.6" fill="#fff"/><path d="M14 34c-5 2-6 11 0 12 4 1 5-5 1-5" fill="none" stroke="#22B07D" stroke-width="3" stroke-linecap="round"/><path d="M20 39v6M30 39v6" stroke="#2BB3A6" stroke-width="3" stroke-linecap="round"/></svg>`;
+document.getElementById('logo-auth').innerHTML = LOGO(42);
+document.getElementById('logo-top').innerHTML = LOGO(30);
+
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtDate = d => d ? new Date(d).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
+const daysLeft = d => Math.ceil((new Date(d) - new Date()) / 86400000);
+const STATE_TXT = {activa:'Activa', por_vencer:'Por vencer', vencida:'Vencida', suspendida:'Suspendida'};
+function toast(msg){ const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 2600); }
+
+if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.startsWith('PEGAR')) {
+  document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif">Falta configurar la clave de Supabase en el archivo.</div>';
+  throw new Error('Sin clave');
+}
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* Traducción de errores frecuentes */
+function errText(e){
+  const m = (e && (e.message || e.error_description)) || String(e);
+  if (/Invalid login credentials/i.test(m)) return 'Email o contraseña incorrectos.';
+  if (/Email not confirmed/i.test(m)) return 'Todavía no confirmaste tu email. Revisá tu casilla (y la carpeta de spam).';
+  if (/already registered/i.test(m)) return 'Ese email ya tiene una cuenta. Probá ingresar o recuperar la contraseña.';
+  if (/Database error saving new user/i.test(m)) return 'No se pudo crear la cuenta: revisá el código de empresa o pedile al administrador que amplíe el cupo.';
+  if (/Password should be/i.test(m)) return 'La contraseña tiene que tener al menos 8 caracteres.';
+  if (/rate limit/i.test(m)) return 'Demasiados intentos seguidos. Esperá unos minutos.';
+  return m;
+}
+
+/* ---------------- Pantalla de acceso ---------------- */
+function showForm(id){ ['f-login','f-signup','f-forgot','f-newpass'].forEach(f => $('#'+f).classList.toggle('hidden', f !== id)); }
+document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => showForm(b.dataset.go));
+
+let signupMode = 'nueva';
+document.querySelectorAll('#seg-signup button').forEach(b => b.onclick = () => {
+  signupMode = b.dataset.mode;
+  document.querySelectorAll('#seg-signup button').forEach(x => x.classList.toggle('on', x === b));
+  $('#w-org').classList.toggle('hidden', signupMode === 'codigo');
+  $('#w-code').classList.toggle('hidden', signupMode !== 'codigo');
+  $('#w-org label').textContent = signupMode === 'individual' ? 'Nombre para mostrar (opcional)' : 'Nombre de la empresa';
+  $('#signup-hint').textContent = signupMode === 'codigo'
+    ? 'Te sumás a la empresa que te pasó el código, con la licencia de esa empresa.'
+    : 'Probás InspectApp 15 días gratis. Después, tu información queda disponible para consulta hasta que actives la licencia.';
+});
+
+$('#f-login').onsubmit = async ev => {
+  ev.preventDefault(); const f = ev.target; $('#e-login').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
+  if (error) $('#e-login').textContent = errText(error);
+};
+
+$('#f-signup').onsubmit = async ev => {
+  ev.preventDefault(); const f = ev.target; const e = $('#e-signup'); e.textContent = ''; e.className = 'err';
+  const meta = { full_name: f.full_name.value.trim() };
+  if (signupMode === 'codigo') {
+    if (!f.join_code.value.trim()) { e.textContent = 'Ingresá el código de la empresa.'; return; }
+    meta.join_code = f.join_code.value.trim().toUpperCase();
+  } else {
+    if (signupMode === 'nueva' && !f.org_name.value.trim()) { e.textContent = 'Ingresá el nombre de la empresa.'; return; }
+    meta.org_name = f.org_name.value.trim() || meta.full_name;
+    meta.kind = signupMode === 'individual' ? 'individual' : 'empresa';
+  }
+  const { data, error } = await sb.auth.signUp({
+    email: f.email.value.trim(), password: f.password.value,
+    options: { data: meta, emailRedirectTo: location.origin + location.pathname }
+  });
+  if (error) { e.textContent = errText(error); return; }
+  if (!data.session) { e.className = 'okmsg'; e.textContent = 'Listo. Te mandamos un mail para confirmar tu cuenta; después ingresá con tu email y contraseña.'; f.reset(); }
+};
+
+$('#f-forgot').onsubmit = async ev => {
+  ev.preventDefault(); const e = $('#e-forgot'); e.className='err'; e.textContent='';
+  const { error } = await sb.auth.resetPasswordForEmail(ev.target.email.value.trim(), { redirectTo: location.origin + location.pathname });
+  if (error) e.textContent = errText(error); else { e.className='okmsg'; e.textContent='Si el email está registrado, te llega el enlace en unos minutos.'; }
+};
+
+$('#f-newpass').onsubmit = async ev => {
+  ev.preventDefault();
+  const { error } = await sb.auth.updateUser({ password: ev.target.password.value });
+  if (error) $('#e-newpass').textContent = errText(error);
+  else { toast('Contraseña actualizada'); history.replaceState(null, '', location.pathname); boot(); }
+};
+
+$('#b-logout').onclick = () => sb.auth.signOut();
+
+/* ---------------- Estado de la sesión ---------------- */
+let me = null, org = null, recovering = false;
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') { recovering = true; $('#v-app').classList.add('hidden'); $('#v-auth').classList.remove('hidden'); showForm('f-newpass'); return; }
+  if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') setTimeout(boot, 0);
+});
+
+async function boot(){
+  if (recovering && !$('#f-newpass').classList.contains('hidden')) return;
+  recovering = false;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { $('#v-app').classList.add('hidden'); $('#v-auth').classList.remove('hidden'); showForm('f-login'); return; }
+
+  const { data: p, error } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+  if (error || !p) { toast('No se encontró tu perfil. Avisá al administrador.'); await sb.auth.signOut(); return; }
+  me = p;
+  if (!me.active) { alert('Tu usuario fue desactivado por el administrador de la empresa.'); await sb.auth.signOut(); return; }
+  const r = await sb.from('organizations').select('*').eq('id', me.org_id).single();
+  org = r.data;
+
+  $('#v-auth').classList.add('hidden'); $('#v-app').classList.remove('hidden');
+  $('#org-name').textContent = org ? org.name : 'Sin empresa';
+  $('#user-email').textContent = me.email;
+  $('#hello').textContent = 'Hola' + (me.full_name ? ', ' + me.full_name.split(' ')[0] : '');
+  $('#tab-admin').classList.toggle('hidden', !me.is_superadmin);
+  $('#c-invite').classList.toggle('hidden', me.role !== 'admin');
+  renderLicense();
+  openTab(document.querySelector('#tabs .on')?.dataset.tab || 't-home');
+}
+
+/* ---------------- Licencia del usuario ---------------- */
+function licState(o){
+  if (!o) return 'vencida';
+  if (o.suspended) return 'suspendida';
+  const d = daysLeft(o.license_expires_at);
+  if (d <= 0) return 'vencida';
+  return d <= 30 ? 'por_vencer' : 'activa';
+}
+function renderLicense(){
+  const st = licState(org), d = org ? daysLeft(org.license_expires_at) : 0;
+  let html = '';
+  if (st === 'suspendida') html = banner('off', 'Licencia suspendida', 'Podés consultar y descargar lo cargado, pero no cargar información nueva. Comunicate con Transformándonos para reactivarla.');
+  else if (st === 'vencida') html = banner('off', org.is_trial ? 'Terminó tu prueba gratis' : 'Tu licencia venció', 'Tu información sigue disponible para consulta y descarga. Para volver a cargar inspecciones, comunicate con Transformándonos.');
+  else if (org.is_trial) html = banner('trial', `Prueba gratis · te quedan ${d} día${d===1?'':'s'}`, `Vence el ${fmtDate(org.license_expires_at)}. Para seguir usando InspectApp después de esa fecha, comunicate con Transformándonos.`);
+  else if (st === 'por_vencer') html = banner('warn', `Tu licencia vence en ${d} día${d===1?'':'s'}`, `Vence el ${fmtDate(org.license_expires_at)}. Renovala para no pasar a solo lectura.`);
+  $('#lic-banner').innerHTML = html;
+  document.body.classList.toggle('ro', st === 'vencida' || st === 'suspendida');
+
+  $('#lic-stats').innerHTML = org ? `
+    <div class="stat"><span>Estado</span><b><span class="pill p-${org.is_trial && st!=='vencida' ? 'prueba' : st}">${org.is_trial && st!=='vencida' ? 'Prueba gratis' : STATE_TXT[st]}</span></b></div>
+    <div class="stat"><span>Vence</span><b>${fmtDate(org.license_expires_at)}</b></div>
+    <div class="stat"><span>Tipo</span><b>${org.kind === 'individual' ? 'Individual' : 'Empresa'}</b></div>
+    <div class="stat"><span>Cupo de usuarios</span><b>${org.seat_limit}</b></div>` : '';
+}
+const banner = (cls, t, s) => `<div class="banner ${cls}"><span class="dot"></span><div><b>${esc(t)}</b><div style="font-size:14px">${esc(s)}</div></div></div>`;
+
+/* ---------------- Pestañas ---------------- */
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => openTab(b.dataset.tab));
+function openTab(id){
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
+  ['t-home','t-org','t-admin'].forEach(t => $('#'+t).classList.toggle('hidden', t !== id));
+  if (id === 't-org') loadOrg();
+  if (id === 't-admin') loadAdmin();
+}
+
+/* ---------------- Mi empresa ---------------- */
+async function loadOrg(){
+  const { data: members } = await sb.from('profiles').select('*').eq('org_id', me.org_id).order('created_at');
+  const active = (members || []).filter(m => m.active).length;
+  $('#join-code').textContent = org?.join_code || '—';
+  $('#seat-info').textContent = `Usuarios activos: ${active} de ${org?.seat_limit ?? '—'}.` + (active >= (org?.seat_limit ?? 0) ? ' El cupo está completo: para sumar a alguien, pedí más usuarios o desactivá uno.' : '');
+  const isAdmin = me.role === 'admin';
+  $('#members').innerHTML = (members || []).map(m => `
+    <tr>
+      <td>${esc(m.full_name || '—')}${m.id === me.id ? ' <span class="muted">(vos)</span>' : ''}</td>
+      <td class="hide-sm">${esc(m.email)}</td>
+      <td>${isAdmin && m.id !== me.id
+        ? `<select data-role="${m.id}" style="padding:6px">${['admin','supervisor','inspector'].map(r => `<option ${m.role===r?'selected':''} value="${r}">${r[0].toUpperCase()+r.slice(1)}</option>`).join('')}</select>`
+        : esc(m.role[0].toUpperCase() + m.role.slice(1))}</td>
+      <td><span class="pill ${m.active ? 'p-activa' : 'p-vencida'}">${m.active ? 'Activo' : 'Inactivo'}</span></td>
+      <td>${isAdmin && m.id !== me.id ? `<button class="btn sm ${m.active ? 'danger' : 'sec'}" data-toggle="${m.id}" data-active="${m.active}">${m.active ? 'Desactivar' : 'Activar'}</button>` : ''}</td>
+    </tr>`).join('');
+  document.querySelectorAll('[data-role]').forEach(s => s.onchange = async () => {
+    const { error } = await sb.rpc('org_update_member', { p_user: s.dataset.role, p_role: s.value });
+    toast(error ? errText(error) : 'Rol actualizado'); loadOrg();
+  });
+  document.querySelectorAll('[data-toggle]').forEach(b => b.onclick = async () => {
+    const act = b.dataset.active !== 'true';
+    const { error } = await sb.rpc('org_update_member', { p_user: b.dataset.toggle, p_active: act });
+    toast(error ? errText(error) : (act ? 'Usuario activado' : 'Usuario desactivado')); loadOrg();
+  });
+}
+$('#b-copy').onclick = () => navigator.clipboard.writeText(org.join_code).then(() => toast('Código copiado'));
+$('#b-rotate').onclick = async () => {
+  if (!confirm('El código anterior deja de funcionar. ¿Generar uno nuevo?')) return;
+  const { data, error } = await sb.rpc('org_rotate_join_code');
+  if (error) return toast(errText(error));
+  org.join_code = data; $('#join-code').textContent = data; toast('Código nuevo generado');
+};
+
+/* ---------------- Panel de licencias (superadmin) ---------------- */
+let allOrgs = [];
+async function loadAdmin(){
+  const { data, error } = await sb.rpc('admin_list_orgs');
+  if (error) return toast(errText(error));
+  allOrgs = data || [];
+  const c = s => allOrgs.filter(o => o.state === s).length;
+  $('#adm-stats').innerHTML = `
+    <div class="stat"><span>Empresas</span><b>${allOrgs.length}</b></div>
+    <div class="stat"><span>En prueba</span><b>${allOrgs.filter(o => o.is_trial && o.state !== 'vencida').length}</b></div>
+    <div class="stat"><span>Por vencer (30 días)</span><b>${c('por_vencer')}</b></div>
+    <div class="stat"><span>Vencidas o suspendidas</span><b>${c('vencida') + c('suspendida')}</b></div>`;
+  renderOrgs();
+}
+$('#q-org').oninput = renderOrgs;
+function renderOrgs(){
+  const q = $('#q-org').value.trim().toLowerCase();
+  const rows = allOrgs.filter(o => !q || (o.name + ' ' + (o.admin_email || '')).toLowerCase().includes(q));
+  $('#orgs').innerHTML = rows.map(o => `
+    <tr>
+      <td><b>${esc(o.name)}</b><div class="muted" style="font-size:12px">${esc(o.admin_email || '')}${o.notes ? ' · ' + esc(o.notes) : ''}</div></td>
+      <td>${o.kind === 'individual' ? 'Individual' : 'Empresa'}</td>
+      <td>${o.seats_used} / ${o.seat_limit}</td>
+      <td>${fmtDate(o.license_expires_at)}</td>
+      <td><span class="pill p-${o.is_trial && o.state !== 'vencida' ? 'prueba' : o.state}">${o.is_trial && o.state !== 'vencida' ? 'Prueba' : STATE_TXT[o.state]}</span></td>
+      <td><button class="btn sec sm" data-edit="${o.id}">Editar</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="muted">Sin resultados</td></tr>';
+  document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editLic(allOrgs.find(o => o.id === b.dataset.edit)));
+}
+
+let editing = null;
+function editLic(o){
+  editing = o; const f = $('#f-lic');
+  $('#m-lic-title').textContent = o.name;
+  $('#m-lic-sub').textContent = `${o.admin_email || ''} · usuarios activos: ${o.seats_used}`;
+  f.kind.value = o.kind; f.seat_limit.value = o.seat_limit;
+  f.expires.value = new Date(o.license_expires_at).toISOString().slice(0, 10);
+  f.notes.value = o.notes || ''; f.suspended.checked = o.suspended;
+  $('#e-lic').textContent = ''; $('#m-lic').classList.remove('hidden');
+}
+document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+  const f = $('#f-lic');
+  const base = new Date(Math.max(new Date(f.expires.value || Date.now()), Date.now()));
+  base.setDate(base.getDate() + Number(b.dataset.add));
+  f.expires.value = base.toISOString().slice(0, 10);
+});
+$('#b-lic-cancel').onclick = () => $('#m-lic').classList.add('hidden');
+$('#f-lic').onsubmit = async ev => {
+  ev.preventDefault(); const f = ev.target;
+  const { error } = await sb.rpc('admin_set_license', {
+    p_org: editing.id,
+    p_expires_at: new Date(f.expires.value + 'T23:59:59-03:00').toISOString(),
+    p_seat_limit: Number(f.seat_limit.value),
+    p_suspended: f.suspended.checked,
+    p_kind: f.kind.value,
+    p_notes: f.notes.value.trim() || null
+  });
+  if (error) { $('#e-lic').textContent = errText(error); return; }
+  $('#m-lic').classList.add('hidden'); toast('Licencia actualizada');
+  await loadAdmin();
+  if (editing.id === me.org_id) { const r = await sb.from('organizations').select('*').eq('id', me.org_id).single(); org = r.data; renderLicense(); }
+};
+</script>
+</body>
+</html>
