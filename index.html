@@ -4,37 +4,49 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230F2A4A'/%3E%3Cpath d='M14 34c0-9 12-12 20-8l7 4 4 5c-5 3-9 3-12 2-6 4-15 4-19-3z' fill='%2322B07D'/%3E%3Ccircle cx='38' cy='31' r='2.6' fill='%23fff'/%3E%3Cpath d='M14 34c-5 2-6 11 0 12 4 1 5-5 1-5' fill='none' stroke='%2322B07D' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="InspectApp">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="leaflet.css">
+<script src="supabase.js"></script>
+<script src="leaflet.js"></script>
+<script src="jszip.min.js"></script>
+<script src="xlsx.full.min.js"></script>
 <style>
 :root{
   --navy:#0F2A4A; --navy-2:#1A3A6B; --green:#22B07D; --green-d:#178A61; --teal:#2BB3A6;
   --bg:#F4F6F9; --card:#FFFFFF; --text:#14202E; --muted:#5B6878; --line:#E1E6ED;
   --red:#C8102E; --red-bg:#FDECEF; --amber:#B7791F; --amber-bg:#FEF6E4; --ok-bg:#E7F7F0;
   --si:#12865F; --no:#C8102E; --na:#6E6E6E; --r:12px;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 Inter,system-ui,sans-serif}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;-webkit-tap-highlight-color:transparent}
 button,input,select,textarea{font:inherit}
 a{color:var(--navy-2)}
 .hidden{display:none!important}
 
-.top{background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:50}
-.brand{display:flex;align-items:center;gap:10px;font-weight:600}
-.brand small{display:block;font-weight:400;opacity:.7;font-size:12px}
+.top{background:var(--navy);color:#fff;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:50}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;min-width:0}
+.brand small{display:block;font-weight:400;opacity:.7;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .top .sp{flex:1}
-.top button{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 10px;cursor:pointer}
-.tabs{display:flex;gap:2px;padding:0 8px;background:var(--navy-2);overflow-x:auto;position:sticky;top:56px;z-index:49}
+.top button{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+.netpill{font-size:12px;padding:4px 10px;border-radius:99px;cursor:pointer;white-space:nowrap}
+.netpill.off{background:#C8102E;color:#fff}
+.netpill.busy{background:#F2A93B;color:#3a2600}
+.tabs{display:flex;gap:2px;padding:0 8px;background:var(--navy-2);overflow-x:auto;position:sticky;top:56px;z-index:49;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
 .tabs button{background:none;border:0;color:rgba(255,255,255,.7);padding:12px 14px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
 .tabs button.on{color:#fff;border-bottom-color:var(--green)}
 
-main{max-width:1040px;margin:0 auto;padding:16px}
+main{max-width:1080px;margin:0 auto;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:14px}
 h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:0 0 12px} h3{font-size:15px;margin:0 0 8px}
 .muted{color:var(--muted)} .sm{font-size:13px}
@@ -43,7 +55,7 @@ h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:0 0 12px} h3{font-siz
 .grow{flex:1;min-width:160px}
 
 label{display:block;font-size:13px;font-weight:500;margin:12px 0 4px}
-input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text)}
 textarea{min-height:70px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-color:transparent}
 .btn{background:var(--green);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;white-space:nowrap}
@@ -53,13 +65,16 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .btn.small{padding:6px 10px;font-size:13px;font-weight:500}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .full{width:100%}
+.iconbtn{background:none;border:0;cursor:pointer;padding:6px;border-radius:6px;color:var(--muted);font-size:16px;line-height:1}
+.iconbtn:hover{background:var(--red-bg);color:var(--red)}
 .err{color:var(--red);font-size:13px;margin-top:8px;min-height:1em}
 .okmsg{color:var(--green-d);font-size:13px;margin-top:8px}
 
-.auth{min-height:100vh;display:grid;place-items:center;padding:20px;background:linear-gradient(160deg,var(--navy) 0%,var(--navy-2) 60%,#145B5A 100%)}
+.auth{min-height:100vh;display:grid;place-items:center;padding:20px;background:#05080f radial-gradient(ellipse at 30% 20%,#123a4a 0%,#05080f 60%)}
 .auth .card{width:100%;max-width:420px;padding:26px}
 .auth .logo{display:flex;align-items:center;gap:12px;margin-bottom:18px}
 .auth .logo b{font-size:20px;display:block}
+.auth-banner{display:block;width:calc(100% + 52px);margin:-26px -26px 18px;border-radius:12px 12px 0 0;aspect-ratio:982/537;object-fit:cover;background:#05080f}
 .seg{display:flex;background:var(--bg);border-radius:10px;padding:4px;margin:12px 0 4px}
 .seg button{flex:1;border:0;background:none;padding:8px;border-radius:8px;cursor:pointer;color:var(--muted)}
 .seg button.on{background:#fff;color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
@@ -74,16 +89,19 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .stat{background:var(--bg);border-radius:10px;padding:12px}
-.stat b{display:block;font-size:22px} .stat span{font-size:12px;color:var(--muted)}
+.stat b{display:block;font-size:24px;line-height:1.25} .stat span{font-size:12px;color:var(--muted)}
+.stat small{display:block;font-size:12px;color:var(--muted)}
 
 .tbl{width:100%;border-collapse:collapse;font-size:14px}
-.tbl th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:8px 6px}
+.tbl th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:8px 6px;white-space:nowrap}
+.tbl th.sortable{cursor:pointer} .tbl th.sortable:hover{color:var(--text)}
 .tbl td{border-bottom:1px solid var(--line);padding:9px 6px;vertical-align:middle}
 .tbl tr.click{cursor:pointer} .tbl tr.click:hover td{background:#F8FAFC}
+.tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
 .tblwrap{overflow-x:auto}
 .pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:500;white-space:nowrap}
 .p-activa,.p-completada,.p-ok{background:var(--ok-bg);color:var(--green-d)}
-.p-por_vencer,.p-borrador{background:var(--amber-bg);color:var(--amber)}
+.p-por_vencer,.p-borrador,.p-pend{background:var(--amber-bg);color:var(--amber)}
 .p-vencida,.p-suspendida,.p-bad{background:var(--red-bg);color:var(--red)}
 .p-prueba,.p-info{background:#E8EEF8;color:var(--navy-2)}
 .code{font-family:ui-monospace,Menlo,monospace;font-size:20px;letter-spacing:3px;background:var(--bg);padding:8px 14px;border-radius:8px;display:inline-block}
@@ -91,12 +109,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .modal{position:fixed;inset:0;background:rgba(15,42,74,.45);display:grid;place-items:center;padding:16px;z-index:100;overflow:auto}
 .modal .card{width:100%;max-width:480px;margin:auto}
 .modal .card.wide{max-width:760px}
-.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;z-index:200;font-size:14px;max-width:90vw}
+.toast{position:fixed;bottom:max(18px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;z-index:200;font-size:14px;max-width:92vw;display:flex;gap:12px;align-items:center}
+.toast button{background:var(--green);color:#fff;border:0;border-radius:6px;padding:6px 10px;font-weight:600;cursor:pointer}
 
 #map{height:420px;border-radius:10px;border:1px solid var(--line)}
 .kind-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 
-/* Ejecución de inspección */
+/* Ejecución */
 .exec-head{position:sticky;top:104px;z-index:40;background:var(--bg);padding:8px 0}
 .progress{height:6px;background:var(--line);border-radius:99px;overflow:hidden}
 .progress i{display:block;height:100%;background:var(--green);transition:width .3s}
@@ -108,13 +127,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .item .q{font-weight:500;margin-bottom:8px}
 .item .q .req{color:var(--red)}
 .opts{display:flex;gap:8px;flex-wrap:wrap}
-.opt{flex:1;min-width:70px;padding:10px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:500}
+.opt{flex:1;min-width:70px;padding:11px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:500;color:var(--text)}
 .opt.on.si{background:var(--si);color:#fff;border-color:var(--si)}
 .opt.on.no{background:var(--no);color:#fff;border-color:var(--no)}
 .opt.on.na{background:var(--na);color:#fff;border-color:var(--na)}
 .opt.on.neutral{background:var(--navy-2);color:#fff;border-color:var(--navy-2)}
 .item-tools{display:flex;gap:14px;margin-top:8px}
-.item-tools button{background:none;border:0;color:var(--navy-2);cursor:pointer;padding:4px 0;font-size:13px}
+.item-tools button,.item-tools label{background:none;border:0;color:var(--navy-2);cursor:pointer;padding:4px 0;font-size:13px;margin:0;font-weight:400}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .thumbs .th{position:relative;width:76px;height:76px;border-radius:8px;overflow:hidden;background:var(--line)}
 .thumbs img{width:100%;height:100%;object-fit:cover}
@@ -124,7 +143,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .sig{border:1px dashed var(--muted);border-radius:8px;background:#fff;width:100%;height:160px;touch-action:none}
 .savebar{font-size:12px;color:var(--muted)}
 
-/* Editor de plantillas */
+/* Editor */
 .ed-item{display:grid;grid-template-columns:1fr 150px auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .ed-item.heading input{font-weight:600;color:var(--navy-2)}
 .ed-item .ops{display:flex;gap:4px}
@@ -132,6 +151,28 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .ed-extra{grid-column:1 / -1;display:flex;gap:8px;flex-wrap:wrap;font-size:13px}
 .ed-extra input,.ed-extra select{width:auto;padding:6px 8px}
 .ed-extra label{display:flex;gap:6px;align-items:center;margin:0;font-weight:400}
+
+/* Estadísticas */
+.viz-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:2px 0 10px}
+.viz-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.vbars{display:flex;align-items:flex-end;gap:6px;height:200px;border-bottom:1px solid var(--line);padding:0 2px;position:relative}
+.vbars .col{flex:1;display:flex;flex-direction:column-reverse;gap:2px;height:100%;justify-content:flex-start;cursor:default;min-width:0;position:relative}
+.vbars .col .seg{border-radius:0;width:100%;max-width:44px;margin:0 auto}
+.vbars .col .seg.top{border-radius:4px 4px 0 0}
+.vbars .col .tot{position:absolute;left:0;right:0;text-align:center;font-size:12px;color:var(--text);font-variant-numeric:tabular-nums}
+.vlabels{display:flex;gap:6px;padding:4px 2px 0}
+.vlabels span{flex:1;text-align:center;font-size:11px;color:var(--muted);min-width:0;overflow:hidden;white-space:nowrap}
+.hbars{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;gap:6px 10px;align-items:center;font-size:13px}
+.hbars .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.hbars .track{height:16px;display:flex;gap:2px}
+.hbars .track i{display:block;height:100%}
+.hbars .track i:last-child{border-radius:0 4px 4px 0}
+.hbars .val{font-variant-numeric:tabular-nums;color:var(--text);min-width:34px;text-align:right}
+.hbars .hit{display:contents;cursor:pointer}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.chart-grid .card{margin:0}
+.tip{position:fixed;z-index:300;pointer-events:none;background:#0b0b0b;color:#fff;font-size:12px;padding:6px 9px;border-radius:6px;max-width:260px;line-height:1.4}
+.empty{color:var(--muted);font-size:14px;padding:20px 0;text-align:center}
 
 /* Informe */
 #report{background:#fff;max-width:820px;margin:0 auto;padding:36px 44px;color:#1d2433;font-size:13.5px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -146,7 +187,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 #report .rp-kv{display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e4e7ee}
 #report .rp-kv b{font-weight:600}
 #report .rp-sec{display:flex;justify-content:space-between;background:#E8EEF8;padding:10px 14px;margin-top:22px;font-weight:600;break-after:avoid}
-#report .rp-subh{display:flex;justify-content:space-between;background:#EEF2F8;padding:9px 14px;margin-top:6px;font-weight:400;break-after:avoid}
+#report .rp-subh{display:flex;justify-content:space-between;background:#EEF2F8;padding:9px 14px;margin-top:6px;break-after:avoid}
 #report .rp-item{display:grid;grid-template-columns:1fr 34%;gap:12px;border-bottom:1px solid #e4e7ee;padding:4px 0 6px 14px;break-inside:avoid}
 #report .rp-item .lb{font-weight:600;padding:8px 0}
 #report .rp-ans{padding:10px 12px;text-align:right;color:#fff;font-size:13px;align-self:start}
@@ -156,7 +197,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 #report .rp-note{grid-column:1 / -1;color:#333;padding:0 0 4px}
 #report .rp-photos{grid-column:1 / -1;display:flex;gap:18px;flex-wrap:wrap;padding-bottom:6px}
 #report .rp-photos figure{margin:0;width:100px}
-#report .rp-photos img{width:100px;height:100px;object-fit:cover;display:block}
+#report .rp-photos img{width:100px;height:100px;object-fit:cover;display:block;background:#eee}
 #report figcaption{font-size:11px;color:#444;margin-top:2px}
 #report .rp-media{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
 #report .rp-media figure{margin:0;break-inside:avoid}
@@ -165,7 +206,8 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 #report .rp-foot{margin-top:28px;color:#666;font-size:11px;display:flex;justify-content:space-between;border-top:1px solid #e4e7ee;padding-top:6px}
 .report-bar{max-width:820px;margin:0 auto 12px;display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}
 
-@media (max-width:640px){ .hide-sm{display:none} main{padding:10px} .card{padding:14px} .sec-title{margin:0 -14px} #report{padding:18px} .ed-item{grid-template-columns:1fr} }
+@media (max-width:720px){ .chart-grid{grid-template-columns:1fr} }
+@media (max-width:640px){ .hide-sm{display:none} main{padding:10px} .card{padding:14px} .sec-title{margin:0 -14px} #report{padding:18px} .ed-item{grid-template-columns:1fr} .vbars{height:170px} }
 @media print{
   body{background:#fff}
   .top,.tabs,.report-bar,#lic-banner,.toast{display:none!important}
@@ -180,6 +222,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 <!-- ====================== ACCESO ====================== -->
 <section id="v-auth" class="auth hidden">
   <div class="card">
+    <img src="banner.jpg" alt="Transformándonos" class="auth-banner">
     <div class="logo"><span id="logo-auth"></span><div><b>InspectApp</b><span class="muted">por Transformándonos</span></div></div>
     <form id="f-login">
       <h2>Ingresar</h2>
@@ -204,7 +247,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
       <div id="w-org"><label>Nombre de la empresa</label><input name="org_name"></div>
       <div id="w-code" class="hidden"><label>Código de la empresa</label><input name="join_code" style="text-transform:uppercase" placeholder="Te lo da el administrador"></div>
       <label>Email</label><input name="email" type="email" required autocomplete="email">
-      <label>Contraseña (mínimo 8 caracteres)</label><input name="password" type="password" minlength="8" required autocomplete="new-password">
+      <label>Contraseña (mínimo 8 caracteres, con letras y números)</label><input name="password" type="password" minlength="8" required autocomplete="new-password">
       <div class="err" id="e-signup"></div>
       <button class="btn full">Crear cuenta</button>
       <p style="margin:14px 0 0"><button type="button" class="link" data-go="f-login">Ya tengo cuenta</button></p>
@@ -231,12 +274,16 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
   <header class="top">
     <div class="brand"><span id="logo-top"></span><div>InspectApp<small id="org-name">—</small></div></div>
     <div class="sp"></div>
+    <span id="net" class="netpill hidden" title="Tocar para enviar ahora"></span>
+    <button id="b-install" class="hidden">Instalar</button>
     <span class="hide-sm" id="user-email" style="font-size:13px;opacity:.8"></span>
     <button id="b-logout">Salir</button>
   </header>
   <nav class="tabs" id="tabs">
     <button data-tab="home">Inicio</button>
     <button data-tab="insp">Inspecciones</button>
+    <button data-tab="tasks" id="tab-tasks">Tareas</button>
+    <button data-tab="stats">Estadísticas</button>
     <button data-tab="sites">Sitios</button>
     <button data-tab="tpl">Plantillas</button>
     <button data-tab="org">Mi empresa</button>
@@ -249,15 +296,17 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 </section>
 
 <div id="modal-root"></div>
+<div id="tip" class="tip hidden"></div>
 
 <script>
 /* =================== CONFIGURACIÓN =================== */
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
-const APP_VERSION = '2.0';
+const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
+const APP_VERSION = '3.0';
 /* ===================================================== */
 
-const LOGO = (s=34) => `<svg width="${s}" height="${s}" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#22B07D" fill-opacity=".14"/><path d="M14 34c0-9 12-12 20-8l7 4 4 5c-5 3-9 3-12 2-6 4-15 4-19-3z" fill="#22B07D"/><path d="M20 26l3-4 3 3 3-4 3 3" fill="none" stroke="#2BB3A6" stroke-width="2" stroke-linejoin="round"/><circle cx="38" cy="31" r="2.6" fill="#fff"/><path d="M14 34c-5 2-6 11 0 12 4 1 5-5 1-5" fill="none" stroke="#22B07D" stroke-width="3" stroke-linecap="round"/><path d="M20 39v6M30 39v6" stroke="#2BB3A6" stroke-width="3" stroke-linecap="round"/></svg>`;
+const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
 document.getElementById('logo-auth').innerHTML = LOGO(42);
 document.getElementById('logo-top').innerHTML = LOGO(30);
 
@@ -269,14 +318,29 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString('es-AR', {day:'2-digit',
 const fmtTime = d => d ? new Date(d).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'}) : '—';
 const fmtDT = d => d ? fmtDate(d) + ' ' + fmtTime(d) : '—';
 const daysLeft = d => Math.ceil((new Date(d) - new Date()) / 86400000);
-const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now());
+const daysSince = d => Math.floor((Date.now() - new Date(d)) / 86400000);
+function uid(){
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+  const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+}
 const STATE_TXT = {activa:'Activa', por_vencer:'Por vencer', vencida:'Vencida', suspendida:'Suspendida'};
 const KIND_TXT = {preventivo:'Preventivo', correctivo:'Correctivo', otro:'Otro'};
 const SITE_KINDS = {epi:'EPI / Nodo', repetidora:'Repetidora', acueducto:'Acueducto', tramo_fo:'Tramo de fibra', radioenlace:'Radioenlace', shelter:'Shelter', otro:'Otro'};
 const SITE_COLORS = {epi:'#22B07D', repetidora:'#8B5CF6', acueducto:'#2B7BD6', tramo_fo:'#F2A93B', radioenlace:'#8B5CF6', shelter:'#0F2A4A', otro:'#6E6E6E'};
-function toast(msg){ const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 3200); }
+const online = () => navigator.onLine;
+const isNetErr = e => /Failed to fetch|NetworkError|Load failed|network|fetch failed|ERR_INTERNET|timeout/i.test(String((e && (e.message || e.details)) || e));
+function toast(msg, action){
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  if (action){ const b = document.createElement('button'); b.textContent = action.label; b.onclick = () => { t.remove(); action.fn(); }; t.appendChild(b); }
+  document.body.appendChild(t); if (!action) setTimeout(() => t.remove(), 3400);
+  return t;
+}
 function errText(e){
   const m = (e && (e.message || e.error_description)) || String(e);
+  if (m === 'OFFLINE_NODATA') return 'Sin conexión. Este dato todavía no está guardado en el dispositivo: conectate una vez para descargarlo.';
+  if (m === 'NEEDS_ONLINE') return 'Esta acción necesita conexión a internet.';
   if (/Invalid login credentials/i.test(m)) return 'Email o contraseña incorrectos.';
   if (/Email not confirmed/i.test(m)) return 'Todavía no confirmaste tu email. Revisá tu casilla (y la carpeta de spam).';
   if (/already registered/i.test(m)) return 'Ese email ya tiene una cuenta. Probá ingresar o recuperar la contraseña.';
@@ -284,7 +348,7 @@ function errText(e){
   if (/Password should be/i.test(m)) return 'La contraseña tiene que tener al menos 8 caracteres.';
   if (/rate limit/i.test(m)) return 'Demasiados intentos seguidos. Esperá unos minutos.';
   if (/row-level security/i.test(m)) return 'No tenés permiso para esta acción, o la licencia está vencida.';
-  if (/Failed to fetch|NetworkError/i.test(m)) return 'Sin conexión. Revisá internet e intentá de nuevo.';
+  if (isNetErr(e)) return 'Sin conexión. Revisá internet e intentá de nuevo.';
   return m;
 }
 function modal(html, {wide=false}={}){
@@ -294,14 +358,167 @@ function modal(html, {wide=false}={}){
   root.querySelector('.modal').addEventListener('mousedown', e => { if (e.target.classList.contains('modal')) close(); });
   return { el: root.querySelector('.card'), close };
 }
+function needOnline(){ if (!online()){ toast('Esta acción necesita conexión a internet.'); return false; } return true; }
 
-if (!window.supabase) { document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif">No se pudo cargar la aplicación. Revisá tu conexión a internet y recargá la página.</div>'; throw new Error('sin supabase'); }
+if (!window.supabase){ document.body.innerHTML = '<div style="padding:40px;font-family:sans-serif">No se pudo cargar la aplicación. Revisá tu conexión a internet y recargá la página.</div>'; throw new Error('sin supabase'); }
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* =========================================================
+   ALMACENAMIENTO EN EL DISPOSITIVO (IndexedDB)
+   kv: datos descargados · insp: inspecciones · blobs: fotos y firmas
+   ========================================================= */
+const IDB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('inspectapp', 1);
+    r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('kv'); d.createObjectStore('insp', {keyPath: 'id'}); d.createObjectStore('blobs'); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const tx = async (store, mode, fn) => {
+    const d = await open();
+    return new Promise((res, rej) => {
+      const t = d.transaction(store, mode); const req = fn(t.objectStore(store));
+      t.oncomplete = () => res(req ? req.result : undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  };
+  return {
+    get: (st, k) => tx(st, 'readonly', s => s.get(k)),
+    put: (st, v, k) => tx(st, 'readwrite', s => k === undefined ? s.put(v) : s.put(v, k)),
+    del: (st, k) => tx(st, 'readwrite', s => s.delete(k)),
+    all: st => tx(st, 'readonly', s => s.getAll()),
+  };
+})();
+let CUR_UID = null;
+async function cached(key, fetcher){
+  const k = CUR_UID + ':' + key;
+  if (online()){
+    try { const r = await fetcher(); if (r.error) throw r.error; IDB.put('kv', r.data, k).catch(() => {}); return r.data; }
+    catch (e){ if (!isNetErr(e)) throw e; }
+  }
+  const v = await IDB.get('kv', k).catch(() => undefined);
+  if (v === undefined) throw new Error('OFFLINE_NODATA');
+  return v;
+}
+function storedUid(){ try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null')?.user?.id || null; } catch { return null; } }
+
+/* ---------- inspecciones locales y envío ---------- */
+const ROW_FIELDS = ['id','org_id','template_id','template_name','template_snapshot','site_id','site_name','traza','kind','status','inspector_id','inspector_name','started_at','completed_at','answers','score','max_score','flagged','flagged_items','lat','lng','task_id'];
+const toRow = r => Object.fromEntries(ROW_FIELDS.map(k => [k, r[k] === undefined ? null : r[k]]));
+const localGet = id => IDB.get('insp', id).catch(() => undefined);
+async function localSave(r){ r._rev = (r._rev || 0) + 1; r._dirty = true; await IDB.put('insp', r); updateNet(); syncSoon(); }
+async function localAll(){ return (await IDB.all('insp').catch(() => [])).filter(r => me && r.org_id === me.org_id); }
+function insPaths(r){
+  const out = [];
+  for (const a of Object.values(r.answers || {})){
+    (a.photos || []).forEach(p => out.push(p.path));
+    if (typeof a.value === 'string' && a.value.startsWith(r.org_id + '/')) out.push(a.value);
+  }
+  return out;
+}
+let syncing = false, syncErr = null, syncTimer = null;
+const syncSoon = () => { clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, 1200); };
+async function syncNow(){
+  if (syncing || !online() || !me) return;
+  syncing = true; updateNet();
+  try {
+    const items = (await localAll()).filter(r => r._dirty);
+    for (const r of items){
+      for (const p of insPaths(r)){
+        const blob = await IDB.get('blobs', p).catch(() => undefined);
+        if (!blob || blob._up) continue;
+        const { error } = await sb.storage.from('fotos').upload(p, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
+        if (error && !/exist|duplicate/i.test(error.message || '')) throw error;
+        await IDB.del('blobs', p);
+      }
+      let res;
+      if (!r._synced){
+        res = await sb.from('inspections').insert(toRow(r)).select('id');
+        if (res.error && /duplicate key|23505/i.test((res.error.message || '') + (res.error.code || ''))) res = await sb.from('inspections').update(toRow(r)).eq('id', r.id).select('id');
+      } else {
+        res = await sb.from('inspections').update(toRow(r)).eq('id', r.id).select('id');
+      }
+      if (res.error){
+        if (/ya fue completada/i.test(res.error.message)) res = { data: [{}] };
+        else throw res.error;
+      }
+      if (!res.data?.length) throw new Error('El servidor no aceptó la inspección (permiso o licencia).');
+      const cur = await localGet(r.id);
+      if (cur){ cur._synced = true; if (cur._rev === r._rev) cur._dirty = false; await IDB.put('insp', cur); }
+    }
+    syncErr = null;
+    pruneLocal();
+  } catch (e){ syncErr = e; console.warn('envío', e); }
+  finally { syncing = false; updateNet(); }
+}
+async function pruneLocal(){
+  for (const r of await localAll()){
+    if (!r._dirty && r._synced && r.status === 'completada' && r.completed_at && daysSince(r.completed_at) > 30) IDB.del('insp', r.id).catch(() => {});
+  }
+}
+async function updateNet(){
+  const el = $('#net'); if (!el || !me) return;
+  const pend = (await localAll()).filter(r => r._dirty).length;
+  let txt = '', cls = '';
+  if (!online()){ txt = 'Sin conexión' + (pend ? ` · ${pend} por enviar` : ''); cls = 'off'; }
+  else if (syncing){ txt = 'Enviando…'; cls = 'busy'; }
+  else if (pend){ txt = syncErr ? `${pend} sin enviar · reintentar` : `${pend} por enviar`; cls = syncErr ? 'off' : 'busy'; }
+  el.textContent = txt; el.className = 'netpill ' + cls; el.classList.toggle('hidden', !txt);
+}
+$('#net').onclick = () => { if (syncErr) toast('No se pudo enviar: ' + errText(syncErr)); syncNow(); };
+window.addEventListener('online', () => { updateNet(); syncNow(); warmCache(); });
+window.addEventListener('offline', updateNet);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });
+setInterval(syncNow, 60000);
+
+/* ---------- fotos: del dispositivo o del servidor ---------- */
+const blobUrls = new Map(), signed = new Map();
+async function photoURLs(paths){
+  const need = [];
+  for (const p of paths){
+    if (!p || blobUrls.has(p)) continue;
+    const blob = await IDB.get('blobs', p).catch(() => undefined);
+    if (blob) blobUrls.set(p, URL.createObjectURL(blob));
+    else { const s = signed.get(p); if (!s || Date.now() - s.t > 50 * 60000) need.push(p); }
+  }
+  if (need.length && online()){
+    try { const { data } = await sb.storage.from('fotos').createSignedUrls(need, 3600); (data || []).forEach(d => d.signedUrl && signed.set(d.path, {u: d.signedUrl, t: Date.now()})); } catch {}
+  }
+  return paths.map(p => blobUrls.get(p) || signed.get(p)?.u || null);
+}
+async function hydrate(scope){
+  const imgs = [...scope.querySelectorAll('img[data-path]')];
+  const urls = await photoURLs(imgs.map(i => i.dataset.path));
+  imgs.forEach((im, k) => { if (urls[k]) im.src = urls[k]; else im.alt = 'Foto disponible con conexión'; });
+}
+
+/* =========================================================
+   INSTALACIÓN COMO APLICACIÓN Y ACTUALIZACIONES
+   ========================================================= */
+let installPrompt = null;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; $('#b-install').classList.remove('hidden'); });
+window.addEventListener('appinstalled', () => { installPrompt = null; $('#b-install').classList.add('hidden'); toast('InspectApp quedó instalada'); });
+async function doInstall(){
+  if (installPrompt){ installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; $('#b-install').classList.add('hidden'); }
+  else if (isIOS()) modal(`<h2>Instalar en iPhone / iPad</h2><ol><li>Abrí esta página en <b>Safari</b>.</li><li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha hacia arriba).</li><li>Elegí <b>Agregar a pantalla de inicio</b> y después <b>Agregar</b>.</li></ol><div class="row" style="justify-content:flex-end"><button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Entendido</button></div>`);
+  else modal(`<h2>Instalar la aplicación</h2><p>Abrí el menú del navegador (⋮) y elegí <b>Instalar aplicación</b> o <b>Agregar a pantalla de inicio</b>.</p><div class="row" style="justify-content:flex-end"><button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Entendido</button></div>`);
+}
+$('#b-install').onclick = doInstall;
+if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) return; reloading = true; location.reload(); });
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    const offer = w => toast('Hay una versión nueva de InspectApp.', { label: 'Actualizar', fn: async () => { if (leaveGuard){ await leaveGuard(); leaveGuard = null; } w.postMessage('skip'); } });
+    if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+    reg.addEventListener('updatefound', () => { const w = reg.installing; w && w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) offer(w); }); });
+    setInterval(() => reg.update().catch(() => {}), 3600000);
+  }).catch(e => console.warn('sw', e));
+}
+
+/* =========================================================
    BIBLIOTECA DE PLANTILLAS
-   Tipos de ítem: heading, yesno (Sí/No/N/A), okfail (OK/Falla/N/A),
-   number (min/max/unit), text, select (options), photo, date, time, signature
+   Tipos: heading, yesno, okfail, number, text, select, photo, date, time, signature
    ========================================================= */
 function buildTemplate(sections){
   return { sections: sections.map((s, si) => ({ id: 's'+(si+1), title: s[0],
@@ -313,7 +530,6 @@ const H  = label => ({type:'heading', label});
 const N  = (label, o={}) => ({type:'number', label, ...o});
 const T  = (label, o={}) => ({type:'text', label, ...o});
 const S  = (label, options, o={}) => ({type:'select', label, options, ...o});
-const P  = (label, o={}) => ({type:'photo', label, ...o});
 
 const LIBRARY = [
   { key:'mant-epi-r3', name:'Mantenimiento General Renglón 3', kind:'preventivo',
@@ -436,6 +652,24 @@ const LIBRARY = [
       ]],
     ])
   },
+  { key:'cierre-tarea', name:'Cierre de tarea', kind:'otro',
+    description:'Para cerrar tareas de instalación, reparación o mantenimiento: trabajo realizado, materiales, fotos antes/después y firma.',
+    definition: buildTemplate([
+      ['Trabajo realizado', [
+        {type:'photo', label:'Fotos del estado inicial (antes)', required:true},
+        T('Descripción del trabajo realizado', {required:true, long:true}),
+        T('Materiales utilizados', {long:true}),
+        {type:'photo', label:'Fotos del trabajo terminado (después)', required:true},
+      ]],
+      ['Resultado', [
+        S('Estado final', ['Resuelto','Resuelto provisorio','Pendiente de materiales','Pendiente de otra área','No se pudo acceder'], {required:true}),
+        Y('¿Quedó el sitio limpio y cerrado?', {required:true}),
+        T('Observaciones', {long:true}),
+        T('Nombre y apellido del responsable', {required:true, autofill:'inspector'}),
+        {type:'signature', label:'Firma', required:true},
+      ]],
+    ])
+  },
   { key:'ticket-r3', name:'Ticket Renglón 3', kind:'correctivo',
     description:'Atención de ticket correctivo. En la etapa 3 se suman la clasificación del NOC, causa, reparación y SLA.',
     definition: buildTemplate([
@@ -459,12 +693,10 @@ const LIBRARY = [
    PUNTAJE
    ========================================================= */
 function evalItem(it, a){
-  // devuelve {scored:bool, ok:bool, bad:bool}
   const v = a?.value;
   if (v === undefined || v === null || v === '') return {scored:false};
   if (it.type === 'yesno' || it.type === 'okfail'){
-    if (v === 'na') return {scored:false};
-    if (it.good === 'none') return {scored:false};
+    if (v === 'na' || it.good === 'none') return {scored:false};
     const good = it.type === 'okfail' ? 'ok' : (it.good || 'si');
     return {scored:true, ok: v === good, bad: v !== good};
   }
@@ -475,23 +707,29 @@ function evalItem(it, a){
   }
   return {scored:false};
 }
+function isAnswered(it, a){
+  if (!a) return false;
+  if (it.type === 'photo') return (a.photos || []).length > 0;
+  return a.value !== undefined && a.value !== null && a.value !== '';
+}
 function computeScore(def, answers){
-  let score=0, max=0, flagged=0, answered=0, total=0; const bySec = {};
+  let score=0, max=0, flagged=0, answered=0, total=0; const bySec = {}, flaggedItems = [];
   for (const s of def.sections){
     let ss=0, sm=0;
     for (const it of s.items){
       if (it.type === 'heading') continue;
       total++;
       const a = answers[it.id];
-      if (a && (a.value !== undefined && a.value !== null && a.value !== '' || (a.photos||[]).length)) answered++;
+      if (isAnswered(it, a) || (a?.photos || []).length) answered++;
       const r = evalItem(it, a);
-      if (r.scored){ sm++; max++; if (r.ok){ ss++; score++; } if (r.bad) flagged++; }
+      if (r.scored){ sm++; max++; if (r.ok){ ss++; score++; } if (r.bad){ flagged++; flaggedItems.push(it.label.trim()); } }
     }
     bySec[s.id] = {score:ss, max:sm};
   }
-  return {score, max, flagged, answered, total, bySec};
+  return {score, max, flagged, answered, total, bySec, flaggedItems};
 }
 const pct = (a,b) => b ? (a*100/b).toFixed(2).replace('.',',') + '%' : '—';
+const pct0 = v => v === null || v === undefined || isNaN(v) ? '—' : Math.round(v) + '%';
 
 /* =========================================================
    ACCESO
@@ -509,13 +747,16 @@ $$('#seg-signup button').forEach(b => b.onclick = () => {
     ? 'Te sumás a la empresa que te pasó el código, con la licencia de esa empresa.'
     : 'Probás InspectApp 15 días gratis. Después, tu información queda disponible para consulta hasta que actives la licencia.';
 });
+const strongPass = p => p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
 $('#f-login').onsubmit = async ev => {
   ev.preventDefault(); const f = ev.target; $('#e-login').textContent = '';
+  if (!online()) { $('#e-login').textContent = 'Para ingresar por primera vez en este dispositivo necesitás conexión.'; return; }
   const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
   if (error) $('#e-login').textContent = errText(error);
 };
 $('#f-signup').onsubmit = async ev => {
   ev.preventDefault(); const f = ev.target; const e = $('#e-signup'); e.textContent = ''; e.className = 'err';
+  if (!strongPass(f.password.value)) { e.textContent = 'La contraseña tiene que tener al menos 8 caracteres y combinar letras y números.'; return; }
   const meta = { full_name: f.full_name.value.trim() };
   if (signupMode === 'codigo'){
     if (!f.join_code.value.trim()) { e.textContent = 'Ingresá el código de la empresa.'; return; }
@@ -537,11 +778,25 @@ $('#f-forgot').onsubmit = async ev => {
 };
 $('#f-newpass').onsubmit = async ev => {
   ev.preventDefault();
+  if (!strongPass(ev.target.password.value)) { $('#e-newpass').textContent = 'Al menos 8 caracteres, combinando letras y números.'; return; }
   const { error } = await sb.auth.updateUser({ password: ev.target.password.value });
   if (error) $('#e-newpass').textContent = errText(error);
   else { toast('Contraseña actualizada'); recovering = false; history.replaceState(null, '', location.pathname); boot(); }
 };
-$('#b-logout').onclick = async () => { await sb.auth.signOut(); location.hash = ''; };
+$('#b-logout').onclick = async () => {
+  const pend = (await localAll()).filter(r => r._dirty).length;
+  if (pend && !confirm(`Tenés ${pend} inspección${pend===1?'':'es'} sin enviar. Quedan guardadas en este dispositivo y se envían cuando vuelvas a ingresar con tu usuario. ¿Salir igual?`)) return;
+  try { await sb.auth.signOut(online() ? undefined : { scope: 'local' }); } catch {}
+  try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch {}
+  me = null; booted = false; location.hash = ''; boot();
+};
+
+/* ---- cierre de sesión por inactividad (12 h) ---- */
+const IDLE_MS = 12 * 3600 * 1000;
+const touchActivity = () => { try { localStorage.setItem('ia_last', String(Date.now())); } catch {} };
+['click','keydown','touchstart'].forEach(ev => document.addEventListener(ev, touchActivity, {passive:true}));
+const idleExpired = () => { let last = 0; try { last = Number(localStorage.getItem('ia_last') || 0); } catch {} return last && Date.now() - last > IDLE_MS; };
+setInterval(async () => { if (me && idleExpired()){ toast('Sesión cerrada por inactividad'); $('#b-logout').onclick(); } }, 60000);
 
 /* =========================================================
    SESIÓN
@@ -549,29 +804,63 @@ $('#b-logout').onclick = async () => { await sb.auth.signOut(); location.hash = 
 let me = null, org = null, recovering = false, booted = false;
 sb.auth.onAuthStateChange((event) => {
   if (event === 'PASSWORD_RECOVERY'){ recovering = true; $('#v-app').classList.add('hidden'); $('#v-auth').classList.remove('hidden'); showForm('f-newpass'); return; }
-  if (event === 'SIGNED_OUT'){ booted = false; }
+  if (event === 'SIGNED_OUT' && online()){ booted = false; me = null; }
   if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') setTimeout(boot, 0);
 });
+function showLogin(msg){
+  $('#v-app').classList.add('hidden'); $('#v-auth').classList.remove('hidden'); showForm('f-login');
+  if (msg) $('#e-login').textContent = msg;
+}
 async function boot(){
   if (recovering) return;
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session){ $('#v-app').classList.add('hidden'); $('#v-auth').classList.remove('hidden'); showForm('f-login'); return; }
-  if (booted) return; booted = true;
-  const { data: p, error } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
-  if (error || !p){ toast('No se encontró tu perfil. Avisá al administrador.'); booted=false; await sb.auth.signOut(); return; }
-  me = p;
-  if (!me.active){ alert('Tu usuario fue desactivado por el administrador de la empresa.'); booted=false; await sb.auth.signOut(); return; }
+  if (idleExpired()){ try { localStorage.removeItem('ia_last'); localStorage.removeItem(AUTH_STORAGE_KEY); } catch {} }
+  touchActivity();
+  let session = null;
+  try { ({ data: { session } } = await sb.auth.getSession()); } catch {}
+  const uidv = session?.user?.id || (!online() ? storedUid() : null);
+  if (!uidv){ showLogin(); return; }
+  if (booted) return; booted = true; CUR_UID = uidv;
+  try { me = await cached('profile', () => sb.from('profiles').select('*').eq('id', uidv).single()); }
+  catch (e){
+    booted = false;
+    if (e.message === 'OFFLINE_NODATA'){ showLogin('Sin conexión: ingresá una vez con internet para usar la app en este dispositivo.'); return; }
+    toast('No se encontró tu perfil. Avisá al administrador.'); await sb.auth.signOut().catch(() => {}); showLogin(); return;
+  }
+  if (!me.active){ alert('Tu usuario fue desactivado por el administrador de la empresa.'); booted = false; await sb.auth.signOut().catch(() => {}); showLogin(); return; }
   await reloadOrg();
   $('#v-auth').classList.add('hidden'); $('#v-app').classList.remove('hidden');
   $('#user-email').textContent = me.email;
   $('#tab-admin').classList.toggle('hidden', !me.is_superadmin);
+  const contr = isContractor();
+  ['stats','sites','tpl','org'].forEach(t => $(`#tabs [data-tab="${t}"]`).classList.toggle('hidden', contr));
+  $('#tab-tasks').textContent = contr ? 'Mis tareas' : 'Tareas';
+  if (installPrompt) $('#b-install').classList.remove('hidden');
+  updateNet(); syncNow(); warmCache();
   route();
 }
-async function reloadOrg(){
-  const r = await sb.from('organizations').select('*').eq('id', me.org_id).single();
-  org = r.data; $('#org-name').textContent = org ? org.name : 'Sin empresa'; renderLicense();
+/* Al tener señal, deja en el teléfono lo necesario para trabajar sin conexión */
+let warming = false;
+async function warmCache(){
+  if (!online() || !me || warming) return; warming = true;
+  try {
+    await Promise.allSettled([
+      cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')),
+      cached('sites-min', () => sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name')),
+      cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', {ascending: true}).limit(500)),
+      cached('contractors', () => sb.from('contractors').select('*').order('name')),
+    ]);
+    const ts = await IDB.get('kv', CUR_UID + ':tasks').catch(() => []);
+    for (const t of (ts || []).filter(taskOpen)) await IDB.put('kv', t, CUR_UID + ':task:' + t.id).catch(() => {});
+  } finally { warming = false; }
 }
+async function reloadOrg(){
+  try { org = await cached('org', () => sb.from('organizations').select(ORG_COLS).eq('id', me.org_id).single()); } catch { org = null; }
+  $('#org-name').textContent = org ? org.name : 'Sin empresa'; renderLicense();
+}
+const ORG_COLS = 'id,name,kind,seat_limit,license_expires_at,is_trial,suspended';
 const isManager = () => me && (me.role === 'admin' || me.role === 'supervisor');
+const isContractor = () => me && me.role === 'contratista';
+const isAdmin = () => me && me.role === 'admin';
 function licState(o){
   if (!o) return 'vencida';
   if (o.suspended) return 'suspendida';
@@ -583,7 +872,8 @@ const canWrite = () => ['activa','por_vencer'].includes(licState(org));
 function renderLicense(){
   const st = licState(org), d = org ? daysLeft(org.license_expires_at) : 0;
   let html = '';
-  if (st === 'suspendida') html = banner('off', 'Licencia suspendida', 'Podés consultar y descargar lo cargado, pero no cargar información nueva. Comunicate con Transformándonos para reactivarla.');
+  if (!org) html = '';
+  else if (st === 'suspendida') html = banner('off', 'Licencia suspendida', 'Podés consultar y descargar lo cargado, pero no cargar información nueva. Comunicate con Transformándonos para reactivarla.');
   else if (st === 'vencida') html = banner('off', org.is_trial ? 'Terminó tu prueba gratis' : 'Tu licencia venció', 'Tu información sigue disponible para consulta y descarga. Para volver a cargar inspecciones, comunicate con Transformándonos.');
   else if (org.is_trial) html = banner('trial', `Prueba gratis · te quedan ${d} día${d===1?'':'s'}`, `Vence el ${fmtDate(org.license_expires_at)}. Para seguir usando InspectApp después de esa fecha, comunicate con Transformándonos.`);
   else if (st === 'por_vencer') html = banner('warn', `Tu licencia vence en ${d} día${d===1?'':'s'}`, `Vence el ${fmtDate(org.license_expires_at)}. Renovala para no pasar a solo lectura.`);
@@ -592,103 +882,170 @@ function renderLicense(){
 const banner = (cls, t, s) => `<div class="banner ${cls}"><span class="dot"></span><div><b>${esc(t)}</b><div style="font-size:14px">${esc(s)}</div></div></div>`;
 
 /* =========================================================
-   NAVEGACIÓN  (#/insp, #/insp/<id>, #/informe/<id>, ...)
+   NAVEGACIÓN
    ========================================================= */
 window.addEventListener('hashchange', route);
 $$('#tabs button').forEach(b => b.onclick = () => { location.hash = '#/' + b.dataset.tab; });
 let leaveGuard = null;
+const ONLINE_ONLY = ['org', 'admin'];
 async function route(){
   if (!me) return;
   if (leaveGuard){ await leaveGuard(); leaveGuard = null; }
   const [, tab='home', id] = (location.hash || '#/home').split('/');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
-  $('#modal-root').innerHTML = '';
+  $('#modal-root').innerHTML = ''; hideTip();
   const v = $('#view'); v.innerHTML = '<div class="card muted">Cargando…</div>';
   try {
+    if ((ONLINE_ONLY.includes(tab) || (tab === 'tpl' && id)) && !online()) throw new Error('NEEDS_ONLINE');
     if (tab === 'home') await viewHome(v);
     else if (tab === 'insp' && id) await viewExecute(v, id);
     else if (tab === 'insp') await viewInspections(v);
     else if (tab === 'informe') await viewReport(v, id);
+    else if (isContractor() && ['stats','sites','tpl','org'].includes(tab)) location.hash = '#/tasks';
+    else if (tab === 'tasks' && id === 'contratistas') await viewContractors(v);
+    else if (tab === 'tasks' && id) await viewTask(v, id);
+    else if (tab === 'tasks') await viewTasks(v);
+    else if (tab === 'stats') await viewStats(v);
     else if (tab === 'sites') await viewSites(v);
     else if (tab === 'tpl' && id) await viewTemplateEditor(v, id);
     else if (tab === 'tpl') await viewTemplates(v);
     else if (tab === 'org') await viewOrg(v);
     else if (tab === 'admin' && me.is_superadmin) await viewAdmin(v);
     else location.hash = '#/home';
-  } catch (e){ console.error(e); v.innerHTML = `<div class="card"><b>Algo salió mal.</b><p class="muted">${esc(errText(e))}</p></div>`; }
+  } catch (e){ console.error(e); v.innerHTML = `<div class="card"><b>${/OFFLINE|NEEDS_ONLINE/.test(e.message) || isNetErr(e) ? 'Sin conexión' : 'Algo salió mal'}</b><p class="muted">${esc(errText(e))}</p></div>`; }
   window.scrollTo(0, 0);
+}
+
+/* =========================================================
+   LISTADOS DE INSPECCIONES (servidor + dispositivo)
+   ========================================================= */
+const LIST_COLS = 'id,template_name,site_name,status,started_at,score,max_score,flagged,inspector_name,inspector_id,kind';
+async function mergeLocal(rows){
+  const map = new Map((rows || []).map(r => [r.id, r]));
+  for (const l of await localAll()){
+    if (l._dirty || (!l._synced && !map.has(l.id))){
+      map.set(l.id, { ...(map.get(l.id) || {}), ...Object.fromEntries(LIST_COLS.split(',').map(k => [k, l[k]])), _pending: true });
+    }
+  }
+  return [...map.values()].sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
+}
+const canDelete = r => isAdmin() || (r.status === 'borrador' && (r.inspector_id === me.id || isManager()));
+function inspTable(rows){
+  if (!rows.length) return '<p class="muted">Todavía no hay inspecciones.</p>';
+  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Sitio</th><th class="hide-sm">Plantilla</th><th class="hide-sm">Técnico</th><th>Puntaje</th><th>Estado</th><th></th></tr></thead><tbody>
+  ${rows.map(r => `<tr class="click" data-insp="${r.id}" data-status="${r.status}">
+    <td>${fmtDate(r.started_at)}</td><td>${esc(r.site_name || '—')}</td>
+    <td class="hide-sm">${esc(r.template_name)}</td><td class="hide-sm">${esc(r.inspector_name || '')}</td>
+    <td>${r.max_score ? pct(r.score, r.max_score) : '—'}${r.flagged ? ` <span class="pill p-bad">${r.flagged} ⚑</span>` : ''}</td>
+    <td><span class="pill p-${r.status}">${r.status === 'completada' ? 'Completada' : 'Borrador'}</span>${r._pending ? ' <span class="pill p-pend" title="Guardada en este dispositivo, falta enviarla">Por enviar</span>' : ''}</td>
+    <td>${canDelete(r) ? `<button class="iconbtn" data-del="${r.id}" title="Borrar" aria-label="Borrar">🗑</button>` : ''}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+function bindInspRows(scope, rows){
+  scope.querySelectorAll('[data-insp]').forEach(tr => tr.onclick = e => {
+    if (e.target.closest('[data-del]')) return;
+    location.hash = (tr.dataset.status === 'borrador' ? '#/insp/' : '#/informe/') + tr.dataset.insp;
+  });
+  scope.querySelectorAll('[data-del]').forEach(b => b.onclick = e => { e.stopPropagation(); deleteInspection(rows.find(r => r.id === b.dataset.del)); });
+}
+async function deleteInspection(r){
+  if (!r) return;
+  const loc = await localGet(r.id);
+  const onlyLocal = loc && !loc._synced;
+  if (r.status === 'completada'){
+    const ok = prompt(`Vas a borrar definitivamente la inspección completada de "${r.site_name}" del ${fmtDate(r.started_at)}, con sus fotos y firma.\n\nEscribí BORRAR para confirmar.`);
+    if ((ok || '').trim().toUpperCase() !== 'BORRAR') return;
+  } else if (!confirm(`¿Borrar el borrador de "${r.site_name}"? Se borran también sus fotos.`)) return;
+  if (!onlyLocal){
+    if (!needOnline()) return;
+    let full = loc;
+    if (!full){ const q = await sb.from('inspections').select('*').eq('id', r.id).single(); full = q.data; }
+    const { data, error } = await sb.from('inspections').delete().eq('id', r.id).select('id');
+    if (error) return toast(errText(error));
+    if (!data?.length) return toast('No tenés permiso para borrar esta inspección.');
+    const paths = full ? insPaths(full) : [];
+    if (paths.length) sb.storage.from('fotos').remove(paths).catch(() => {});
+  }
+  if (loc){ for (const p of insPaths(loc)) await IDB.del('blobs', p).catch(() => {}); await IDB.del('insp', r.id).catch(() => {}); }
+  toast('Inspección borrada'); updateNet(); route();
 }
 
 /* =========================================================
    INICIO
    ========================================================= */
 async function viewHome(v){
+  if (isContractor()) return viewTasks(v);
+  let recent = [], kpi = {cMonth: 0, cDraft: 0, flagged: 0};
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-  const [{ data: recent }, { count: cMonth }, { count: cDraft }, { data: flaggedRows }] = await Promise.all([
-    sb.from('inspections').select('id,template_name,site_name,status,started_at,score,max_score,flagged,inspector_name').order('started_at', {ascending:false}).limit(6),
-    sb.from('inspections').select('id', {count:'exact', head:true}).eq('status','completada').gte('started_at', monthStart.toISOString()),
-    sb.from('inspections').select('id', {count:'exact', head:true}).eq('status','borrador'),
-    sb.from('inspections').select('flagged').eq('status','completada').gte('started_at', monthStart.toISOString()),
-  ]);
-  const flagged = (flaggedRows||[]).reduce((a,r) => a + (r.flagged||0), 0);
+  try {
+    const d = await cached('home', async () => {
+      const [r1, r2, r3, r4] = await Promise.all([
+        sb.from('inspections').select(LIST_COLS).order('started_at', {ascending:false}).limit(8),
+        sb.from('inspections').select('id', {count:'exact', head:true}).eq('status','completada').gte('started_at', monthStart.toISOString()),
+        sb.from('inspections').select('id', {count:'exact', head:true}).eq('status','borrador'),
+        sb.from('inspections').select('flagged').eq('status','completada').gte('started_at', monthStart.toISOString()),
+      ]);
+      const error = r1.error || r2.error || r3.error || r4.error;
+      return { error, data: { recent: r1.data || [], cMonth: r2.count || 0, cDraft: r3.count || 0, flagged: (r4.data || []).reduce((a, x) => a + (x.flagged || 0), 0) } };
+    });
+    recent = d.recent; kpi = d;
+  } catch (e){ if (e.message !== 'OFFLINE_NODATA') throw e; }
+  const rows = (await mergeLocal(recent)).slice(0, 8);
   const st = licState(org);
+  const showInstall = !isStandalone();
   v.innerHTML = `
     <div class="card row between">
       <div><h1>Hola${me.full_name ? ', ' + esc(me.full_name.split(' ')[0]) : ''}</h1>
       <p class="muted" style="margin:0">${esc(org?.name || '')} · ${org?.is_trial && st!=='vencida' ? 'Prueba gratis' : STATE_TXT[st]} hasta el ${fmtDate(org?.license_expires_at)}</p></div>
       ${canWrite() ? '<button class="btn" id="b-new">+ Nueva inspección</button>' : ''}
     </div>
+    ${showInstall ? `<div class="card row between" style="background:#0F2A4A;color:#fff;border:0"><div class="row" style="flex-wrap:nowrap">${LOGO(44)}<div><b>Instalá InspectApp en tu ${isIOS() ? 'iPhone' : 'celular o PC'}</b><div class="sm" style="opacity:.8">Abre como aplicación y funciona sin señal en el campo.</div></div></div><button class="btn" id="b-inst2">Instalar</button></div>` : ''}
     <div class="stats" style="margin-bottom:14px">
-      <div class="stat"><span>Completadas este mes</span><b>${cMonth ?? 0}</b></div>
-      <div class="stat"><span>Borradores abiertos</span><b>${cDraft ?? 0}</b></div>
-      <div class="stat"><span>Ítems señalados este mes</span><b>${flagged}</b></div>
+      <div class="stat"><span>Completadas este mes</span><b>${kpi.cMonth}</b></div>
+      <div class="stat"><span>Borradores abiertos</span><b>${kpi.cDraft}</b></div>
+      <div class="stat"><span>Ítems señalados este mes</span><b>${kpi.flagged}</b></div>
     </div>
-    <div class="card"><div class="row between"><h2 style="margin:0">Últimas inspecciones</h2><a href="#/insp" class="sm">Ver todas</a></div>
-      ${inspTable(recent || [])}</div>`;
+    <div class="card"><div class="row between"><h2 style="margin:0">Últimas inspecciones</h2><a href="#/insp" class="sm">Ver todas</a></div>${inspTable(rows)}</div>`;
   $('#b-new')?.addEventListener('click', newInspection);
-  bindInspRows(v);
+  $('#b-inst2')?.addEventListener('click', doInstall);
+  bindInspRows(v, rows);
 }
 
 /* =========================================================
    INSPECCIONES – LISTADO
    ========================================================= */
-function inspTable(rows){
-  if (!rows.length) return '<p class="muted">Todavía no hay inspecciones.</p>';
-  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Sitio</th><th class="hide-sm">Plantilla</th><th class="hide-sm">Técnico</th><th>Puntaje</th><th>Estado</th></tr></thead><tbody>
-  ${rows.map(r => `<tr class="click" data-insp="${r.id}" data-status="${r.status}">
-    <td>${fmtDate(r.started_at)}</td><td>${esc(r.site_name || '—')}</td>
-    <td class="hide-sm">${esc(r.template_name)}</td><td class="hide-sm">${esc(r.inspector_name || '')}</td>
-    <td>${r.max_score ? pct(r.score, r.max_score) : '—'}${r.flagged ? ` <span class="pill p-bad">${r.flagged} ⚑</span>` : ''}</td>
-    <td><span class="pill p-${r.status}">${r.status === 'completada' ? 'Completada' : 'Borrador'}</span></td></tr>`).join('')}
-  </tbody></table></div>`;
-}
-function bindInspRows(scope){
-  scope.querySelectorAll('[data-insp]').forEach(tr => tr.onclick = () => {
-    location.hash = (tr.dataset.status === 'borrador' ? '#/insp/' : '#/informe/') + tr.dataset.insp;
-  });
-}
 async function viewInspections(v){
   v.innerHTML = `
-    <div class="card"><div class="row between"><h2 style="margin:0">Inspecciones</h2>${canWrite() ? '<button class="btn" id="b-new">+ Nueva inspección</button>' : ''}</div>
+    <div class="card"><div class="row between"><h2 style="margin:0">Inspecciones</h2>${canWrite() && !isContractor() ? '<button class="btn" id="b-new">+ Nueva inspección</button>' : ''}</div>
       <div class="row" style="margin-top:12px">
         <input id="q" class="grow" placeholder="Buscar sitio, plantilla o técnico">
         <select id="f-kind" style="width:auto"><option value="">Todos los tipos</option><option value="preventivo">Preventivo</option><option value="correctivo">Correctivo</option><option value="otro">Otro</option></select>
         <select id="f-status" style="width:auto"><option value="">Todos los estados</option><option value="borrador">Borrador</option><option value="completada">Completada</option></select>
         <input id="f-from" type="date" style="width:auto" title="Desde"><input id="f-to" type="date" style="width:auto" title="Hasta">
       </div></div>
-    <div class="card" id="list"></div>`;
+    <div class="card" id="list"><p class="muted">Cargando…</p></div>`;
   $('#b-new')?.addEventListener('click', newInspection);
   const load = async () => {
-    let q = sb.from('inspections').select('id,template_name,site_name,status,started_at,score,max_score,flagged,inspector_name,kind').order('started_at', {ascending:false}).limit(300);
-    if ($('#f-kind').value) q = q.eq('kind', $('#f-kind').value);
-    if ($('#f-status').value) q = q.eq('status', $('#f-status').value);
-    if ($('#f-from').value) q = q.gte('started_at', new Date($('#f-from').value + 'T00:00:00').toISOString());
-    if ($('#f-to').value) q = q.lte('started_at', new Date($('#f-to').value + 'T23:59:59').toISOString());
-    const { data, error } = await q; if (error) return toast(errText(error));
+    const f = { kind: $('#f-kind').value, status: $('#f-status').value, from: $('#f-from').value, to: $('#f-to').value };
+    let server = [];
+    try {
+      server = await cached('list:' + JSON.stringify(f), () => {
+        let q = sb.from('inspections').select(LIST_COLS).order('started_at', {ascending:false}).limit(300);
+        if (f.kind) q = q.eq('kind', f.kind);
+        if (f.status) q = q.eq('status', f.status);
+        if (f.from) q = q.gte('started_at', new Date(f.from + 'T00:00:00').toISOString());
+        if (f.to) q = q.lte('started_at', new Date(f.to + 'T23:59:59').toISOString());
+        return q;
+      });
+    } catch (e){ if (e.message !== 'OFFLINE_NODATA') return toast(errText(e)); }
     const t = $('#q').value.trim().toLowerCase();
-    const rows = (data||[]).filter(r => !t || [r.site_name, r.template_name, r.inspector_name].join(' ').toLowerCase().includes(t));
-    $('#list').innerHTML = inspTable(rows) + (rows.length >= 300 ? '<p class="muted sm">Se muestran las 300 más recientes. Usá los filtros de fecha para ver anteriores.</p>' : '');
-    bindInspRows($('#list'));
+    const rows = (await mergeLocal(server)).filter(r =>
+      (!f.kind || r.kind === f.kind) && (!f.status || r.status === f.status) &&
+      (!f.from || r.started_at >= new Date(f.from + 'T00:00:00').toISOString()) &&
+      (!f.to || r.started_at <= new Date(f.to + 'T23:59:59').toISOString()) &&
+      (!t || [r.site_name, r.template_name, r.inspector_name].join(' ').toLowerCase().includes(t)));
+    $('#list').innerHTML = inspTable(rows) + (server.length >= 300 ? '<p class="muted sm">Se muestran las 300 más recientes. Usá los filtros de fecha para ver anteriores.</p>' : '') + (!online() ? '<p class="muted sm">Sin conexión: se muestra lo último descargado en este dispositivo.</p>' : '');
+    bindInspRows($('#list'), rows);
   };
   ['#f-kind','#f-status','#f-from','#f-to'].forEach(s => $(s).onchange = load);
   let tmr; $('#q').oninput = () => { clearTimeout(tmr); tmr = setTimeout(load, 250); };
@@ -696,11 +1053,15 @@ async function viewInspections(v){
 }
 
 async function newInspection(){
+  if (isContractor()) return toast('Las inspecciones se inician desde Mis tareas.');
   if (!canWrite()) return toast('La licencia no permite cargar inspecciones nuevas.');
-  const [{ data: tpls }, { data: sites }] = await Promise.all([
-    sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name'),
-    sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name'),
-  ]);
+  let tpls = [], sites = [];
+  try {
+    [tpls, sites] = await Promise.all([
+      cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')),
+      cached('sites-min', () => sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name')).catch(() => []),
+    ]);
+  } catch (e){ return toast(errText(e)); }
   if (!tpls?.length){
     return modal(`<h2>Primero cargá una plantilla</h2><p class="muted">Para iniciar una inspección necesitás al menos una plantilla publicada.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" onclick="location.hash='#/tpl'">Ir a Plantillas</button></div>`);
@@ -711,6 +1072,7 @@ async function newInspection(){
     <datalist id="n-sites">${(sites||[]).map(s => `<option value="${esc(s.name)}${s.traza ? ' · Traza ' + esc(s.traza) : ''}">`).join('')}</datalist>
     <p class="muted sm" style="margin:6px 0 0">Si el sitio no está en la lista, escribí el nombre igual: queda registrado como texto.</p>
     <label>Tipo</label><select id="n-kind"><option value="preventivo">Preventivo</option><option value="correctivo">Correctivo</option><option value="otro">Otro</option></select>
+    ${!online() ? '<p class="sm" style="color:var(--amber)">Sin conexión: la inspección se guarda en el teléfono y se envía sola cuando vuelva la señal.</p>' : ''}
     <div class="err" id="n-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="n-cancel">Cancelar</button><button class="btn" id="n-go">Comenzar</button></div>`);
   const syncKind = () => { const t = tpls.find(x => x.id === $('#n-tpl').value); if (t) $('#n-kind').value = t.kind; };
@@ -721,32 +1083,23 @@ async function newInspection(){
     const raw = $('#n-site-q').value.trim();
     if (!raw){ $('#n-err').textContent = 'Indicá el sitio.'; return; }
     const site = (sites||[]).find(s => raw === s.name + (s.traza ? ' · Traza ' + s.traza : '') || raw.toLowerCase() === s.name.toLowerCase());
-    $('#n-go').disabled = true;
-    let pos = null;
-    try { pos = await new Promise((res) => navigator.geolocation ? navigator.geolocation.getCurrentPosition(p => res(p.coords), () => res(null), {timeout:6000, maximumAge:60000}) : res(null)); } catch {}
-    const { data, error } = await sb.from('inspections').insert({
-      org_id: me.org_id, template_id: t.id, template_name: t.name, template_snapshot: t.definition,
+    $('#n-go').disabled = true; $('#n-go').textContent = 'Ubicando…';
+    const pos = await getPos();
+    const rec = {
+      id: uid(), org_id: me.org_id, template_id: t.id, template_name: t.name, template_snapshot: t.definition,
       site_id: site?.id || null, site_name: site ? site.name : raw, traza: site?.traza || null,
-      kind: $('#n-kind').value, inspector_id: me.id, inspector_name: me.full_name || me.email,
-      lat: pos?.latitude ?? null, lng: pos?.longitude ?? null,
-    }).select('id').single();
-    if (error){ $('#n-go').disabled = false; $('#n-err').textContent = errText(error); return; }
-    m.close(); location.hash = '#/insp/' + data.id;
+      kind: $('#n-kind').value, status: 'borrador', inspector_id: me.id, inspector_name: me.full_name || me.email,
+      started_at: new Date().toISOString(), completed_at: null, answers: {}, score: 0, max_score: 0, flagged: 0, flagged_items: [],
+      lat: pos?.lat ?? null, lng: pos?.lng ?? null, _synced: false,
+    };
+    await localSave(rec);
+    m.close(); location.hash = '#/insp/' + rec.id;
   };
 }
 
 /* =========================================================
-   INSPECCIONES – EJECUCIÓN (carga desde el celular)
+   INSPECCIÓN – carga (guarda primero en el teléfono)
    ========================================================= */
-const signedCache = new Map();
-async function signedUrls(paths){
-  const need = paths.filter(p => p && !signedCache.has(p));
-  if (need.length){
-    const { data } = await sb.storage.from('fotos').createSignedUrls(need, 3600);
-    (data||[]).forEach(d => d.signedUrl && signedCache.set(d.path, d.signedUrl));
-  }
-  return paths.map(p => signedCache.get(p));
-}
 async function compressImage(file, maxSide=1600, quality=0.8){
   const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
   const k = Math.min(1, maxSide / Math.max(img.width, img.height));
@@ -755,33 +1108,44 @@ async function compressImage(file, maxSide=1600, quality=0.8){
   URL.revokeObjectURL(img.src);
   return await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
 }
-function getPos(){ return new Promise(res => navigator.geolocation ? navigator.geolocation.getCurrentPosition(p => res({lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy)}), () => res(null), {timeout:5000, maximumAge:30000, enableHighAccuracy:true}) : res(null)); }
+function getPos(){ return new Promise(res => navigator.geolocation ? navigator.geolocation.getCurrentPosition(p => res({lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy)}), () => res(null), {timeout:6000, maximumAge:30000, enableHighAccuracy:true}) : res(null)); }
+
+async function loadInspection(id){
+  const loc = await localGet(id);
+  if (loc && (loc._dirty || !loc._synced)) return loc;
+  if (online()){
+    try {
+      const { data, error } = await sb.from('inspections').select('*').eq('id', id).single();
+      if (error) throw error;
+      const rec = { ...data, _synced: true, _dirty: false, _rev: loc?._rev || 0 };
+      IDB.put('insp', rec).catch(() => {});
+      return rec;
+    } catch (e){ if (!isNetErr(e) && !loc) throw e; }
+  }
+  if (loc) return loc;
+  throw new Error('OFFLINE_NODATA');
+}
 
 async function viewExecute(v, id){
-  const { data: ins, error } = await sb.from('inspections').select('*').eq('id', id).single();
-  if (error || !ins) throw (error || new Error('Inspección no encontrada'));
+  const ins = await loadInspection(id);
   const editable = ins.status === 'borrador' && canWrite() && (ins.inspector_id === me.id || isManager());
   if (!editable){ location.replace('#/informe/' + id); return; }
   const def = ins.template_snapshot || {sections:[]};
-  const answers = ins.answers || {};
-  // autocompletar nombre del técnico
-  def.sections.forEach(s => s.items.forEach(it => { if (it.autofill === 'inspector' && !answers[it.id]?.value) answers[it.id] = {...(answers[it.id]||{}), value: me.full_name || ''}; }));
+  const answers = ins.answers || (ins.answers = {});
+  const allItems = def.sections.flatMap(s => s.items);
+  allItems.forEach(it => { if (it.autofill === 'inspector' && !answers[it.id]?.value) answers[it.id] = {...(answers[it.id]||{}), value: me.full_name || ''}; });
 
-  let dirty = false, saving = false, timer = null;
+  let dirty = false, timer = null;
   const setStatus = t => { const el = $('#save-st'); if (el) el.textContent = t; };
   async function save(){
-    if (saving || !dirty) return; saving = true; dirty = false; setStatus('Guardando…');
+    clearTimeout(timer); if (!dirty) return; dirty = false;
     const sc = computeScore(def, answers);
-    const { error } = await sb.from('inspections').update({ answers, score: sc.score, max_score: sc.max, flagged: sc.flagged }).eq('id', id);
-    saving = false;
-    if (error){ dirty = true; setStatus('Sin guardar · ' + errText(error)); }
-    else setStatus('Guardado ' + fmtTime(new Date()));
-    updateProgress();
-    if (dirty) queueSave();
+    Object.assign(ins, { answers, score: sc.score, max_score: sc.max, flagged: sc.flagged, flagged_items: sc.flaggedItems });
+    try { await localSave(ins); setStatus((online() ? 'Guardado ' : 'Guardado en el teléfono ') + fmtTime(new Date())); }
+    catch (e){ dirty = true; setStatus('No se pudo guardar: ' + errText(e)); }
   }
-  const queueSave = () => { dirty = true; setStatus('Cambios sin guardar…'); clearTimeout(timer); timer = setTimeout(save, 1200); };
-  leaveGuard = async () => { clearTimeout(timer); await save(); };
-  window.onbeforeunload = () => dirty ? true : undefined;
+  const queueSave = () => { dirty = true; setStatus('Guardando…'); clearTimeout(timer); timer = setTimeout(save, 700); updateProgress(); };
+  leaveGuard = save;
 
   function updateProgress(){
     const sc = computeScore(def, answers);
@@ -794,7 +1158,7 @@ async function viewExecute(v, id){
   v.innerHTML = `
     <div class="exec-head">
       <div class="row between"><div><b>${esc(ins.template_name)}</b><div class="muted sm">${esc(ins.site_name || '')}${ins.traza ? ' · Traza ' + esc(ins.traza) : ''} · Ingreso ${fmtDT(ins.started_at)}</div></div>
-      <span class="savebar" id="save-st">Guardado</span></div>
+      <span class="savebar" id="save-st">${ins._dirty ? 'Guardado en el teléfono' : 'Guardado'}</span></div>
       <div class="progress" style="margin-top:8px"><i id="prog" style="width:0"></i></div>
       <div class="muted sm" id="prog-t" style="margin-top:4px"></div>
     </div>
@@ -803,7 +1167,7 @@ async function viewExecute(v, id){
         ${s.items.map(it => renderItem(it)).join('')}
       </div>`).join('')}
     <div class="card"><div class="err" id="fin-err"></div>
-      <div class="row between"><button class="btn danger small" id="b-del">Eliminar borrador</button>
+      <div class="row between"><button class="btn danger small" id="b-del">Borrar borrador</button>
       <div class="row"><button class="btn sec" id="b-later">Guardar y salir</button><button class="btn" id="b-finish">Completar inspección</button></div></div></div>`;
 
   function renderItem(it){
@@ -829,32 +1193,25 @@ async function viewExecute(v, id){
     } else if (it.type === 'time'){
       ctl = `<input type="time" data-txt="${it.id}" value="${esc(a.value ?? '')}" style="max-width:160px">`;
     } else if (it.type === 'signature'){
-      ctl = `<div id="sigwrap-${it.id}">${a.value ? `<div class="thumbs"><div class="th" style="width:200px;height:90px;background:#fff"><img data-path="${esc(a.value)}" style="object-fit:contain"></div></div><button class="btn sec small" data-sigclear="${it.id}" style="margin-top:6px">Volver a firmar</button>`
-        : `<canvas class="sig" id="sig-${it.id}"></canvas><div class="row" style="margin-top:6px"><button class="btn sec small" data-sigreset="${it.id}">Borrar</button><button class="btn small" data-sigsave="${it.id}">Guardar firma</button></div>`}</div>`;
+      ctl = a.value ? `<div class="thumbs"><div class="th" style="width:200px;height:90px;background:#fff"><img data-path="${esc(a.value)}" style="object-fit:contain"></div></div><button class="btn sec small" data-sigclear="${it.id}" style="margin-top:6px">Volver a firmar</button>`
+        : `<canvas class="sig" id="sig-${it.id}"></canvas><div class="row" style="margin-top:6px"><button class="btn sec small" data-sigreset="${it.id}">Borrar</button><button class="btn small" data-sigsave="${it.id}">Guardar firma</button></div>`;
     }
-    const showTools = !['signature'].includes(it.type);
+    const tools = it.type !== 'signature';
     const flagged = evalItem(it, a).bad;
     return `<div class="item ${flagged ? 'flag' : ''}" id="it-${it.id}">
       <div class="q">${esc(it.label)}${req}</div>${ctl}
-      ${showTools ? `<div id="note-${it.id}" class="${a.note ? '' : 'hidden'}" style="margin-top:8px"><textarea data-note="${it.id}" placeholder="Nota u observación">${esc(a.note || '')}</textarea></div>
+      ${tools ? `<div id="note-${it.id}" class="${a.note ? '' : 'hidden'}" style="margin-top:8px"><textarea data-note="${it.id}" placeholder="Nota u observación">${esc(a.note || '')}</textarea></div>
       <div class="thumbs" id="ph-${it.id}">${(a.photos||[]).map((p, i) => `<div class="th"><img data-path="${esc(p.path)}"><button class="x" data-phdel="${it.id}" data-idx="${i}" title="Quitar">×</button></div>`).join('')}</div>
       <div class="item-tools"><button type="button" data-notebtn="${it.id}">✎ Nota</button>
-        <label style="margin:0;font-weight:400;color:var(--navy-2);cursor:pointer;font-size:13px;padding:4px 0">📷 Foto${it.photos ? ' (recomendada)' : ''}<input type="file" accept="image/*" capture="environment" multiple data-phadd="${it.id}" class="hidden"></label>
+        <label>📷 Foto${it.photos || it.type === 'photo' ? ' (recomendada)' : ''}<input type="file" accept="image/*" capture="environment" multiple data-phadd="${it.id}" class="hidden"></label>
       </div>` : ''}
     </div>`;
   }
-
-  async function hydratePhotos(scope = v){
-    const imgs = [...scope.querySelectorAll('img[data-path]')];
-    const urls = await signedUrls(imgs.map(i => i.dataset.path));
-    imgs.forEach((i, k) => { if (urls[k]) i.src = urls[k]; });
-  }
   const rerenderItem = itId => {
-    const it = def.sections.flatMap(s => s.items).find(x => x.id === itId);
+    const it = allItems.find(x => x.id === itId);
     const el = $('#it-' + itId); if (!el) return;
-    el.outerHTML = renderItem(it); bindItems($('#it-' + itId)); hydratePhotos($('#it-' + itId)); initSig($('#it-' + itId));
+    el.outerHTML = renderItem(it); const n = $('#it-' + itId); bindItems(n); hydrate(n); initSig(n);
   };
-
   function bindItems(scope){
     scope.querySelectorAll('[data-set]').forEach(b => b.onclick = () => {
       const itId = b.dataset.set; const cur = answers[itId] || {};
@@ -863,7 +1220,7 @@ async function viewExecute(v, id){
     });
     scope.querySelectorAll('[data-num]').forEach(i => i.oninput = () => {
       answers[i.dataset.num] = {...(answers[i.dataset.num]||{}), value: i.value === '' ? null : Number(i.value)}; queueSave();
-      const it = def.sections.flatMap(s => s.items).find(x => x.id === i.dataset.num);
+      const it = allItems.find(x => x.id === i.dataset.num);
       $('#it-' + i.dataset.num).classList.toggle('flag', evalItem(it, answers[i.dataset.num]).bad);
     });
     scope.querySelectorAll('[data-txt]').forEach(i => i.oninput = () => { answers[i.dataset.txt] = {...(answers[i.dataset.txt]||{}), value: i.value}; queueSave(); });
@@ -873,25 +1230,26 @@ async function viewExecute(v, id){
       const itId = inp.dataset.phadd; const files = [...inp.files]; if (!files.length) return;
       const box = $('#ph-' + itId);
       for (const f of files){
-        const ph = document.createElement('div'); ph.className = 'th up'; ph.textContent = 'Subiendo…'; box.appendChild(ph);
+        const ph = document.createElement('div'); ph.className = 'th up'; ph.textContent = 'Procesando…'; box.appendChild(ph);
         try {
           const [blob, pos] = await Promise.all([compressImage(f), getPos()]);
           const path = `${ins.org_id}/${id}/${uid()}.jpg`;
-          const { error } = await sb.storage.from('fotos').upload(path, blob, { contentType: 'image/jpeg' });
-          if (error) throw error;
+          await IDB.put('blobs', blob, path);
           const cur = answers[itId] || {};
           answers[itId] = {...cur, photos: [...(cur.photos||[]), { path, ts: new Date().toISOString(), lat: pos?.lat ?? null, lng: pos?.lng ?? null, acc: pos?.acc ?? null }]};
           queueSave();
-        } catch (e){ toast('No se pudo subir la foto: ' + errText(e)); }
+        } catch (e){ toast('No se pudo procesar la foto: ' + errText(e)); }
       }
       rerenderItem(itId);
     });
     scope.querySelectorAll('[data-phdel]').forEach(b => b.onclick = async () => {
       if (!confirm('¿Quitar esta foto?')) return;
       const itId = b.dataset.phdel, idx = Number(b.dataset.idx);
-      const cur = answers[itId]; const [rm] = cur.photos.splice(idx, 1);
+      const [rm] = answers[itId].photos.splice(idx, 1);
       queueSave(); rerenderItem(itId);
-      sb.storage.from('fotos').remove([rm.path]);
+      const had = await IDB.get('blobs', rm.path).catch(() => undefined);
+      if (had) IDB.del('blobs', rm.path).catch(() => {});
+      else if (online()) sb.storage.from('fotos').remove([rm.path]).catch(() => {});
     });
     scope.querySelectorAll('[data-sigclear]').forEach(b => b.onclick = () => { answers[b.dataset.sigclear] = {...answers[b.dataset.sigclear], value: null}; queueSave(); rerenderItem(b.dataset.sigclear); });
   }
@@ -911,41 +1269,26 @@ async function viewExecute(v, id){
         if (!has) return toast('Firmá en el recuadro primero.');
         const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
         const path = `${ins.org_id}/${id}/firma-${uid()}.png`;
-        const { error } = await sb.storage.from('fotos').upload(path, blob, { contentType: 'image/png' });
-        if (error) return toast('No se pudo guardar la firma: ' + errText(error));
+        await IDB.put('blobs', blob, path);
         answers[itId] = {...(answers[itId]||{}), value: path, ts: new Date().toISOString()};
         queueSave(); rerenderItem(itId);
       };
     });
   }
+  bindItems(v); initSig(v); hydrate(v); updateProgress();
 
-  bindItems(v); initSig(v); hydratePhotos(); updateProgress();
-
-  $('#b-later').onclick = async () => { await save(); location.hash = '#/insp'; };
-  $('#b-del').onclick = async () => {
-    if (!confirm('¿Eliminar este borrador y sus fotos? No se puede deshacer.')) return;
-    const paths = Object.values(answers).flatMap(a => (a.photos||[]).map(p => p.path).concat(typeof a.value === 'string' && a.value.startsWith(ins.org_id + '/') ? [a.value] : []));
-    const { error } = await sb.from('inspections').delete().eq('id', id);
-    if (error) return toast(errText(error));
-    if (paths.length) sb.storage.from('fotos').remove(paths);
-    dirty = false; leaveGuard = null; toast('Borrador eliminado'); location.hash = '#/insp';
-  };
+  $('#b-later').onclick = async () => { await save(); leaveGuard = null; location.hash = '#/insp'; };
+  $('#b-del').onclick = async () => { await save(); leaveGuard = null; deleteInspection(ins); };
   $('#b-finish').onclick = async () => {
-    const missing = [];
-    def.sections.forEach(s => s.items.forEach(it => {
-      if (!it.required) return; const a = answers[it.id];
-      if (!a || a.value === undefined || a.value === null || a.value === '') missing.push(it.label);
-    }));
+    const missing = allItems.filter(it => it.required && it.type !== 'heading' && !isAnswered(it, answers[it.id])).map(it => it.label);
     if (missing.length){
       $('#fin-err').textContent = 'Faltan campos obligatorios: ' + missing.slice(0, 4).join(' · ') + (missing.length > 4 ? ` y ${missing.length - 4} más` : '');
       return;
     }
-    if (!confirm('Al completarla queda cerrada (solo un supervisor puede modificarla). ¿Completar?')) return;
-    clearTimeout(timer); dirty = true; await save();
-    const sc = computeScore(def, answers);
-    const { error } = await sb.from('inspections').update({ status: 'completada', completed_at: new Date().toISOString(), answers, score: sc.score, max_score: sc.max, flagged: sc.flagged }).eq('id', id);
-    if (error) return ($('#fin-err').textContent = errText(error));
-    leaveGuard = null; window.onbeforeunload = null; toast('Inspección completada');
+    if (!confirm('Al completarla queda cerrada (solo un supervisor puede reabrirla). ¿Completar?')) return;
+    ins.status = 'completada'; ins.completed_at = new Date().toISOString();
+    dirty = true; await save(); leaveGuard = null;
+    toast(online() ? 'Inspección completada' : 'Completada y guardada en el teléfono. Se envía sola cuando haya señal.');
     location.hash = '#/informe/' + id;
   };
 }
@@ -954,9 +1297,7 @@ async function viewExecute(v, id){
    INFORME (formato SafetyCulture) → Descargar PDF
    ========================================================= */
 async function viewReport(v, id){
-  window.onbeforeunload = null;
-  const { data: ins, error } = await sb.from('inspections').select('*').eq('id', id).single();
-  if (error || !ins) throw (error || new Error('Inspección no encontrada'));
+  const ins = await loadInspection(id);
   const def = ins.template_snapshot || {sections:[]};
   const answers = ins.answers || {};
   const sc = computeScore(def, answers);
@@ -976,7 +1317,7 @@ async function viewReport(v, id){
       const rng = (it.min !== undefined || it.max !== undefined) ? `<small>De ${it.min ?? '—'} a ${it.max ?? '—'}</small>` : '';
       return `<div class="a-val" style="${r.bad ? 'color:var(--no);font-weight:600' : ''}">${esc(v_)} ${esc(it.unit||'')}${rng}</div>`;
     }
-    if (it.type === 'select') return v_ ? `<div class="a-val">${esc(v_)}</div>` : '<div></div>';
+    if (it.type === 'select' || it.type === 'date' || it.type === 'time') return v_ ? `<div class="a-val">${esc(v_)}</div>` : '<div></div>';
     if (it.type === 'signature') return v_ ? `<div class="a-val rp-sig"><img data-path="${esc(v_)}"><small>${fmtDT(a.ts)}</small></div>` : '<div></div>';
     if (it.type === 'text' && !it.long) return `<div class="a-val">${esc(v_ ?? '')}</div>`;
     return '<div></div>';
@@ -993,11 +1334,14 @@ async function viewReport(v, id){
     }).join('')}`).join('');
 
   const canReopen = isManager() && canWrite() && ins.status === 'completada';
+  const canEdit = ins.status === 'borrador' && canWrite() && (ins.inspector_id === me.id || isManager());
   v.innerHTML = `
     <div class="report-bar">
       <button class="btn sec" onclick="history.length > 1 ? history.back() : (location.hash='#/insp')">← Volver</button>
-      <div class="row">${canReopen ? '<button class="btn sec" id="b-reopen">Reabrir para editar</button>' : ''}
-      ${ins.status === 'borrador' && canWrite() && (ins.inspector_id === me.id || isManager()) ? `<button class="btn sec" onclick="location.hash='#/insp/${ins.id}'">Seguir cargando</button>` : ''}
+      <div class="row">${ins._dirty ? '<span class="pill p-pend">Por enviar</span>' : ''}
+      ${canReopen ? '<button class="btn sec" id="b-reopen">Reabrir para editar</button>' : ''}
+      ${canEdit ? `<button class="btn sec" onclick="location.hash='#/insp/${ins.id}'">Seguir cargando</button>` : ''}
+      ${canDelete(ins) ? '<button class="btn danger" id="b-delr">Borrar</button>' : ''}
       <button class="btn" id="b-pdf">Descargar PDF</button></div>
     </div>
     <div id="report">
@@ -1012,54 +1356,623 @@ async function viewReport(v, id){
       <div class="rp-kv"><b>Hora de Ingreso</b><span>${fmtTime(ins.started_at)}</span></div>
       <div class="rp-kv"><b>Hora de Salida</b><span>${ins.completed_at ? fmtDT(ins.completed_at) : '—'}</span></div>
       <div class="rp-kv"><b>Técnico</b><span>${esc(ins.inspector_name || '')}</span></div>
-      ${ins.lat ? `<div class="rp-kv"><b>Ubicación al iniciar</b><span>${ins.lat.toFixed(5)}, ${ins.lng.toFixed(5)}</span></div>` : ''}
+      ${ins.lat ? `<div class="rp-kv"><b>Ubicación al iniciar</b><span>${Number(ins.lat).toFixed(5)}, ${Number(ins.lng).toFixed(5)}</span></div>` : ''}
       ${body}
       ${media.length ? `<div class="rp-sec" style="break-before:page"><span>Resumen de archivos multimedia</span></div>
-        <div class="rp-media">${media.map(p => `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${p.n}${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : ''}</figcaption></figure>`).join('')}</div>` : ''}
+        <div class="rp-media">${media.map(p => `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${p.n}${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}</figcaption></figure>`).join('')}</div>` : ''}
       <div class="rp-foot"><span>${esc(ins.site_name || '')} · Generado con InspectApp</span><span>${fmtDT(new Date())}</span></div>
     </div>`;
-  const imgs = [...v.querySelectorAll('img[data-path]')];
-  const urls = await signedUrls(imgs.map(i => i.dataset.path));
-  imgs.forEach((im, k) => { if (urls[k]) im.src = urls[k]; });
+  await hydrate(v);
+  const imgs = [...v.querySelectorAll('#report img')];
   $('#b-pdf').onclick = async () => {
     await Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
     const t = document.title; document.title = `${ins.site_name || 'Inspeccion'} - ${fmtDate(ins.started_at).replaceAll('/','-')}`;
     window.print(); setTimeout(() => document.title = t, 1000);
   };
+  $('#b-delr')?.addEventListener('click', async () => { await deleteInspection(ins); });
   $('#b-reopen')?.addEventListener('click', async () => {
+    if (!needOnline()) return;
     if (!confirm('La inspección vuelve a borrador para poder editarla. ¿Continuar?')) return;
-    const { error } = await sb.from('inspections').update({ status: 'borrador', completed_at: null }).eq('id', id);
+    const { data, error } = await sb.from('inspections').update({ status: 'borrador', completed_at: null }).eq('id', id).select('id');
     if (error) return toast(errText(error));
+    if (!data?.length) return toast('No tenés permiso para reabrirla.');
+    await IDB.put('insp', { ...ins, status: 'borrador', completed_at: null, _synced: true, _dirty: false }).catch(() => {});
     location.hash = '#/insp/' + id;
   });
 }
 
 /* =========================================================
-   SITIOS (lista + mapa + importación KMZ)
+   ESTADÍSTICAS
+   ========================================================= */
+const tipEl = () => $('#tip');
+function showTip(html, x, y){ const t = tipEl(); t.innerHTML = html; t.classList.remove('hidden'); const w = t.offsetWidth, h = t.offsetHeight; t.style.left = Math.min(window.innerWidth - w - 8, Math.max(8, x - w / 2)) + 'px'; t.style.top = Math.max(8, y - h - 12) + 'px'; }
+function hideTip(){ tipEl()?.classList.add('hidden'); }
+function bindTips(scope){
+  scope.querySelectorAll('[data-tip]').forEach(el => {
+    const show = e => { const p = e.touches ? e.touches[0] : e; showTip(el.dataset.tip, p.clientX, p.clientY); };
+    el.addEventListener('mousemove', show); el.addEventListener('mouseleave', hideTip);
+    el.addEventListener('touchstart', show, {passive:true});
+  });
+}
+document.addEventListener('scroll', hideTip, {passive:true});
+document.addEventListener('touchstart', e => { if (!e.target.closest('[data-tip]')) hideTip(); }, {passive:true});
+
+const COL_PREV = 'var(--s1)', COL_CORR = 'var(--s2)', COL_OTRO = 'var(--s3)';
+const KIND_COL = {preventivo: COL_PREV, correctivo: COL_CORR, otro: COL_OTRO};
+const MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+function chartMonths(rows, from){
+  // meses del período
+  const start = new Date(from); start.setDate(1); start.setHours(0,0,0,0);
+  const end = new Date(); end.setDate(1); end.setHours(0,0,0,0);
+  const keys = [];
+  for (let d = new Date(start); d <= end; d.setMonth(d.getMonth() + 1)) keys.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
+  const shown = keys.slice(-12);
+  const data = Object.fromEntries(shown.map(k => [k, {preventivo:0, correctivo:0, otro:0}]));
+  rows.forEach(r => { const k = r.started_at.slice(0, 7); if (data[k]) data[k][r.kind] = (data[k][r.kind] || 0) + 1; });
+  const max = Math.max(1, ...shown.map(k => data[k].preventivo + data[k].correctivo + data[k].otro));
+  const hasOtro = shown.some(k => data[k].otro);
+  const label = k => MONTHS[Number(k.slice(5)) - 1] + (shown.length > 6 ? '' : ' ' + k.slice(2, 4));
+  return `<div class="viz-legend"><span><i style="background:${COL_PREV}"></i>Preventivo</span><span><i style="background:${COL_CORR}"></i>Correctivo</span>${hasOtro ? `<span><i style="background:${COL_OTRO}"></i>Otro</span>` : ''}</div>
+    <div class="vbars">${shown.map(k => {
+      const d = data[k], tot = d.preventivo + d.correctivo + d.otro;
+      const segs = [['preventivo', d.preventivo], ['correctivo', d.correctivo], ['otro', d.otro]].filter(x => x[1]);
+      const tip = `<b>${MONTHS[Number(k.slice(5)) - 1]} ${k.slice(0,4)}</b><br>Preventivo: ${d.preventivo}<br>Correctivo: ${d.correctivo}${d.otro ? '<br>Otro: ' + d.otro : ''}<br>Total: ${tot}`;
+      return `<div class="col" data-tip="${esc(tip)}">${segs.map(([kk, n], i) => `<div class="seg ${i === segs.length - 1 ? 'top' : ''}" style="height:${n * 100 / max}%;background:${KIND_COL[kk]}"></div>`).join('')}
+        ${tot ? `<div class="tot" style="bottom:calc(${tot * 100 / max}% + 2px)">${tot}</div>` : ''}</div>`;
+    }).join('')}</div>
+    <div class="vlabels">${shown.map(k => `<span>${label(k)}</span>`).join('')}</div>`;
+}
+function chartHBars(items, {stacked=false, unit='', max=null, onClick=null}={}){
+  if (!items.length) return '<div class="empty">Sin datos en el período.</div>';
+  const mx = max ?? Math.max(1, ...items.map(i => stacked ? i.parts.reduce((a, p) => a + p.v, 0) : i.v));
+  return `<div class="hbars">${items.map((i, k) => {
+    const total = stacked ? i.parts.reduce((a, p) => a + p.v, 0) : i.v;
+    const parts = stacked ? i.parts.filter(p => p.v) : [{v: i.v, c: i.c || COL_PREV}];
+    const tip = i.tip || `<b>${esc(i.label)}</b><br>${stacked ? i.parts.filter(p => p.v).map(p => `${p.n}: ${p.v}`).join('<br>') : esc(i.display ?? total) + unit}`;
+    return `<div class="lb" title="${esc(i.label)}">${esc(i.label)}</div>
+      <div class="track" data-tip="${esc(tip)}" ${onClick ? `data-k="${k}" style="cursor:pointer"` : ''}>${parts.map(p => `<i style="width:${p.v * 100 / mx}%;background:${p.c}"></i>`).join('')}</div>
+      <div class="val">${esc(i.display ?? total)}${unit}</div>`;
+  }).join('')}</div>`;
+}
+
+async function viewStats(v){
+  let sites = [];
+  try { sites = await cached('sites-min', () => sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name')); } catch {}
+  const trazas = [...new Set(sites.map(s => s.traza).filter(Boolean).flatMap(t => String(t).split(', ')))].sort((a, b) => a.localeCompare(b, 'es', {numeric:true}));
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem('ia_stats') || '{}'); } catch {}
+  v.innerHTML = `
+    <div class="card"><div class="row between"><h2 style="margin:0">Estadísticas</h2><span class="muted sm" id="st-note"></span></div>
+      <div class="row" style="margin-top:12px">
+        <select id="sf-per" style="width:auto">
+          <option value="30">Últimos 30 días</option><option value="90">Últimos 3 meses</option><option value="180">Últimos 6 meses</option><option value="365">Últimos 12 meses</option><option value="730">Últimos 2 años</option></select>
+        <select id="sf-traza" style="width:auto"><option value="">Todas las trazas</option>${trazas.map(t => `<option>${esc(t)}</option>`).join('')}</select>
+        <select id="sf-kind" style="width:auto"><option value="">Preventivo y correctivo</option><option value="preventivo">Solo preventivo</option><option value="correctivo">Solo correctivo</option></select>
+      </div></div>
+    <div id="st-body"><div class="card muted">Cargando…</div></div>`;
+  $('#sf-per').value = saved.per || '90'; $('#sf-traza').value = saved.traza || ''; $('#sf-kind').value = saved.kind || '';
+  const load = async () => {
+    const f = { per: $('#sf-per').value, traza: $('#sf-traza').value, kind: $('#sf-kind').value };
+    try { localStorage.setItem('ia_stats', JSON.stringify(f)); } catch {}
+    const from = new Date(Date.now() - Number(f.per) * 86400000);
+    let rows = [];
+    try {
+      rows = await cached('stats:' + f.per, () => sb.from('inspections')
+        .select('id,site_id,site_name,traza,kind,started_at,score,max_score,flagged,flagged_items,inspector_name,task_id')
+        .eq('status', 'completada').gte('started_at', from.toISOString()).order('started_at').limit(5000));
+    } catch (e){ $('#st-body').innerHTML = `<div class="card"><b>Sin datos</b><p class="muted">${esc(errText(e))}</p></div>`; return; }
+    // sumar las completadas que todavía están solo en el teléfono
+    const loc = (await localAll()).filter(r => r.status === 'completada' && r._dirty && r.started_at >= from.toISOString());
+    const ids = new Set(rows.map(r => r.id)); loc.forEach(l => { if (!ids.has(l.id)) rows.push(l); });
+    const inTraza = r => !f.traza || String(r.traza || '').split(', ').includes(f.traza);
+    rows = rows.filter(r => inTraza(r) && (!f.kind || r.kind === f.kind));
+    $('#st-note').textContent = online() ? '' : 'Sin conexión: datos de la última descarga';
+    let perf = [];
+    try {
+      const [tasks, contrs] = await Promise.all([
+        cached('stats-tasks:' + f.per, () => sb.from('tasks').select('id,contractor_id,status,due_date,completed_at,quality,rejections').gte('due_date', from.toISOString().slice(0, 10)).limit(5000)),
+        loadContractors()]);
+      perf = contractorPerformance(tasks, contrs, rows);
+    } catch {}
+    renderStats($('#st-body'), rows, sites.filter(inTraza), from, f, perf);
+  };
+  ['#sf-per','#sf-traza','#sf-kind'].forEach(s => $(s).onchange = load);
+  load();
+}
+
+function renderStats(box, rows, sites, from, f, perf = []){
+  const prev = rows.filter(r => r.kind === 'preventivo').length, corr = rows.filter(r => r.kind === 'correctivo').length;
+  const scored = rows.filter(r => r.max_score);
+  const avg = scored.length ? scored.reduce((a, r) => a + r.score * 100 / r.max_score, 0) / scored.length : null;
+  const flaggedTot = rows.reduce((a, r) => a + (r.flagged || 0), 0);
+  // por sitio
+  const bySite = new Map();
+  const keyOf = r => r.site_id || ('n:' + (r.site_name || '').toLowerCase());
+  for (const r of rows){
+    const k = keyOf(r);
+    const s = bySite.get(k) || { key: k, name: r.site_name || '—', traza: r.traza || '', prev: 0, corr: 0, otro: 0, last: null, sumPct: 0, nPct: 0, fails: {} };
+    s[r.kind === 'preventivo' ? 'prev' : r.kind === 'correctivo' ? 'corr' : 'otro']++;
+    if (!s.last || r.started_at > s.last) s.last = r.started_at;
+    if (r.max_score){ s.sumPct += r.score * 100 / r.max_score; s.nPct++; }
+    (r.flagged_items || []).forEach(l => s.fails[l] = (s.fails[l] || 0) + 1);
+    bySite.set(k, s);
+  }
+  // sitios sin visita en el período
+  const visited = new Set([...bySite.keys()]);
+  const sinVisita = sites.filter(s => ['epi','repetidora','shelter'].includes(s.kind) && !visited.has(s.id));
+  const siteList = [...bySite.values()].map(s => ({ ...s, total: s.prev + s.corr + s.otro, avg: s.nPct ? s.sumPct / s.nPct : null }));
+  // ítems que más fallan
+  const fails = {};
+  rows.forEach(r => (r.flagged_items || []).forEach(l => fails[l] = (fails[l] || 0) + 1));
+  const topFails = Object.entries(fails).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  // por traza
+  const byTraza = {};
+  scored.forEach(r => String(r.traza || 'Sin traza').split(', ').forEach(t => { (byTraza[t] = byTraza[t] || {s: 0, n: 0}); byTraza[t].s += r.score * 100 / r.max_score; byTraza[t].n++; }));
+  const trazaList = Object.entries(byTraza).map(([t, x]) => ({ label: t === 'Sin traza' ? t : 'Traza ' + t, v: x.s / x.n, n: x.n })).sort((a, b) => a.label.localeCompare(b.label, 'es', {numeric:true}));
+  // por técnico
+  const byTec = {};
+  rows.forEach(r => { const t = r.inspector_name || '—'; (byTec[t] = byTec[t] || {prev: 0, corr: 0, otro: 0}); byTec[t][r.kind === 'preventivo' ? 'prev' : r.kind === 'correctivo' ? 'corr' : 'otro']++; });
+  const tecList = Object.entries(byTec).map(([n, x]) => ({ label: n, parts: [{n:'Preventivo', v:x.prev, c:COL_PREV}, {n:'Correctivo', v:x.corr, c:COL_CORR}, {n:'Otro', v:x.otro, c:COL_OTRO}] })).sort((a, b) => b.parts.reduce((s, p) => s + p.v, 0) - a.parts.reduce((s, p) => s + p.v, 0)).slice(0, 12);
+  const topSites = [...siteList].sort((a, b) => b.total - a.total).slice(0, 10);
+
+  if (!rows.length){
+    box.innerHTML = `<div class="card"><div class="empty">No hay inspecciones completadas en este período${f.traza ? ' para la traza ' + esc(f.traza) : ''}.<br>Cambiá el período o completá inspecciones para ver las estadísticas.</div></div>` + perfSection(perf);
+    bindTips(box); return;
+  }
+  const scoreColor = p => p === null ? 'var(--muted)' : p >= 90 ? 'var(--si)' : p >= 75 ? 'var(--amber)' : 'var(--red)';
+  box.innerHTML = `
+    <div class="stats" style="margin-bottom:14px">
+      <div class="stat"><span>Visitas</span><b>${rows.length}</b><small>${siteList.length} sitio${siteList.length===1?'':'s'} visitado${siteList.length===1?'':'s'}</small></div>
+      <div class="stat"><span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${COL_PREV};margin-right:5px"></i>Preventivas</span><b>${prev}</b><small>${rows.length ? Math.round(prev*100/rows.length) : 0}% del total</small></div>
+      <div class="stat"><span><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${COL_CORR};margin-right:5px"></i>Correctivas</span><b>${corr}</b><small>${rows.length ? Math.round(corr*100/rows.length) : 0}% del total</small></div>
+      <div class="stat"><span>Puntaje promedio</span><b style="color:${scoreColor(avg)}">${pct0(avg)}</b><small>de las preventivas puntuadas</small></div>
+      <div class="stat"><span>Ítems señalados</span><b>${flaggedTot}</b><small>${rows.length ? (flaggedTot / rows.length).toFixed(1).replace('.', ',') : 0} por visita</small></div>
+      <div class="stat"><span>Sitios sin visita</span><b style="color:${sinVisita.length ? 'var(--red)' : 'var(--text)'}">${sinVisita.length}</b><small>nodos sin inspección en el período</small></div>
+    </div>
+    <div class="card"><h2>Visitas por mes</h2>${chartMonths(rows, from)}</div>
+    <div class="chart-grid" style="margin-bottom:14px">
+      <div class="card"><h2>Sitios más visitados</h2>
+        <div class="viz-legend"><span><i style="background:${COL_PREV}"></i>Preventivo</span><span><i style="background:${COL_CORR}"></i>Correctivo</span></div>
+        ${chartHBars(topSites.map(s => ({ label: s.name, parts: [{n:'Preventivo', v:s.prev, c:COL_PREV}, {n:'Correctivo', v:s.corr, c:COL_CORR}, {n:'Otro', v:s.otro, c:COL_OTRO}] })), {stacked:true, onClick:true})}
+        <p class="muted sm" style="margin:8px 0 0">Tocá una barra para ver la ficha del sitio.</p></div>
+      <div class="card"><h2>Ítems que más fallan</h2>
+        ${chartHBars(topFails.map(([l, c]) => ({ label: l, v: c, c: 'var(--red)', tip: `<b>${esc(l)}</b><br>Señalado en ${c} visita${c===1?'':'s'}` })))}
+        <p class="muted sm" style="margin:8px 0 0">Cantidad de visitas en que el ítem se respondió mal o quedó fuera de rango.</p></div>
+      <div class="card"><h2>Puntaje promedio por traza</h2>
+        ${chartHBars(trazaList.map(t => ({ label: t.label, v: t.v, display: Math.round(t.v), c: COL_PREV, tip: `<b>${esc(t.label)}</b><br>Puntaje promedio: ${Math.round(t.v)}%<br>${t.n} visita${t.n===1?'':'s'} puntuada${t.n===1?'':'s'}` })), {max: 100, unit: '%'})}</div>
+      <div class="card"><h2>Visitas por técnico</h2>
+        <div class="viz-legend"><span><i style="background:${COL_PREV}"></i>Preventivo</span><span><i style="background:${COL_CORR}"></i>Correctivo</span></div>
+        ${chartHBars(tecList, {stacked:true})}</div>
+    </div>
+    <div class="card"><div class="row between"><h2 style="margin:0">Ficha por sitio</h2><input id="sq" placeholder="Buscar sitio" style="max-width:240px"></div>
+      <div class="tblwrap" style="margin-top:10px"><table class="tbl"><thead><tr>
+        <th class="sortable" data-sort="name">Sitio</th><th class="sortable hide-sm" data-sort="traza">Traza</th>
+        <th class="sortable num" data-sort="total">Visitas</th><th class="sortable num" data-sort="prev">Prev.</th><th class="sortable num" data-sort="corr">Corr.</th>
+        <th class="sortable num" data-sort="avg">Puntaje</th><th class="sortable num" data-sort="last">Última visita</th></tr></thead>
+        <tbody id="srows"></tbody></table></div>
+      ${sinVisita.length ? `<details style="margin-top:12px"><summary class="sm" style="cursor:pointer;color:var(--red)">${sinVisita.length} nodo${sinVisita.length===1?'':'s'} sin visita en el período</summary><p class="sm muted">${sinVisita.map(s => esc(s.name)).join(' · ')}</p></details>` : ''}
+    </div>${perfSection(perf)}`;
+  let sortK = 'total', sortD = -1;
+  const renderRows = () => {
+    const q = $('#sq').value.trim().toLowerCase();
+    const list = siteList.filter(s => !q || s.name.toLowerCase().includes(q)).sort((a, b) => {
+      const x = a[sortK] ?? -1, y = b[sortK] ?? -1;
+      return (typeof x === 'string' ? x.localeCompare(y, 'es', {numeric:true}) : x - y) * sortD;
+    });
+    $('#srows').innerHTML = list.map(s => `<tr class="click" data-site="${esc(s.key)}">
+      <td><b>${esc(s.name)}</b></td><td class="hide-sm">${esc(s.traza)}</td><td class="num">${s.total}</td><td class="num">${s.prev}</td><td class="num">${s.corr}</td>
+      <td class="num" style="color:${scoreColor(s.avg)};font-weight:600">${pct0(s.avg)}</td>
+      <td class="num">${fmtDate(s.last)}<div class="muted sm">hace ${daysSince(s.last)} d</div></td></tr>`).join('');
+    box.querySelectorAll('[data-site]').forEach(tr => tr.onclick = () => siteCard(bySite.get(tr.dataset.site), rows));
+  };
+  box.querySelectorAll('[data-sort]').forEach(th => th.onclick = () => { const k = th.dataset.sort; sortD = sortK === k ? -sortD : (k === 'name' || k === 'traza' ? 1 : -1); sortK = k; renderRows(); });
+  $('#sq').oninput = renderRows;
+  renderRows();
+  box.querySelectorAll('.track[data-k]').forEach(t => t.onclick = () => siteCard(topSites[Number(t.dataset.k)], rows));
+  bindTips(box);
+}
+
+function siteCard(s, rows){
+  if (!s) return;
+  const key = s.key;
+  const visits = rows.filter(r => (r.site_id || ('n:' + (r.site_name || '').toLowerCase())) === key).sort((a, b) => b.started_at.localeCompare(a.started_at));
+  const fails = Object.entries(s.fails).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const m = modal(`<div class="row between"><div><h2 style="margin:0">${esc(s.name)}</h2><div class="muted sm">${s.traza ? 'Traza ' + esc(s.traza) + ' · ' : ''}Última visita ${fmtDate(s.last)} (hace ${daysSince(s.last)} días)</div></div><button class="btn sec small" id="sc-x">Cerrar</button></div>
+    <div class="stats" style="margin:14px 0">
+      <div class="stat"><span>Visitas</span><b>${visits.length}</b></div>
+      <div class="stat"><span>Preventivas</span><b>${s.prev}</b></div>
+      <div class="stat"><span>Correctivas</span><b>${s.corr}</b></div>
+      <div class="stat"><span>Puntaje promedio</span><b>${pct0(s.nPct ? s.sumPct / s.nPct : null)}</b></div>
+    </div>
+    <h3>Lo que más falla en este sitio</h3>
+    ${chartHBars(fails.map(([l, c]) => ({ label: l, v: c, c: 'var(--red)' })))}
+    <h3 style="margin-top:16px">Historial de visitas</h3>
+    <div class="tblwrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Tipo</th><th class="hide-sm">Técnico</th><th class="num">Puntaje</th><th class="num">Señalados</th></tr></thead><tbody>
+    ${visits.map(r => `<tr class="click" data-open="${r.id}"><td>${fmtDate(r.started_at)}</td><td><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${KIND_COL[r.kind]};margin-right:6px"></i>${KIND_TXT[r.kind]}</td><td class="hide-sm">${esc(r.inspector_name || '')}</td><td class="num">${r.max_score ? pct(r.score, r.max_score) : '—'}</td><td class="num">${r.flagged || 0}</td></tr>`).join('')}
+    </tbody></table></div>`, {wide:true});
+  $('#sc-x').onclick = m.close;
+  m.el.querySelectorAll('[data-open]').forEach(tr => tr.onclick = () => { m.close(); location.hash = '#/informe/' + tr.dataset.open; });
+  bindTips(m.el);
+}
+
+/* =========================================================
+   TAREAS Y CONTRATISTAS
+   ========================================================= */
+const TASK_TYPES = {inspeccion:'Inspección', instalacion:'Instalación', reparacion:'Reparación', mantenimiento:'Mantenimiento', otro:'Otro'};
+const PRIORITIES = {baja:'Baja', media:'Media', alta:'Alta', urgente:'Urgente'};
+const TASK_ST = {sin_asignar:'Sin asignar', asignada:'Asignada', vista:'Vista', en_curso:'En curso', completada:'Completada', aprobada:'Aprobada', rechazada:'Rechazada', cancelada:'Cancelada'};
+const TASK_PILL = {sin_asignar:'p-pend', asignada:'p-info', vista:'p-info', en_curso:'p-pend', completada:'p-ok', aprobada:'p-ok', rechazada:'p-bad', cancelada:''};
+const TASK_COLS = 'id,history,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at';
+const taskOpen = t => !['completada','aprobada','cancelada'].includes(t.status);
+const dueDate = d => new Date(d + 'T23:59:59');
+const isOverdue = t => taskOpen(t) && dueDate(t.due_date) < new Date();
+const kindForTask = t => t.task_type === 'inspeccion' ? 'preventivo' : t.task_type === 'reparacion' ? 'correctivo' : 'otro';
+function waPhone(p){
+  let d = String(p || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (!d.startsWith('54')) d = '54' + d;
+  if (!d.startsWith('549')) d = '549' + d.slice(2);
+  return d;
+}
+function waLink(contractor, t){
+  const lines = [
+    `Hola ${contractor.contact_name || contractor.name}, se te ${(t.history || []).length ? 'reasignó' : 'asignó'} una tarea en InspectApp (${org?.name || ''}):`, '',
+    `*${t.title}*`, `Tipo: ${TASK_TYPES[t.task_type]}`, `Prioridad: ${PRIORITIES[t.priority]}`, `Fecha límite: ${fmtDate(dueDate(t.due_date))}`,
+    t.sites?.length ? 'Sitios:\n' + t.sites.map(s => '• ' + s.site_name).join('\n') : '',
+    t.description ? '\n' + t.description : '', '',
+    `Ver la tarea: ${location.origin + location.pathname}#/tasks/${t.id}`];
+  return `https://wa.me/${waPhone(contractor.phone)}?text=${encodeURIComponent(lines.filter(x => x !== null).join('\n'))}`;
+}
+async function notifyWA(contractor, t){
+  if (!contractor?.phone) return toast('La contratista no tiene teléfono cargado.');
+  window.open(waLink(contractor, t), '_blank', 'noopener');
+  if (online()) sb.from('tasks').update({ notified_at: new Date().toISOString() }).eq('id', t.id).then(() => {});
+}
+const loadContractors = () => cached('contractors', () => sb.from('contractors').select('*').order('name'));
+
+function taskTable(rows, contrs){
+  if (!rows.length) return '<div class="empty">No hay tareas.</div>';
+  const cn = id => id ? (contrs.find(c => c.id === id)?.name || '—') : '<span class="pill p-pend">Sin asignar</span>';
+  return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Vence</th><th>Tarea</th>${isContractor() ? '' : '<th>Contratista</th>'}<th class="hide-sm">Tipo</th><th class="hide-sm">Avance</th><th>Estado</th></tr></thead><tbody>
+    ${rows.map(t => { const done = (t.sites || []).filter(s => s.done).length, tot = (t.sites || []).length; return `<tr class="click" data-task="${t.id}">
+      <td>${fmtDate(dueDate(t.due_date))}${isOverdue(t) ? '<div><span class="pill p-bad">Vencida</span></div>' : ''}</td>
+      <td><b>${esc(t.title)}</b>${t.priority === 'urgente' || t.priority === 'alta' ? ` <span class="pill ${t.priority === 'urgente' ? 'p-bad' : 'p-pend'}">${PRIORITIES[t.priority]}</span>` : ''}<div class="muted sm">${(t.sites || []).slice(0, 3).map(s => esc(s.site_name)).join(' · ')}${tot > 3 ? ` y ${tot - 3} más` : ''}</div></td>
+      ${isContractor() ? '' : `<td>${t.contractor_id ? esc(cn(t.contractor_id)) : cn(null)}</td>`}
+      <td class="hide-sm">${TASK_TYPES[t.task_type]}</td><td class="hide-sm">${done} / ${tot}</td>
+      <td><span class="pill ${TASK_PILL[t.status]}">${TASK_ST[t.status]}</span></td></tr>`; }).join('')}
+  </tbody></table></div>`;
+}
+
+async function viewTasks(v){
+  const [tasks, contrs] = await Promise.all([
+    cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', {ascending: true}).limit(500)),
+    loadContractors().catch(() => []),
+  ]);
+  const manage = isManager() && canWrite();
+  const pending = tasks.filter(taskOpen), overdue = tasks.filter(isOverdue);
+  v.innerHTML = `
+    <div class="card"><div class="row between"><h2 style="margin:0">${isContractor() ? 'Mis tareas' : 'Tareas'}</h2>
+      ${manage ? `<div class="row"><button class="btn sec" onclick="location.hash='#/tasks/contratistas'">Contratistas</button><button class="btn" id="b-newtask">+ Nueva tarea</button></div>` : ''}</div>
+      <div class="stats" style="margin-top:14px">
+        <div class="stat"><span>Pendientes</span><b>${pending.length}</b></div>
+        ${isContractor() ? '' : `<div class="stat"><span>Sin asignar</span><b style="color:${tasks.some(t => t.status === 'sin_asignar') ? 'var(--amber)' : 'var(--text)'}">${tasks.filter(t => t.status === 'sin_asignar').length}</b></div>`}
+        <div class="stat"><span>Vencidas</span><b style="color:${overdue.length ? 'var(--red)' : 'var(--text)'}">${overdue.length}</b></div>
+        <div class="stat"><span>${isContractor() ? 'Para corregir' : 'Para revisar'}</span><b>${tasks.filter(t => isContractor() ? t.status === 'rechazada' : t.status === 'completada').length}</b></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <select id="tf-st" style="width:auto"><option value="abiertas">Abiertas</option><option value="revisar">${isContractor() ? 'Completadas' : 'Para revisar'}</option><option value="">Todas</option>${Object.entries(TASK_ST).map(([k, x]) => `<option value="${k}">${x}</option>`).join('')}</select>
+        ${isContractor() ? '' : `<select id="tf-c" style="width:auto"><option value="">Todas las contratistas</option><option value="__none">Sin asignar</option>${contrs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>`}
+        <input id="tf-q" class="grow" placeholder="Buscar tarea o sitio">
+      </div></div>
+    <div class="card" id="tlist"></div>
+    ${!contrs.length && manage ? '<div class="banner warn"><span class="dot"></span><div>Todavía no cargaste contratistas. Entrá a <b>Contratistas</b> para crear la primera.</div></div>' : ''}`;
+  const render = () => {
+    const st = $('#tf-st').value, c = $('#tf-c')?.value, q = $('#tf-q').value.trim().toLowerCase();
+    const rows = tasks.filter(t =>
+      (st === '' || (st === 'abiertas' ? taskOpen(t) : st === 'revisar' ? t.status === 'completada' : t.status === st)) &&
+      (!c || (c === '__none' ? !t.contractor_id : t.contractor_id === c)) &&
+      (!q || (t.title + ' ' + (t.sites || []).map(s => s.site_name).join(' ')).toLowerCase().includes(q)));
+    $('#tlist').innerHTML = taskTable(rows, contrs);
+    $('#tlist').querySelectorAll('[data-task]').forEach(tr => tr.onclick = () => location.hash = '#/tasks/' + tr.dataset.task);
+  };
+  $('#tf-st').onchange = render; $('#tf-q').oninput = render; $('#tf-c') && ($('#tf-c').onchange = render);
+  render();
+  $('#b-newtask')?.addEventListener('click', () => editTask(null, contrs));
+}
+
+async function contractorLoad(){
+  try { const ts = await cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', {ascending: true}).limit(500));
+    const m = {}; ts.filter(taskOpen).forEach(t => { if (t.contractor_id) m[t.contractor_id] = (m[t.contractor_id] || 0) + 1; }); return m; } catch { return {}; }
+}
+const contrOption = (c, load, sel) => `<option value="${c.id}" ${sel ? 'selected' : ''}>${esc(c.name)} · ${load[c.id] || 0} tarea${(load[c.id] || 0) === 1 ? '' : 's'} abierta${(load[c.id] || 0) === 1 ? '' : 's'}</option>`;
+async function editTask(t, contrs){
+  if (!needOnline()) return;
+  contrs = (contrs || []).filter(c => c.active);
+  const load = await contractorLoad();
+  const [tpls, sites] = await Promise.all([
+    cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')),
+    cached('sites-min', () => sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name')).catch(() => []),
+  ]);
+  if (!tpls.length) return toast('Primero cargá una plantilla.');
+  const isNew = !t;
+  t = t || { task_type: 'inspeccion', priority: 'media', due_date: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10), sites: [] };
+  let chosen = (t.sites || []).map(s => ({...s}));
+  const defaultTpl = type => (type === 'inspeccion' ? tpls.find(x => x.kind === 'preventivo') : tpls.find(x => /cierre de tarea/i.test(x.name))) || tpls[0];
+  const m = modal(`<h2>${isNew ? 'Nueva tarea' : 'Editar tarea'}</h2>
+    ${isNew ? `<label>Contratista / cuadrilla</label><select id="nt-c"><option value="">— Sin asignar (la asigno después) —</option>${contrs.map(c => contrOption(c, load, t.contractor_id === c.id)).join('')}</select>` : '<p class="muted sm">Para cambiar la contratista usá el botón <b>Reasignar</b> de la tarea.</p>'}
+    <label>Título</label><input id="nt-title" value="${esc(t.title || '')}" placeholder="Ej.: Preventivo Traza 15 – semana 43">
+    <div class="row"><div class="grow"><label>Tipo</label><select id="nt-type">${Object.entries(TASK_TYPES).map(([k, x]) => `<option value="${k}" ${t.task_type === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+      <div class="grow"><label>Prioridad</label><select id="nt-pr">${Object.entries(PRIORITIES).map(([k, x]) => `<option value="${k}" ${t.priority === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+      <div class="grow"><label>Fecha límite</label><input id="nt-due" type="date" value="${esc(t.due_date)}"></div></div>
+    <label>Planilla con la que se cierra cada sitio</label><select id="nt-tpl">${tpls.map(x => `<option value="${x.id}" ${t.template_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+    <label>Sitios</label>
+    <div class="row"><input id="nt-sq" class="grow" list="nt-sl" placeholder="Escribí y tocá Agregar" autocomplete="off"><button class="btn sec" id="nt-sadd" type="button">Agregar</button></div>
+    <datalist id="nt-sl">${sites.map(s => `<option value="${esc(s.name)}">`).join('')}</datalist>
+    <div id="nt-chips" class="row" style="margin-top:8px"></div>
+    <label>Indicaciones</label><textarea id="nt-desc" placeholder="Qué hay que hacer, materiales, contacto en sitio…">${esc(t.description || '')}</textarea>
+    <div class="err" id="nt-err"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="nt-x">Cancelar</button><button class="btn" id="nt-ok">${isNew ? 'Asignar tarea' : 'Guardar'}</button></div>`, {wide:true});
+  if (isNew) $('#nt-tpl').value = defaultTpl(t.task_type).id;
+  $('#nt-type').onchange = () => { if (isNew) $('#nt-tpl').value = defaultTpl($('#nt-type').value).id; };
+  const chips = () => { $('#nt-chips').innerHTML = chosen.map((s, i) => `<span class="pill p-info" style="font-size:13px">${esc(s.site_name)}${s.done ? ' ✓' : ` <button class="link" data-rm="${i}" style="text-decoration:none">×</button>`}</span>`).join('') || '<span class="muted sm">Sin sitios todavía.</span>';
+    $('#nt-chips').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { chosen.splice(Number(b.dataset.rm), 1); chips(); }); };
+  const add = () => {
+    const raw = $('#nt-sq').value.trim(); if (!raw) return;
+    const s = sites.find(x => x.name.toLowerCase() === raw.toLowerCase());
+    if (chosen.some(c => c.site_name.toLowerCase() === raw.toLowerCase())) return toast('Ese sitio ya está en la tarea.');
+    chosen.push({ site_id: s?.id || null, site_name: s ? s.name : raw, inspection_id: null, done: false });
+    $('#nt-sq').value = ''; chips();
+  };
+  $('#nt-sadd').onclick = add; $('#nt-sq').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } };
+  chips();
+  $('#nt-x').onclick = m.close;
+  $('#nt-ok').onclick = async () => {
+    const row = { title: $('#nt-title').value.trim(), task_type: $('#nt-type').value, priority: $('#nt-pr').value,
+      due_date: $('#nt-due').value, template_id: $('#nt-tpl').value, sites: chosen, description: $('#nt-desc').value.trim() || null };
+    if (!row.title) return ($('#nt-err').textContent = 'Poné un título.');
+    if (!row.due_date) return ($('#nt-err').textContent = 'Indicá la fecha límite.');
+    if (!chosen.length) return ($('#nt-err').textContent = 'Agregá al menos un sitio.');
+    $('#nt-ok').disabled = true;
+    const cId = isNew ? ($('#nt-c').value || null) : t.contractor_id;
+    const q = isNew ? sb.from('tasks').insert({ ...row, contractor_id: cId, status: cId ? 'asignada' : 'sin_asignar', org_id: me.org_id, created_by: me.id }).select(TASK_COLS).single()
+                    : sb.from('tasks').update(row).eq('id', t.id).select(TASK_COLS).single();
+    const { data, error } = await q;
+    if (error){ $('#nt-ok').disabled = false; return ($('#nt-err').textContent = errText(error)); }
+    m.close();
+    const c = contrs.find(x => x.id === data.contractor_id);
+    if (isNew && !c){ toast('Tarea creada sin asignar'); location.hash = '#/tasks/' + data.id; return; }
+    if (isNew){
+      const m2 = modal(`<h2>Tarea asignada a ${esc(c.name)}</h2><p>Avisale por WhatsApp con el detalle y el enlace a la tarea.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn sec" id="w-no">Ahora no</button><button class="btn" id="w-yes" ${c.phone ? '' : 'disabled'}>Enviar WhatsApp</button></div>
+        ${c.phone ? '' : '<p class="err">La contratista no tiene teléfono cargado.</p>'}`);
+      $('#w-no').onclick = () => { m2.close(); location.hash = '#/tasks/' + data.id; };
+      $('#w-yes').onclick = () => { notifyWA(c, data); m2.close(); location.hash = '#/tasks/' + data.id; };
+    } else { toast('Tarea guardada'); route(); }
+  };
+}
+
+async function viewTask(v, id){
+  const t = await cached('task:' + id, () => sb.from('tasks').select(TASK_COLS).eq('id', id).single());
+  const contrs = await loadContractors().catch(() => []);
+  const c = contrs.find(x => x.id === t.contractor_id) || { name: 'Sin asignar' };
+  const mineContractor = isContractor() && me.contractor_id === t.contractor_id;
+  const canRun = canWrite() && (mineContractor || isManager()) && !['aprobada','cancelada'].includes(t.status);
+  if (mineContractor && t.status === 'asignada' && online()) sb.rpc('task_mark_seen', { p_task: id }).then(() => {});
+  // inspecciones de esta tarea (servidor + teléfono)
+  let srv = [];
+  try { srv = await cached('task-insp:' + id, () => sb.from('inspections').select('id,site_id,site_name,status,started_at,completed_at,score,max_score,inspector_name').eq('task_id', id).order('started_at')); } catch {}
+  const loc = (await localAll()).filter(r => r.task_id === id);
+  const insps = [...new Map([...srv, ...loc].map(r => [r.id, r])).values()];
+  const forSite = s => insps.filter(r => r.id === s.inspection_id || ((r.site_id && r.site_id === s.site_id) || (r.site_name || '').toLowerCase() === s.site_name.toLowerCase()))
+    .sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
+  const done = (t.sites || []).filter(s => s.done).length;
+  v.innerHTML = `
+    <div class="report-bar" style="max-width:none"><button class="btn sec" onclick="location.hash='#/tasks'">← Tareas</button>
+      <div class="row">${isManager() && canWrite() ? `
+        ${['sin_asignar','asignada','vista','en_curso','rechazada'].includes(t.status) ? `<button class="btn" id="t-assign">${t.contractor_id ? 'Reasignar' : 'Asignar'}</button>` : ''}
+        ${c.phone ? '<button class="btn sec" id="t-wa">WhatsApp</button>' : ''}
+        ${taskOpen(t) || t.status === 'rechazada' ? '<button class="btn sec" id="t-edit">Editar</button><button class="btn sec" id="t-cancel">Cancelar tarea</button>' : ''}
+        ${isAdmin() ? '<button class="btn danger" id="t-del">Borrar</button>' : ''}
+        ${t.status === 'completada' ? '<button class="btn" id="t-review">Revisar</button>' : ''}` : ''}</div></div>
+    <div class="card">
+      <div class="row between"><div><h1>${esc(t.title)}</h1><div class="muted">${isContractor() ? '' : esc(c.name) + ' · '}${TASK_TYPES[t.task_type]} · Prioridad ${PRIORITIES[t.priority].toLowerCase()}</div></div>
+        <div style="text-align:right"><span class="pill ${TASK_PILL[t.status]}" style="font-size:14px">${TASK_ST[t.status]}</span>${isOverdue(t) ? ' <span class="pill p-bad" style="font-size:14px">Vencida</span>' : ''}</div></div>
+      <div class="stats" style="margin-top:14px">
+        <div class="stat"><span>Fecha límite</span><b style="font-size:18px">${fmtDate(dueDate(t.due_date))}</b><small>${taskOpen(t) ? (daysLeft(dueDate(t.due_date)) >= 0 ? `faltan ${daysLeft(dueDate(t.due_date))} días` : `vencida hace ${-daysLeft(dueDate(t.due_date))} días`) : ''}</small></div>
+        <div class="stat"><span>Avance</span><b style="font-size:18px">${done} de ${(t.sites || []).length} sitios</b></div>
+        <div class="stat"><span>Asignada</span><b style="font-size:18px">${fmtDate(t.created_at)}</b><small>${t.seen_at ? 'Vista el ' + fmtDT(t.seen_at) : 'Todavía no la vio'}</small></div>
+        <div class="stat"><span>Completada</span><b style="font-size:18px">${t.completed_at ? fmtDate(t.completed_at) : '—'}</b><small>${t.completed_at ? (new Date(t.completed_at) <= dueDate(t.due_date) ? 'a tiempo' : 'fuera de término') : ''}</small></div>
+      </div>
+      ${t.description ? `<h3 style="margin-top:16px">Indicaciones</h3><p style="white-space:pre-wrap;margin-top:0">${esc(t.description)}</p>` : ''}
+      ${(t.history || []).length && !isContractor() ? `<details style="margin-top:14px"><summary class="sm" style="cursor:pointer">Historial de asignación (${t.history.length})</summary>
+        <div class="sm" style="margin-top:6px">${t.history.map(x => `<div style="padding:4px 0;border-bottom:1px solid var(--line)">${fmtDT(x.at)} · ${esc(x.by || '')}: ${x.from ? esc(x.from) : 'sin asignar'} → <b>${x.to ? esc(x.to) : 'sin asignar'}</b>${x.reason ? ` <span class="muted">(${esc(x.reason)})</span>` : ''}</div>`).join('')}</div></details>` : ''}
+      ${t.review_comment || t.quality ? `<div class="banner ${t.status === 'rechazada' ? 'off' : 'trial'}" style="margin:14px 0 0"><span class="dot"></span><div><b>${t.status === 'rechazada' ? 'Rechazada: hay que rehacerla' : 'Revisión del supervisor'}</b>${t.quality ? ` · Calificación ${'★'.repeat(t.quality)}${'☆'.repeat(5 - t.quality)}` : ''}<div>${esc(t.review_comment || '')}</div></div></div>` : ''}
+    </div>
+    <div class="card"><h2>Sitios</h2>
+      ${(t.sites || []).map((s, i) => { const r = forSite(s); return `<div class="item row between">
+        <div><b>${s.done ? '✅ ' : ''}${esc(s.site_name)}</b><div class="muted sm">${r ? (r.status === 'completada' ? `Completada ${fmtDT(r.completed_at)}${r.max_score ? ' · Puntaje ' + pct(r.score, r.max_score) : ''}` : `En curso desde ${fmtDT(r.started_at)}`) + (r._dirty ? ' · por enviar' : '') : 'Sin iniciar'}</div></div>
+        <div class="row">${r ? `<button class="btn sec small" data-open="${r.id}" data-st="${r.status}">${r.status === 'completada' ? 'Ver informe' : 'Seguir cargando'}</button>` : ''}
+          ${canRun && !s.done && !(r && r.status === 'borrador') ? `<button class="btn small" data-start="${i}">${r ? 'Volver a hacer' : 'Iniciar'}</button>` : ''}</div></div>`; }).join('')}
+    </div>`;
+  v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => location.hash = (b.dataset.st === 'completada' ? '#/informe/' : '#/insp/') + b.dataset.open);
+  v.querySelectorAll('[data-start]').forEach(b => b.onclick = async () => {
+    const s = t.sites[Number(b.dataset.start)];
+    let tpls = [];
+    try { tpls = await cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')); } catch (e){ return toast(errText(e)); }
+    const tpl = tpls.find(x => x.id === t.template_id) || tpls[0];
+    if (!tpl) return toast('La plantilla de esta tarea no está disponible en el dispositivo. Conectate una vez para descargarla.');
+    b.disabled = true; const pos = await getPos();
+    const rec = { id: uid(), org_id: me.org_id, template_id: tpl.id, template_name: tpl.name, template_snapshot: tpl.definition,
+      site_id: s.site_id || null, site_name: s.site_name, traza: null, kind: kindForTask(t), status: 'borrador',
+      inspector_id: me.id, inspector_name: me.full_name || me.email, started_at: new Date().toISOString(), completed_at: null,
+      answers: {}, score: 0, max_score: 0, flagged: 0, flagged_items: [], lat: pos?.lat ?? null, lng: pos?.lng ?? null, task_id: t.id, _synced: false };
+    await localSave(rec); location.hash = '#/insp/' + rec.id;
+  });
+  $('#t-wa')?.addEventListener('click', () => notifyWA(c, t));
+  $('#t-assign')?.addEventListener('click', async () => {
+    if (!needOnline()) return;
+    const act = contrs.filter(x => x.active);
+    const load = await contractorLoad();
+    const m = modal(`<h2>${t.contractor_id ? 'Reasignar tarea' : 'Asignar tarea'}</h2>
+      <p class="muted sm" style="margin-top:-6px">${esc(t.title)}${t.contractor_id ? ` · hoy la tiene <b>${esc(c.name)}</b>` : ''}</p>
+      <label>Contratista / cuadrilla</label><select id="as-c">${act.filter(x => x.id !== t.contractor_id).map(x => contrOption(x, load, false)).join('')}${t.contractor_id ? '<option value="">— Dejar sin asignar —</option>' : ''}</select>
+      <label>Motivo ${t.contractor_id ? '' : '(opcional)'}</label><input id="as-r" placeholder="Ej.: está más cerca del evento / se desocupó antes">
+      ${(t.sites || []).some(s => s.done) ? '<p class="sm muted">Los sitios ya terminados quedan registrados con la contratista que los hizo.</p>' : ''}
+      <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="as-wa" style="width:auto" checked> Avisar por WhatsApp a la nueva contratista</label>
+      <div class="err" id="as-err"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="as-x">Cancelar</button><button class="btn" id="as-ok">Confirmar</button></div>`);
+    $('#as-x').onclick = m.close;
+    $('#as-ok').onclick = async () => {
+      const to = $('#as-c').value || null; const sendWA = $('#as-wa').checked;
+      if (t.contractor_id && to && !$('#as-r').value.trim()) return ($('#as-err').textContent = 'Indicá el motivo del cambio (queda en el historial y cuenta para evaluar).');
+      const { error } = await sb.rpc('task_assign', { p_task: t.id, p_contractor: to, p_reason: $('#as-r').value.trim() || null });
+      if (error) return ($('#as-err').textContent = errText(error));
+      m.close(); toast(to ? 'Tarea asignada' : 'Tarea sin asignar');
+      const nc = act.find(x => x.id === to);
+      if (nc && sendWA && nc.phone){
+        const fresh = await sb.from('tasks').select(TASK_COLS).eq('id', t.id).single();
+        notifyWA(nc, fresh.data || { ...t, contractor_id: to });
+      } else if (nc && sendWA && !nc.phone) toast('La contratista no tiene WhatsApp cargado.');
+      route();
+    };
+  });
+  $('#t-edit')?.addEventListener('click', () => editTask(t, contrs));
+  $('#t-cancel')?.addEventListener('click', async () => {
+    if (!needOnline() || !confirm('¿Cancelar la tarea? No cuenta para el desempeño de la contratista.')) return;
+    const { error } = await sb.from('tasks').update({ status: 'cancelada' }).eq('id', id); if (error) return toast(errText(error)); route();
+  });
+  $('#t-del')?.addEventListener('click', async () => {
+    if (!needOnline() || !confirm('¿Borrar la tarea? Las inspecciones que se hicieron se conservan.')) return;
+    const { error } = await sb.from('tasks').delete().eq('id', id); if (error) return toast(errText(error)); toast('Tarea borrada'); location.hash = '#/tasks';
+  });
+  $('#t-review')?.addEventListener('click', () => {
+    if (!needOnline()) return;
+    let q = 0;
+    const m = modal(`<h2>Revisar tarea</h2><p class="muted">Revisá los informes de cada sitio antes de aprobar.</p>
+      <label>Calidad del trabajo</label><div class="row" id="rv-stars" style="font-size:30px;gap:4px;cursor:pointer">${[1,2,3,4,5].map(n => `<span data-q="${n}">☆</span>`).join('')}</div>
+      <label>Comentario</label><textarea id="rv-c" placeholder="Obligatorio si la rechazás"></textarea>
+      <div class="err" id="rv-err"></div>
+      <div class="row between" style="margin-top:10px"><button class="btn sec" id="rv-x">Cancelar</button><div class="row"><button class="btn danger" id="rv-no">Rechazar</button><button class="btn" id="rv-ok">Aprobar</button></div></div>`);
+    m.el.querySelectorAll('[data-q]').forEach(sx => sx.onclick = () => { q = Number(sx.dataset.q); m.el.querySelectorAll('[data-q]').forEach(z => z.textContent = Number(z.dataset.q) <= q ? '★' : '☆'); });
+    $('#rv-x').onclick = m.close;
+    const send = async ok => {
+      if (!q) return ($('#rv-err').textContent = 'Elegí una calificación de 1 a 5.');
+      if (!ok && !$('#rv-c').value.trim()) return ($('#rv-err').textContent = 'Contale a la contratista qué tiene que corregir.');
+      const { error } = await sb.rpc('task_review', { p_task: id, p_approve: ok, p_quality: q, p_comment: $('#rv-c').value.trim() || null });
+      if (error) return ($('#rv-err').textContent = errText(error));
+      m.close(); toast(ok ? 'Tarea aprobada' : 'Tarea rechazada: vuelve a la contratista');
+      if (!ok && c.phone && confirm('¿Avisar a la contratista por WhatsApp?')) window.open(`https://wa.me/${waPhone(c.phone)}?text=${encodeURIComponent(`Hola ${c.contact_name || c.name}, la tarea "${t.title}" fue rechazada y hay que rehacerla.\nMotivo: ${$('#rv-c')?.value || ''}\n\nVer: ${location.origin + location.pathname}#/tasks/${t.id}`)}`, '_blank', 'noopener');
+      route();
+    };
+    $('#rv-ok').onclick = () => send(true); $('#rv-no').onclick = () => send(false);
+  });
+}
+
+async function viewContractors(v){
+  if (!isManager()){ location.hash = '#/tasks'; return; }
+  const [contrs, { data: members }] = await Promise.all([loadContractors(), sb.from('profiles').select('id,full_name,email,role,contractor_id,active').eq('role', 'contratista')]);
+  const manage = canWrite() && online();
+  v.innerHTML = `
+    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" onclick="location.hash='#/tasks'">← Tareas</button><h2 style="margin:0">Contratistas y cuadrillas</h2></div>
+      ${manage ? '<button class="btn" id="c-add">+ Contratista</button>' : ''}</div>
+      <p class="muted sm" style="margin:10px 0 0">Para que una contratista entre a la app: pasale el código de la empresa (en <b>Mi empresa</b>), que cree su cuenta con “Tengo un código”, y después cambiale el rol a <b>Contratista</b> eligiendo a cuál pertenece. Cada usuario ocupa un lugar del cupo de la empresa.</p></div>
+    <div class="card">${contrs.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Contacto</th><th class="hide-sm">WhatsApp</th><th class="hide-sm">Usuarios</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${contrs.map(c => { const us = (members || []).filter(m => m.contractor_id === c.id); return `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.contact_name || '')}<div class="muted sm">${esc(c.email || '')}</div></td>
+        <td class="hide-sm">${esc(c.phone || '—')}</td><td class="hide-sm">${us.length ? us.map(u => esc(u.full_name || u.email)).join(', ') : '<span class="muted">Sin usuarios</span>'}</td>
+        <td><span class="pill ${c.active ? 'p-ok' : 'p-bad'}">${c.active ? 'Activa' : 'Inactiva'}</span></td>
+        <td>${manage ? `<button class="btn sec small" data-ec="${c.id}">Editar</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">Todavía no hay contratistas.</div>'}</div>`;
+  const edit = c => {
+    const isNew = !c; c = c || { active: true };
+    const m = modal(`<h2>${isNew ? 'Nueva contratista' : 'Editar contratista'}</h2>
+      <label>Nombre de la contratista o cuadrilla</label><input id="cc-n" value="${esc(c.name || '')}">
+      <label>Persona de contacto</label><input id="cc-ct" value="${esc(c.contact_name || '')}">
+      <div class="row"><div class="grow"><label>WhatsApp (con código de área)</label><input id="cc-p" inputmode="tel" value="${esc(c.phone || '')}" placeholder="Ej.: 342 4123456"></div>
+        <div class="grow"><label>Email</label><input id="cc-e" type="email" value="${esc(c.email || '')}"></div></div>
+      <label>Notas</label><input id="cc-no" value="${esc(c.notes || '')}">
+      <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="cc-a" style="width:auto" ${c.active ? 'checked' : ''}> Activa</label>
+      <div class="err" id="cc-err"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="cc-x">Cancelar</button><button class="btn" id="cc-ok">Guardar</button></div>`);
+    $('#cc-x').onclick = m.close;
+    $('#cc-ok').onclick = async () => {
+      const row = { name: $('#cc-n').value.trim(), contact_name: $('#cc-ct').value.trim() || null, phone: $('#cc-p').value.trim() || null,
+        email: $('#cc-e').value.trim() || null, notes: $('#cc-no').value.trim() || null, active: $('#cc-a').checked };
+      if (!row.name) return ($('#cc-err').textContent = 'Poné un nombre.');
+      const { error } = await (isNew ? sb.from('contractors').insert({ ...row, org_id: me.org_id }) : sb.from('contractors').update(row).eq('id', c.id));
+      if (error) return ($('#cc-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe una contratista con ese nombre.' : errText(error));
+      m.close(); toast('Contratista guardada'); route();
+    };
+  };
+  $('#c-add')?.addEventListener('click', () => edit(null));
+  v.querySelectorAll('[data-ec]').forEach(b => b.onclick = () => edit(contrs.find(c => c.id === b.dataset.ec)));
+}
+
+/* ---- desempeño de contratistas (40% a tiempo · 40% calidad · 20% sin rechazos) ---- */
+function contractorPerformance(tasks, contrs, inspRows){
+  const now = new Date();
+  const scoreByTask = {};
+  inspRows.forEach(r => { if (r.task_id && r.max_score){ (scoreByTask[r.task_id] = scoreByTask[r.task_id] || []).push(r.score * 100 / r.max_score); } });
+  return contrs.map(c => {
+    const ts = tasks.filter(t => t.contractor_id === c.id && t.status !== 'cancelada');
+    const finished = ts.filter(t => ['completada','aprobada'].includes(t.status));
+    const overdueOpen = ts.filter(t => taskOpen(t) && dueDate(t.due_date) < now);
+    const onTime = finished.filter(t => t.completed_at && new Date(t.completed_at) <= dueDate(t.due_date));
+    const lateDays = finished.filter(t => t.completed_at && new Date(t.completed_at) > dueDate(t.due_date)).map(t => (new Date(t.completed_at) - dueDate(t.due_date)) / 86400000);
+    const evalBase = finished.length + overdueOpen.length;
+    const tiempo = evalBase ? onTime.length * 100 / evalBase : null;
+    const qs = finished.map(t => t.quality ? t.quality * 20 : (scoreByTask[t.id]?.length ? scoreByTask[t.id].reduce((a, b) => a + b, 0) / scoreByTask[t.id].length : null)).filter(x => x !== null);
+    const calidad = qs.length ? qs.reduce((a, b) => a + b, 0) / qs.length : null;
+    const reviewed = ts.filter(t => t.rejections > 0 || t.status === 'aprobada');
+    const rech = ts.reduce((a, t) => a + (t.rejections || 0), 0);
+    const sinRech = finished.length || rech ? 100 * (1 - Math.min(1, rech / Math.max(1, finished.length + rech))) : null;
+    const parts = [[tiempo, .4], [calidad, .4], [sinRech, .2]].filter(p => p[0] !== null);
+    const w = parts.reduce((a, p) => a + p[1], 0);
+    const indice = w ? parts.reduce((a, p) => a + p[0] * p[1], 0) / w : null;
+    return { c, asignadas: ts.length, finalizadas: finished.length, vencidas: overdueOpen.length, tiempo, calidad, sinRech, rech, indice,
+      demora: lateDays.length ? lateDays.reduce((a, b) => a + b, 0) / lateDays.length : 0, reviewed: reviewed.length };
+  }).filter(p => p.asignadas).sort((a, b) => (b.indice ?? -1) - (a.indice ?? -1));
+}
+function perfSection(perf){
+  if (!perf.length) return '';
+  const col = p => p === null ? 'var(--muted)' : p >= 80 ? 'var(--si)' : p >= 60 ? 'var(--amber)' : 'var(--red)';
+  return `<div class="card"><h2>Desempeño de contratistas</h2>
+    <p class="muted sm" style="margin-top:-6px">Índice = 40% tareas a tiempo + 40% calidad (calificación del supervisor o puntaje de las inspecciones) + 20% sin rechazos. Las tareas vencidas sin terminar cuentan como fuera de término.</p>
+    ${chartHBars(perf.map(p => ({ label: p.c.name, v: p.indice ?? 0, display: p.indice === null ? '—' : Math.round(p.indice), c: COL_PREV,
+      tip: `<b>${esc(p.c.name)}</b><br>Índice: ${p.indice === null ? '—' : Math.round(p.indice)}<br>A tiempo: ${pct0(p.tiempo)}<br>Calidad: ${pct0(p.calidad)}<br>Sin rechazos: ${pct0(p.sinRech)}` })), {max: 100})}
+    <div class="tblwrap" style="margin-top:14px"><table class="tbl"><thead><tr><th>Contratista</th><th class="num">Asignadas</th><th class="num">Terminadas</th><th class="num">Vencidas</th>
+      <th class="num">A tiempo</th><th class="num hide-sm">Demora prom.</th><th class="num">Calidad</th><th class="num hide-sm">Rechazos</th><th class="num">Índice</th></tr></thead><tbody>
+      ${perf.map((p, i) => `<tr><td>${i === 0 && p.indice !== null ? '🏆 ' : ''}<b>${esc(p.c.name)}</b></td><td class="num">${p.asignadas}</td><td class="num">${p.finalizadas}</td>
+        <td class="num" style="color:${p.vencidas ? 'var(--red)' : 'inherit'}">${p.vencidas}</td><td class="num" style="color:${col(p.tiempo)}">${pct0(p.tiempo)}</td>
+        <td class="num hide-sm">${p.demora ? p.demora.toFixed(1).replace('.', ',') + ' d' : '—'}</td><td class="num" style="color:${col(p.calidad)}">${pct0(p.calidad)}</td>
+        <td class="num hide-sm">${p.rech}</td><td class="num" style="font-weight:700;color:${col(p.indice)}">${p.indice === null ? '—' : Math.round(p.indice)}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+
+/* =========================================================
+   SITIOS
    ========================================================= */
 let mapObj = null;
 async function viewSites(v){
-  const { data: sites, error } = await sb.from('sites').select('*').order('name');
-  if (error) throw error;
-  const trazas = [...new Set((sites||[]).map(s => s.traza).filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), 'es', {numeric:true}));
+  const sites = await cached('sites-all', () => sb.from('sites').select('*').order('name'));
+  const manage = isManager() && canWrite() && online();
+  const trazas = [...new Set(sites.map(s => s.traza).filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), 'es', {numeric:true}));
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">Sitios <span class="muted sm">(${sites.length})</span></h2>
-      ${isManager() && canWrite() ? `<div class="row"><label class="btn sec" style="margin:0">Importar KMZ / KML<input type="file" accept=".kmz,.kml" id="kmz" class="hidden"></label><button class="btn" id="b-add">+ Sitio</button></div>` : ''}</div>
+      ${manage ? `<div class="row"><label class="btn sec" style="margin:0">Importar KMZ / KML<input type="file" accept=".kmz,.kml" id="kmz" class="hidden"></label><button class="btn" id="b-add">+ Sitio</button></div>` : ''}</div>
       <div class="row" style="margin-top:12px">
         <input id="q" class="grow" placeholder="Buscar sitio">
         <select id="f-k" style="width:auto"><option value="">Todos los tipos</option>${Object.entries(SITE_KINDS).map(([k,t]) => `<option value="${k}">${t}</option>`).join('')}</select>
         <select id="f-t" style="width:auto"><option value="">Todas las trazas</option>${trazas.map(t => `<option>${esc(t)}</option>`).join('')}</select>
       </div></div>
-    <div class="card"><div id="map"></div><div class="row sm muted" style="margin-top:8px">${Object.entries(SITE_KINDS).map(([k,t]) => `<span><span class="kind-dot" style="background:${SITE_COLORS[k]}"></span>${t}</span>`).join('')}</div></div>
+    <div class="card"><div id="map"></div><div class="row sm muted" style="margin-top:8px">${Object.entries(SITE_KINDS).filter(([k]) => k !== 'radioenlace').map(([k,t]) => `<span><span class="kind-dot" style="background:${SITE_COLORS[k]}"></span>${k === 'repetidora' ? 'Repetidora / radioenlace' : t}</span>`).join('')}</div></div>
     <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Tipo</th><th>Traza</th><th class="hide-sm">Grupo</th><th class="hide-sm">Coordenadas</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></div>`;
-
   if (mapObj){ mapObj.remove(); mapObj = null; }
   let layer = null;
   if (window.L){
     mapObj = L.map('map', {preferCanvas:true}).setView([-29.5, -60.3], 7);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap'}).addTo(mapObj);
   } else $('#map').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa.</p>';
-
   const render = () => {
     const q = $('#q').value.trim().toLowerCase(), k = $('#f-k').value, t = $('#f-t').value;
     const rows = sites.filter(s => (!q || (s.name + ' ' + (s.aliases||[]).join(' ')).toLowerCase().includes(q)) && (!k || s.kind === k) && (!t || s.traza === t));
@@ -1067,8 +1980,8 @@ async function viewSites(v){
       <td><b>${esc(s.name)}</b>${s.active ? '' : ' <span class="pill p-bad">Inactivo</span>'}</td>
       <td><span class="kind-dot" style="background:${SITE_COLORS[s.kind]}"></span>${SITE_KINDS[s.kind]}</td>
       <td>${esc(s.traza || '')}</td><td class="hide-sm">${esc(s.grupo || '')}</td>
-      <td class="hide-sm sm">${s.lat ? s.lat.toFixed(5) + ', ' + s.lng.toFixed(5) : (s.path ? 'Recorrido' : '—')}</td>
-      <td>${isManager() && canWrite() ? `<button class="btn sec small" data-edit="${s.id}">Editar</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Sin sitios. Importá el KMZ de tus trazas o agregalos a mano.</td></tr>';
+      <td class="hide-sm sm">${s.lat ? Number(s.lat).toFixed(5) + ', ' + Number(s.lng).toFixed(5) : (s.path ? 'Recorrido' : '—')}</td>
+      <td>${manage ? `<button class="btn sec small" data-edit="${s.id}">Editar</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Sin sitios. Importá el KMZ de tus trazas o agregalos a mano.</td></tr>';
     v.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editSite(sites.find(s => s.id === b.dataset.edit)));
     if (mapObj){
       if (layer) layer.remove(); layer = L.featureGroup().addTo(mapObj);
@@ -1085,8 +1998,8 @@ async function viewSites(v){
   $('#b-add')?.addEventListener('click', () => editSite(null));
   $('#kmz')?.addEventListener('change', e => importKMZ(e.target.files[0], sites));
 }
-
 function editSite(s){
+  if (!needOnline()) return;
   const isNew = !s; s = s || {kind:'epi', active:true};
   const m = modal(`<h2>${isNew ? 'Nuevo sitio' : 'Editar sitio'}</h2>
     <label>Nombre</label><input id="s-name" value="${esc(s.name||'')}">
@@ -1109,8 +2022,7 @@ function editSite(s){
       lat: $('#s-lat').value === '' ? null : Number($('#s-lat').value), lng: $('#s-lng').value === '' ? null : Number($('#s-lng').value),
       aliases: $('#s-alias').value.split(',').map(x => x.trim()).filter(Boolean), notes: $('#s-notes').value.trim() || null, active: $('#s-active').checked };
     if (!row.name) return ($('#s-err').textContent = 'Poné un nombre.');
-    const q = isNew ? sb.from('sites').insert({...row, org_id: me.org_id}) : sb.from('sites').update(row).eq('id', s.id);
-    const { error } = await q;
+    const { error } = await (isNew ? sb.from('sites').insert({...row, org_id: me.org_id}) : sb.from('sites').update(row).eq('id', s.id));
     if (error) return ($('#s-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe un sitio con ese nombre y tipo.' : errText(error));
     m.close(); toast('Sitio guardado'); route();
   };
@@ -1120,8 +2032,6 @@ function editSite(s){
     if (error) return toast(errText(error)); m.close(); route();
   });
 }
-
-/* ---- Importación KMZ/KML ---- */
 async function readKML(file){
   if (/\.kml$/i.test(file.name)) return await file.text();
   if (!window.JSZip) throw new Error('No se pudo cargar el lector de KMZ.');
@@ -1140,8 +2050,7 @@ function parseKML(text){
       else if (c.localName === 'Placemark'){
         const name = nameOf(c); const coordsEl = c.getElementsByTagNameNS('*', 'coordinates')[0]; if (!coordsEl) continue;
         const pts = coordsEl.textContent.trim().split(/\s+/).map(p => p.split(',').map(Number)).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
-        const isPoint = c.getElementsByTagNameNS('*', 'Point').length > 0;
-        out.push({ name, path, isPoint, pts });
+        out.push({ name, path, isPoint: c.getElementsByTagNameNS('*', 'Point').length > 0, pts });
       }
     }
   };
@@ -1156,19 +2065,17 @@ function kmlToSites(pms){
     const traza = trazaOf(pm.path);
     const grupo = pm.path.slice(1, -1).filter(p => !/^nodos$/i.test(p) && !/traza/i.test(p)).join(' / ') || null;
     let kind, name = pm.name || 'Sin nombre';
-    if (pm.isPoint){
-      kind = has(pm.path, /acueducto/i) ? 'acueducto' : 'epi';
-    } else {
+    if (pm.isPoint) kind = has(pm.path, /acueducto/i) ? 'acueducto' : 'epi';
+    else {
       kind = has(pm.path, /radio/i) ? 'radioenlace' : has(pm.path, /acueducto/i) ? 'acueducto' : 'tramo_fo';
       if (traza && !new RegExp('\\b' + traza + '\\b').test(name)) name = `${name} (Traza ${traza})`;
     }
     const key = kind + '|' + name.toLowerCase();
-    const row = { name, kind, traza, grupo,
-      lat: pm.isPoint ? pm.pts[0][1] : null, lng: pm.isPoint ? pm.pts[0][0] : null,
+    const row = { name, kind, traza, grupo, lat: pm.isPoint ? pm.pts[0][1] : null, lng: pm.isPoint ? pm.pts[0][0] : null,
       path: pm.isPoint ? null : pm.pts.map(p => [Math.round(p[0]*1e6)/1e6, Math.round(p[1]*1e6)/1e6]) };
     if (sites.has(key)){
       const prev = sites.get(key);
-      if (pm.isPoint){ // mismo nodo en otra carpeta (ej. FO y radio): sumar la traza
+      if (pm.isPoint){
         if (traza && prev.traza && !String(prev.traza).split(', ').includes(traza)) prev.traza += ', ' + traza;
         else if (!prev.traza) prev.traza = traza;
         continue;
@@ -1183,8 +2090,7 @@ function kmlToSites(pms){
 async function importKMZ(file, existing){
   if (!file) return;
   let rows;
-  try { rows = kmlToSites(parseKML(await readKML(file))); }
-  catch (e){ return toast('No se pudo leer el archivo: ' + errText(e)); }
+  try { rows = kmlToSites(parseKML(await readKML(file))); } catch (e){ return toast('No se pudo leer el archivo: ' + errText(e)); }
   if (!rows.length) return toast('El archivo no tiene puntos ni recorridos.');
   const exist = new Set(existing.map(s => s.kind + '|' + s.name.toLowerCase()));
   const nuevos = rows.filter(r => !exist.has(r.kind + '|' + r.name.toLowerCase()));
@@ -1208,22 +2114,136 @@ async function importKMZ(file, existing){
 }
 
 /* =========================================================
-   PLANTILLAS
+   PLANTILLAS  (+ importar / exportar Excel)
    ========================================================= */
+const XL_HEAD = ['Sección','Pregunta','Tipo','Obligatoria','Pedir foto','Mínimo','Máximo','Unidad','Opciones','Respuesta correcta'];
+const XL_TYPE_OUT = {yesno:'Sí/No', okfail:'OK/Falla', number:'Número', text:'Texto', select:'Opciones', date:'Fecha', time:'Hora', photo:'Foto', signature:'Firma', heading:'Subtítulo'};
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+function xlType(t){
+  const n = norm(t).replace(/\s*\/\s*/g, '/').replace(/\/n\/?a$/, '');
+  return ({'si/no':'yesno','sino':'yesno','si':'yesno','ok/falla':'okfail','ok':'okfail','numero':'number','numerico':'number','texto':'text','texto corto':'text','texto largo':'textlong',
+    'opciones':'select','opcion':'select','lista':'select','fecha':'date','hora':'time','foto':'photo','fotos':'photo','firma':'signature','subtitulo':'heading','titulo':'heading'})[n];
+}
+const xlYes = v => ['si','x','1','true','verdadero','s','yes'].includes(norm(v));
+const xlNum = v => { if (v === '' || v === null || v === undefined) return undefined; const n = Number(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; };
+function templateToRows(def){
+  const rows = [XL_HEAD];
+  for (const s of def.sections) for (const it of s.items){
+    rows.push([s.title, it.label, it.type === 'text' && it.long ? 'Texto largo' : (XL_TYPE_OUT[it.type] || it.type), it.required ? 'Sí' : '', it.photos ? 'Sí' : '',
+      it.min ?? '', it.max ?? '', it.unit || '', (it.options || []).join(', '), it.type === 'yesno' ? ({no:'No', none:'Ninguna'}[it.good] || '') : '']);
+  }
+  return rows;
+}
+function rowsToTemplate(rows){
+  const hi = rows.findIndex(r => r.some(c => norm(c) === 'pregunta'));
+  if (hi < 0) throw new Error('No encontré la columna "Pregunta". Usá el modelo de Excel que se descarga desde InspectApp.');
+  const head = rows[hi].map(norm);
+  const col = name => head.findIndex(h => h.startsWith(name));
+  const C = { sec: col('seccion'), q: col('pregunta'), type: col('tipo'), req: col('obligatoria'), ph: col('pedir foto') >= 0 ? col('pedir foto') : col('foto'),
+    min: col('minimo'), max: col('maximo'), unit: col('unidad'), opts: col('opciones'), good: col('respuesta') };
+  const get = (r, k) => C[k] >= 0 ? r[C[k]] : '';
+  const sections = [], warns = []; let cur = null, nq = 0;
+  rows.slice(hi + 1).forEach((r, i) => {
+    const label = String(get(r, 'q') ?? '').trim(); const secName = String(get(r, 'sec') ?? '').trim();
+    if (!label && !secName) return;
+    if (secName && (!cur || cur.title !== secName)){ cur = { id: 's' + (sections.length + 1), title: secName, items: [] }; sections.push(cur); }
+    if (!cur){ cur = { id: 's1', title: 'General', items: [] }; sections.push(cur); }
+    if (!label) return;
+    let type = xlType(get(r, 'type'));
+    if (!type){ if (String(get(r, 'type')).trim()) warns.push(`Fila ${hi + i + 2}: tipo "${get(r, 'type')}" no reconocido, se cargó como Sí/No.`); type = 'yesno'; }
+    const it = { id: cur.id + 'i' + (cur.items.length + 1), type: type === 'textlong' ? 'text' : type, label };
+    if (type === 'textlong') it.long = true;
+    if (xlYes(get(r, 'req'))) it.required = true;
+    if (xlYes(get(r, 'ph'))) it.photos = true;
+    if (type === 'number'){ const mn = xlNum(get(r, 'min')), mx = xlNum(get(r, 'max')); if (mn !== undefined) it.min = mn; if (mx !== undefined) it.max = mx; if (String(get(r, 'unit')).trim()) it.unit = String(get(r, 'unit')).trim(); }
+    if (type === 'select'){ it.options = String(get(r, 'opts')).split(/[,;|]/).map(x => x.trim()).filter(Boolean); if (!it.options.length) warns.push(`Fila ${hi + i + 2}: "${label}" es de opciones pero no tiene opciones.`); }
+    if (type === 'yesno'){ const g = norm(get(r, 'good')); if (g === 'no') it.good = 'no'; else if (g.startsWith('ning')) it.good = 'none'; }
+    cur.items.push(it); if (type !== 'heading') nq++;
+  });
+  if (!nq) throw new Error('El archivo no tiene preguntas.');
+  return { def: { sections: sections.filter(s => s.items.length) }, warns, nq };
+}
+function downloadModel(){
+  if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
+  const ex = [XL_HEAD,
+    ['Datos del sitio','Datos generales','Subtítulo','','','','','','',''],
+    ['Datos del sitio','Foto general del sitio','Foto','Sí','','','','','',''],
+    ['Datos del sitio','¿El acceso al sitio está libre?','Sí/No','Sí','','','','','',''],
+    ['Energía','Funcionamiento del grupo electrógeno','OK/Falla','','Sí','','','','',''],
+    ['Energía','Nivel de combustible','Número','Sí','Sí',80,100,'%','',''],
+    ['Energía','¿Hay pérdidas de aceite?','Sí/No','','Sí','','','','','No'],
+    ['Energía','Estado del rectificador','Opciones','','','','','','Normal, Con alarma, Apagado',''],
+    ['Cierre','Observaciones generales','Texto largo','','','','','','',''],
+    ['Cierre','Firma del técnico','Firma','Sí','','','','','',''],
+  ];
+  const ins = [['Cómo completar el modelo'],[''],
+    ['Una fila por pregunta. Las filas con la misma Sección quedan agrupadas.'],
+    ['Tipo: Sí/No · OK/Falla · Número · Texto · Texto largo · Opciones · Fecha · Hora · Foto · Firma · Subtítulo'],
+    ['Obligatoria y Pedir foto: escribir Sí o dejar vacío.'],
+    ['Mínimo / Máximo / Unidad: solo para Número. Fuera de rango se marca como señalado.'],
+    ['Opciones: solo para Opciones, separadas por coma.'],
+    ['Respuesta correcta: solo para Sí/No. Vacío = Sí es la correcta · No = la correcta es No · Ninguna = no puntúa.'],
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(ex); ws['!cols'] = [{wch:22},{wch:46},{wch:13},{wch:11},{wch:10},{wch:8},{wch:8},{wch:8},{wch:30},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
+  const wi = XLSX.utils.aoa_to_sheet(ins); wi['!cols'] = [{wch:110}];
+  XLSX.utils.book_append_sheet(wb, wi, 'Instrucciones');
+  XLSX.writeFile(wb, 'Modelo_plantilla_InspectApp.xlsx');
+}
+function exportTemplate(t){
+  if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
+  const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(templateToRows(t.definition));
+  ws['!cols'] = [{wch:30},{wch:60},{wch:13},{wch:11},{wch:10},{wch:8},{wch:8},{wch:8},{wch:30},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
+  XLSX.writeFile(wb, (t.name || 'plantilla').replace(/[\\/:*?"<>|]/g, '') + '.xlsx');
+}
+async function importTemplateExcel(file){
+  if (!file) return;
+  if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
+  let parsed;
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+    const ws = wb.Sheets['Plantilla'] || wb.Sheets[wb.SheetNames[0]];
+    parsed = rowsToTemplate(XLSX.utils.sheet_to_json(ws, {header:1, defval:''}));
+  } catch (e){ return toast('No se pudo leer el Excel: ' + errText(e)); }
+  const { def, warns, nq } = parsed;
+  const m = modal(`<h2>Importar plantilla desde Excel</h2>
+    <p><b>${def.sections.length}</b> secciones y <b>${nq}</b> preguntas encontradas.</p>
+    <label>Nombre de la plantilla</label><input id="xi-name" value="${esc(file.name.replace(/\.(xlsx|xls|csv)$/i, '').replace(/[_]+/g, ' '))}">
+    <label>Tipo</label><select id="xi-kind"><option value="preventivo">Preventivo</option><option value="correctivo">Correctivo</option><option value="otro">Otro</option></select>
+    <div class="sm muted" style="margin-top:10px;max-height:160px;overflow:auto">${def.sections.map((s, i) => `<div>${i + 1}. ${esc(s.title)} <span class="muted">(${s.items.filter(x => x.type !== 'heading').length})</span></div>`).join('')}</div>
+    ${warns.length ? `<div class="banner warn" style="margin-top:10px"><span class="dot"></span><div class="sm">${warns.slice(0, 8).map(esc).join('<br>')}${warns.length > 8 ? `<br>y ${warns.length - 8} avisos más` : ''}</div></div>` : ''}
+    <div class="err" id="xi-err"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="xi-cancel">Cancelar</button><button class="btn" id="xi-go">Crear plantilla</button></div>`, {wide:true});
+  $('#xi-cancel').onclick = m.close;
+  $('#xi-go').onclick = async () => {
+    $('#xi-go').disabled = true;
+    const { data, error } = await sb.from('templates').insert({ org_id: me.org_id, name: $('#xi-name').value.trim() || 'Plantilla importada', kind: $('#xi-kind').value,
+      definition: def, published: true, description: 'Importada desde Excel', created_by: me.id }).select('id').single();
+    if (error){ $('#xi-go').disabled = false; return ($('#xi-err').textContent = errText(error)); }
+    m.close(); toast('Plantilla creada'); location.hash = '#/tpl/' + data.id;
+  };
+}
+
 async function viewTemplates(v){
-  const { data: tpls, error } = await sb.from('templates').select('id,name,kind,description,published,updated_at,definition').order('name');
-  if (error) throw error;
-  const manage = isManager() && canWrite();
+  const tpls = await cached('tpl-all', () => sb.from('templates').select('id,name,kind,description,published,updated_at,definition').order('name'));
+  const manage = isManager() && canWrite() && online();
   const count = d => d.sections.reduce((a, s) => a + s.items.filter(i => i.type !== 'heading').length, 0);
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">Plantillas</h2>
-      ${manage ? '<div class="row"><button class="btn sec" id="b-lib">Agregar desde la biblioteca</button><button class="btn" id="b-newtpl">+ Plantilla en blanco</button></div>' : ''}</div></div>
+      ${manage ? `<div class="row"><button class="btn sec" id="b-lib">Biblioteca</button>
+        <label class="btn sec" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="xl" class="hidden"></label>
+        <button class="btn" id="b-newtpl">+ Plantilla en blanco</button></div>` : ''}</div>
+      ${manage ? `<p class="muted sm" style="margin:10px 0 0">Para cargar un checklist largo rápido: <button class="link" id="b-model">descargá el modelo de Excel</button>, completalo con una fila por pregunta y subilo con <b>Importar Excel</b>.</p>` : ''}</div>
     <div class="card">${tpls.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Tipo</th><th class="hide-sm">Preguntas</th><th class="hide-sm">Actualizada</th><th>Estado</th><th></th></tr></thead><tbody>
       ${tpls.map(t => `<tr><td><b>${esc(t.name)}</b><div class="muted sm">${esc(t.description || '')}</div></td><td>${KIND_TXT[t.kind]}</td>
         <td class="hide-sm">${count(t.definition)}</td><td class="hide-sm">${fmtDate(t.updated_at)}</td>
         <td><span class="pill ${t.published ? 'p-ok' : 'p-info'}">${t.published ? 'Publicada' : 'Borrador'}</span></td>
-        <td>${manage ? `<div class="row" style="flex-wrap:nowrap"><button class="btn sec small" data-edit="${t.id}">Editar</button><button class="btn sec small" data-dup="${t.id}">Duplicar</button></div>` : ''}</td></tr>`).join('')}
-      </tbody></table></div>` : `<p class="muted">No hay plantillas todavía.${manage ? ' Empezá agregando una desde la biblioteca: ya están cargadas las de mantenimiento de EPI y de ticket.' : ' Pedile a un administrador que cargue una.'}</p>`}</div>`;
+        <td>${manage ? `<div class="row" style="flex-wrap:nowrap"><button class="btn sec small" data-edit="${t.id}">Editar</button><button class="btn sec small" data-dup="${t.id}">Duplicar</button><button class="btn sec small" data-xl="${t.id}" title="Descargar en Excel">Excel</button></div>` : ''}</td></tr>`).join('')}
+      </tbody></table></div>` : `<p class="muted">No hay plantillas todavía.${manage ? ' Agregá una desde la biblioteca, importá un Excel o creala en blanco.' : ' Pedile a un administrador que cargue una.'}</p>`}</div>`;
+  $('#b-model')?.addEventListener('click', downloadModel);
+  $('#xl')?.addEventListener('change', e => importTemplateExcel(e.target.files[0]));
   $('#b-lib')?.addEventListener('click', () => {
     const m = modal(`<h2>Biblioteca de plantillas</h2>
       ${LIBRARY.map(l => `<div class="card" style="margin-bottom:10px"><div class="row between"><div class="grow"><b>${esc(l.name)}</b> <span class="pill p-info">${KIND_TXT[l.kind]}</span><div class="muted sm">${esc(l.description)}</div></div>
@@ -1244,6 +2264,7 @@ async function viewTemplates(v){
     location.hash = '#/tpl/' + data.id;
   });
   v.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => location.hash = '#/tpl/' + b.dataset.edit);
+  v.querySelectorAll('[data-xl]').forEach(b => b.onclick = () => exportTemplate(tpls.find(x => x.id === b.dataset.xl)));
   v.querySelectorAll('[data-dup]').forEach(b => b.onclick = async () => {
     const t = tpls.find(x => x.id === b.dataset.dup);
     const { error } = await sb.from('templates').insert({ org_id: me.org_id, name: t.name + ' (copia)', kind: t.kind, description: t.description, definition: t.definition, published: false, created_by: me.id });
@@ -1260,11 +2281,10 @@ async function viewTemplateEditor(v, id){
   let nextId = Date.now() % 1e6;
   const newId = p => p + (nextId++).toString(36);
   const { count: used } = await sb.from('inspections').select('id', {count:'exact', head:true}).eq('template_id', id);
-
   const render = () => {
     v.innerHTML = `
       <div class="card"><div class="row between"><button class="btn sec small" onclick="location.hash='#/tpl'">← Plantillas</button>
-        <div class="row"><button class="btn danger small" id="t-del">Eliminar</button><button class="btn" id="t-save">Guardar</button></div></div>
+        <div class="row"><button class="btn sec small" id="t-xl">Descargar Excel</button><button class="btn danger small" id="t-del">Eliminar</button><button class="btn" id="t-save">Guardar</button></div></div>
         ${used ? `<div class="banner warn" style="margin:12px 0 0"><span class="dot"></span><div class="sm">Esta plantilla ya se usó en ${used} inspección${used===1?'':'es'}. Los cambios aplican solo a las inspecciones nuevas; las ya cargadas conservan su versión.</div></div>` : ''}
         <div class="row" style="margin-top:6px"><div class="grow"><label>Nombre</label><input id="t-name" value="${esc(t.name)}"></div>
           <div style="width:170px"><label>Tipo</label><select id="t-kind">${Object.entries(KIND_TXT).map(([k,x]) => `<option value="${k}" ${t.kind===k?'selected':''}>${x}</option>`).join('')}</select></div>
@@ -1297,7 +2317,7 @@ async function viewTemplateEditor(v, id){
   function bind(){
     v.querySelectorAll('[data-stitle]').forEach(i => i.oninput = () => def.sections[i.dataset.stitle].title = i.value);
     v.querySelectorAll('[data-ilabel]').forEach(i => i.oninput = () => at(i.dataset.ilabel).label = i.value);
-    v.querySelectorAll('[data-itype]').forEach(i => i.onchange = () => { const it = at(i.dataset.itype); it.type = i.value; render(); });
+    v.querySelectorAll('[data-itype]').forEach(i => i.onchange = () => { at(i.dataset.itype).type = i.value; render(); });
     v.querySelectorAll('[data-ireq]').forEach(i => i.onchange = () => at(i.dataset.ireq).required = i.checked || undefined);
     v.querySelectorAll('[data-iph]').forEach(i => i.onchange = () => at(i.dataset.iph).photos = i.checked || undefined);
     v.querySelectorAll('[data-igood]').forEach(i => i.onchange = () => at(i.dataset.igood).good = i.value === 'si' ? undefined : i.value);
@@ -1313,6 +2333,7 @@ async function viewTemplateEditor(v, id){
     v.querySelectorAll('[data-sdel]').forEach(b => b.onclick = () => { if (confirm('¿Quitar la sección y todas sus preguntas?')){ def.sections.splice(Number(b.dataset.sdel), 1); render(); } });
     v.querySelectorAll('[data-smove]').forEach(b => b.onclick = () => { const i = Number(b.dataset.smove), j = i + Number(b.dataset.dir); if (j < 0 || j >= def.sections.length) return; [def.sections[i], def.sections[j]] = [def.sections[j], def.sections[i]]; render(); });
     $('#s-add').onclick = () => { def.sections.push({ id: newId('s'), title: 'Sección nueva', items: [] }); render(); };
+    $('#t-xl').onclick = () => exportTemplate({ name: $('#t-name').value, definition: def });
     $('#t-save').onclick = async () => {
       if (def.sections.some(s => s.items.some(i => !i.label.trim()))) return toast('Hay preguntas sin texto.');
       const { error } = await sb.from('templates').update({ name: $('#t-name').value.trim() || 'Sin nombre', kind: $('#t-kind').value,
@@ -1333,36 +2354,52 @@ async function viewTemplateEditor(v, id){
    MI EMPRESA
    ========================================================= */
 async function viewOrg(v){
-  const { data: members } = await sb.from('profiles').select('*').eq('org_id', me.org_id).order('created_at');
+  const [{ data: members, error }, { data: joinCode }, { data: contrs }] = await Promise.all([
+    sb.from('profiles').select('*').eq('org_id', me.org_id).order('created_at'),
+    isAdmin() ? sb.rpc('my_join_code') : Promise.resolve({ data: null }),
+    sb.from('contractors').select('id,name').eq('active', true).order('name'),
+  ]);
+  if (error) throw error;
+  const cName = id => (contrs || []).find(c => c.id === id)?.name || '';
   const active = (members || []).filter(m => m.active).length;
-  const isAdmin = me.role === 'admin';
+  const adm = isAdmin();
   v.innerHTML = `
-    ${isAdmin ? `<div class="card"><h2>Datos de la empresa</h2><div class="row"><input id="o-name" class="grow" value="${esc(org?.name || '')}"><button class="btn sec" id="o-save">Guardar nombre</button></div></div>
+    ${adm ? `<div class="card"><h2>Datos de la empresa</h2><div class="row"><input id="o-name" class="grow" value="${esc(org?.name || '')}"><button class="btn sec" id="o-save">Guardar nombre</button></div></div>
     <div class="card"><h2>Sumar usuarios</h2>
       <p class="muted" style="margin-top:0">Pasale este código a cada persona de tu equipo. Al crear su cuenta elige “Tengo un código” y lo ingresa.</p>
-      <div class="row"><span class="code">${esc(org?.join_code || '—')}</span><button class="btn sec small" id="b-copy">Copiar</button><button class="btn sec small" id="b-rotate">Generar otro</button></div>
+      <div class="row"><span class="code">${esc(joinCode || '—')}</span><button class="btn sec small" id="b-copy">Copiar</button><button class="btn sec small" id="b-rotate">Generar otro</button></div>
       <p class="muted sm" style="margin-bottom:0">Usuarios activos: ${active} de ${org?.seat_limit ?? '—'}.${active >= (org?.seat_limit ?? 0) ? ' El cupo está completo: para sumar a alguien, pedí más usuarios o desactivá uno.' : ''}</p></div>` : ''}
     <div class="card"><h2>Usuarios</h2><div class="tblwrap"><table class="tbl">
       <thead><tr><th>Nombre</th><th class="hide-sm">Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead><tbody>
       ${(members||[]).map(m => `<tr><td>${esc(m.full_name || '—')}${m.id === me.id ? ' <span class="muted">(vos)</span>' : ''}</td><td class="hide-sm">${esc(m.email)}</td>
-        <td>${isAdmin && m.id !== me.id ? `<select data-role="${m.id}" style="padding:6px;width:auto">${['admin','supervisor','inspector'].map(r => `<option ${m.role===r?'selected':''} value="${r}">${r[0].toUpperCase()+r.slice(1)}</option>`).join('')}</select>` : esc(m.role[0].toUpperCase() + m.role.slice(1))}</td>
+        <td>${adm && m.id !== me.id ? `<select data-role="${m.id}" style="padding:6px;width:auto">${['admin','supervisor','inspector','contratista'].map(r => `<option ${m.role===r?'selected':''} value="${r}">${r[0].toUpperCase()+r.slice(1)}</option>`).join('')}</select>${m.role === 'contratista' ? `<div class="muted sm">${esc(cName(m.contractor_id))}</div>` : ''}` : esc(m.role[0].toUpperCase() + m.role.slice(1)) + (m.role === 'contratista' ? ` · ${esc(cName(m.contractor_id))}` : '')}</td>
         <td><span class="pill ${m.active ? 'p-activa' : 'p-vencida'}">${m.active ? 'Activo' : 'Inactivo'}</span></td>
-        <td>${isAdmin && m.id !== me.id ? `<button class="btn small ${m.active ? 'danger' : 'sec'}" data-toggle="${m.id}" data-active="${m.active}">${m.active ? 'Desactivar' : 'Activar'}</button>` : ''}</td></tr>`).join('')}
+        <td>${adm && m.id !== me.id ? `<button class="btn small ${m.active ? 'danger' : 'sec'}" data-toggle="${m.id}" data-active="${m.active}">${m.active ? 'Desactivar' : 'Activar'}</button>` : ''}</td></tr>`).join('')}
       </tbody></table></div>
-      <p class="muted sm">Roles: <b>Admin</b> administra usuarios, sitios y plantillas · <b>Supervisor</b> carga sitios y plantillas y puede reabrir inspecciones · <b>Inspector</b> carga inspecciones.</p></div>`;
+      <p class="muted sm">Roles: <b>Admin</b> administra usuarios, sitios y plantillas y puede borrar cualquier inspección · <b>Supervisor</b> carga sitios y plantillas y puede reabrir inspecciones · <b>Inspector</b> carga inspecciones · <b>Contratista</b> ve y realiza solo las tareas asignadas a su contratista.</p></div>`;
   $('#o-save')?.addEventListener('click', async () => {
     const name = $('#o-name').value.trim(); if (!name) return;
     const { error } = await sb.from('organizations').update({ name }).eq('id', me.org_id);
     if (error) return toast(errText(error)); await reloadOrg(); toast('Nombre actualizado');
   });
-  $('#b-copy')?.addEventListener('click', () => navigator.clipboard.writeText(org.join_code).then(() => toast('Código copiado')));
+  $('#b-copy')?.addEventListener('click', () => navigator.clipboard.writeText(joinCode || '').then(() => toast('Código copiado')));
   $('#b-rotate')?.addEventListener('click', async () => {
     if (!confirm('El código anterior deja de funcionar. ¿Generar uno nuevo?')) return;
     const { error } = await sb.rpc('org_rotate_join_code'); if (error) return toast(errText(error));
     await reloadOrg(); route();
   });
   v.querySelectorAll('[data-role]').forEach(s => s.onchange = async () => {
-    const { error } = await sb.rpc('org_update_member', { p_user: s.dataset.role, p_role: s.value });
+    let p_contractor = null;
+    if (s.value === 'contratista'){
+      if (!contrs?.length){ toast('Primero creá la contratista en Tareas → Contratistas.'); return route(); }
+      p_contractor = await new Promise(res => {
+        const m = modal(`<h2>¿De qué contratista es este usuario?</h2><select id="pc">${contrs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+          <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="pc-x">Cancelar</button><button class="btn" id="pc-ok">Asignar</button></div>`);
+        $('#pc-x').onclick = () => { m.close(); res(null); }; $('#pc-ok').onclick = () => { const val = $('#pc').value; m.close(); res(val); };
+      });
+      if (!p_contractor) return route();
+    }
+    const { error } = await sb.rpc('org_update_member', { p_user: s.dataset.role, p_role: s.value, p_contractor });
     toast(error ? errText(error) : 'Rol actualizado'); route();
   });
   v.querySelectorAll('[data-toggle]').forEach(b => b.onclick = async () => {
