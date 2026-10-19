@@ -106,13 +106,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .p-prueba,.p-info{background:#E8EEF8;color:var(--navy-2)}
 .code{font-family:ui-monospace,Menlo,monospace;font-size:20px;letter-spacing:3px;background:var(--bg);padding:8px 14px;border-radius:8px;display:inline-block}
 
-.modal{position:fixed;inset:0;background:rgba(15,42,74,.45);display:grid;place-items:center;padding:16px;z-index:100;overflow:auto}
+.modal{position:fixed;inset:0;background:rgba(15,42,74,.45);display:grid;place-items:center;padding:16px;z-index:1000;overflow:auto}
 .modal .card{width:100%;max-width:480px;margin:auto}
 .modal .card.wide{max-width:760px}
-.toast{position:fixed;bottom:max(18px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;z-index:200;font-size:14px;max-width:92vw;display:flex;gap:12px;align-items:center}
+.toast{position:fixed;bottom:max(18px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;z-index:1100;font-size:14px;max-width:92vw;display:flex;gap:12px;align-items:center}
 .toast button{background:var(--green);color:#fff;border:0;border-radius:6px;padding:6px 10px;font-weight:600;cursor:pointer}
 
-#map{height:420px;border-radius:10px;border:1px solid var(--line)}
+#map{height:420px;border-radius:10px;border:1px solid var(--line);position:relative;z-index:0}
 .kind-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 
 /* Ejecución */
@@ -131,6 +131,8 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .opt.on.si{background:var(--si);color:#fff;border-color:var(--si)}
 .opt.on.no{background:var(--no);color:#fff;border-color:var(--no)}
 .opt.on.na{background:var(--na);color:#fff;border-color:var(--na)}
+.opt.on.warn{background:var(--amber);color:#fff;border-color:var(--amber)}
+.sec-na{background:rgba(255,255,255,.7);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px;font-weight:500;cursor:pointer;color:var(--navy-2)}
 .opt.on.neutral{background:var(--navy-2);color:#fff;border-color:var(--navy-2)}
 .item-tools{display:flex;gap:14px;margin-top:8px}
 .item-tools button,.item-tools label{background:none;border:0;color:var(--navy-2);cursor:pointer;padding:4px 0;font-size:13px;margin:0;font-weight:400}
@@ -171,7 +173,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .hbars .hit{display:contents;cursor:pointer}
 .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .chart-grid .card{margin:0}
-.tip{position:fixed;z-index:300;pointer-events:none;background:#0b0b0b;color:#fff;font-size:12px;padding:6px 9px;border-radius:6px;max-width:260px;line-height:1.4}
+.tip{position:fixed;z-index:1200;pointer-events:none;background:#0b0b0b;color:#fff;font-size:12px;padding:6px 9px;border-radius:6px;max-width:260px;line-height:1.4}
 .empty{color:var(--muted);font-size:14px;padding:20px 0;text-align:center}
 
 /* Informe */
@@ -191,7 +193,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 #report .rp-item{display:grid;grid-template-columns:1fr 34%;gap:12px;border-bottom:1px solid #e4e7ee;padding:4px 0 6px 14px;break-inside:avoid}
 #report .rp-item .lb{font-weight:600;padding:8px 0}
 #report .rp-ans{padding:10px 12px;text-align:right;color:#fff;font-size:13px;align-self:start}
-#report .a-si{background:var(--si)} #report .a-no{background:var(--no)} #report .a-na{background:#727272}
+#report .a-si{background:var(--si)} #report .a-no{background:var(--no)} #report .a-na{background:#727272} #report .a-warn{background:#B7791F}
 #report .a-val{color:#1d2433;text-align:right;padding:8px 0}
 #report .a-val small{display:block;color:#555}
 #report .rp-note{grid-column:1 / -1;color:#333;padding:0 0 4px}
@@ -303,7 +305,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.1';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -327,8 +329,8 @@ function uid(){
 }
 const STATE_TXT = {activa:'Activa', por_vencer:'Por vencer', vencida:'Vencida', suspendida:'Suspendida'};
 const KIND_TXT = {preventivo:'Preventivo', correctivo:'Correctivo', otro:'Otro'};
-const SITE_KINDS = {epi:'EPI / Nodo', repetidora:'Repetidora', acueducto:'Acueducto', tramo_fo:'Tramo de fibra', radioenlace:'Radioenlace', shelter:'Shelter', otro:'Otro'};
-const SITE_COLORS = {epi:'#22B07D', repetidora:'#8B5CF6', acueducto:'#2B7BD6', tramo_fo:'#F2A93B', radioenlace:'#8B5CF6', shelter:'#0F2A4A', otro:'#6E6E6E'};
+const SITE_KINDS = {epi:'EPI / Nodo', sala:'Sala técnica / carrier', repetidora:'Repetidora', acueducto:'Acueducto', tramo_fo:'Tramo de fibra', radioenlace:'Radioenlace', shelter:'Shelter', otro:'Otro'};
+const SITE_COLORS = {epi:'#22B07D', sala:'#0E7490', repetidora:'#8B5CF6', acueducto:'#2B7BD6', tramo_fo:'#F2A93B', radioenlace:'#8B5CF6', shelter:'#0F2A4A', otro:'#6E6E6E'};
 const online = () => navigator.onLine;
 const isNetErr = e => /Failed to fetch|NetworkError|Load failed|network|fetch failed|ERR_INTERNET|timeout/i.test(String((e && (e.message || e.details)) || e));
 function toast(msg, action){
@@ -695,6 +697,10 @@ const LIBRARY = [
 function evalItem(it, a){
   const v = a?.value;
   if (v === undefined || v === null || v === '') return {scored:false};
+  if (it.type === 'brm'){
+    if (v === 'na') return {scored:false};
+    return v === 'b' ? {scored:true, ok:true, pts:1} : v === 'r' ? {scored:true, ok:true, warn:true, pts:0.5} : {scored:true, ok:false, bad:true, pts:0};
+  }
   if (it.type === 'yesno' || it.type === 'okfail'){
     if (v === 'na' || it.good === 'none') return {scored:false};
     const good = it.type === 'okfail' ? 'ok' : (it.good || 'si');
@@ -722,12 +728,13 @@ function computeScore(def, answers){
       const a = answers[it.id];
       if (isAnswered(it, a) || (a?.photos || []).length) answered++;
       const r = evalItem(it, a);
-      if (r.scored){ sm++; max++; if (r.ok){ ss++; score++; } if (r.bad){ flagged++; flaggedItems.push(it.label.trim()); } }
+      if (r.scored){ const pt = r.pts ?? (r.ok ? 1 : 0); sm++; max++; ss += pt; score += pt; if (r.bad){ flagged++; flaggedItems.push(it.label.trim()); } }
     }
     bySec[s.id] = {score:ss, max:sm};
   }
   return {score, max, flagged, answered, total, bySec, flaggedItems};
 }
+const fmtPts = n => Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
 const pct = (a,b) => b ? (a*100/b).toFixed(2).replace('.',',') + '%' : '—';
 const pct0 = v => v === null || v === undefined || isNaN(v) ? '—' : Math.round(v) + '%';
 
@@ -845,7 +852,7 @@ async function warmCache(){
   try {
     await Promise.allSettled([
       cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')),
-      cached('sites-min', () => sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name')),
+      cached('sites-min2', () => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name')),
       cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', {ascending: true}).limit(500)),
       cached('contractors', () => sb.from('contractors').select('*').order('name')),
     ]);
@@ -1059,7 +1066,7 @@ async function newInspection(){
   try {
     [tpls, sites] = await Promise.all([
       cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')),
-      cached('sites-min', () => sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name')).catch(() => []),
+      cached('sites-min2', () => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name')).catch(() => []),
     ]);
   } catch (e){ return toast(errText(e)); }
   if (!tpls?.length){
@@ -1069,7 +1076,7 @@ async function newInspection(){
   const m = modal(`<h2>Nueva inspección</h2>
     <label>Plantilla</label><select id="n-tpl">${tpls.map(t => `<option value="${t.id}">${esc(t.name)} · ${KIND_TXT[t.kind]}</option>`).join('')}</select>
     <label>Sitio</label><input id="n-site-q" placeholder="Escribí para buscar (${sites?.length||0} sitios)" list="n-sites" autocomplete="off">
-    <datalist id="n-sites">${(sites||[]).map(s => `<option value="${esc(s.name)}${s.traza ? ' · Traza ' + esc(s.traza) : ''}">`).join('')}</datalist>
+    <datalist id="n-sites">${(sites||[]).map(s => `<option value="${esc(s.name)}${s.traza ? ' · Traza ' + esc(s.traza) : ''}">${esc([s.address, s.grupo].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>
     <p class="muted sm" style="margin:6px 0 0">Si el sitio no está en la lista, escribí el nombre igual: queda registrado como texto.</p>
     <label>Tipo</label><select id="n-kind"><option value="preventivo">Preventivo</option><option value="correctivo">Correctivo</option><option value="otro">Otro</option></select>
     ${!online() ? '<p class="sm" style="color:var(--amber)">Sin conexión: la inspección se guarda en el teléfono y se envía sola cuando vuelva la señal.</p>' : ''}
@@ -1133,7 +1140,16 @@ async function viewExecute(v, id){
   const def = ins.template_snapshot || {sections:[]};
   const answers = ins.answers || (ins.answers = {});
   const allItems = def.sections.flatMap(s => s.items);
-  allItems.forEach(it => { if (it.autofill === 'inspector' && !answers[it.id]?.value) answers[it.id] = {...(answers[it.id]||{}), value: me.full_name || ''}; });
+  allItems.forEach(it => {
+    if (it.autofill === 'inspector' && !answers[it.id]?.value) answers[it.id] = {...(answers[it.id]||{}), value: me.full_name || ''};
+    else if (it.default !== undefined && it.default !== '' && answers[it.id]?.value === undefined) answers[it.id] = {...(answers[it.id]||{}), value: it.default};
+  });
+  if (allItems.some(it => typeof answers[it.id]?.value === 'string' && answers[it.id].value.includes('['))){
+    let st = null;
+    try { const ss = await cached('sites-min2', () => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name')); st = ss.find(x => x.id === ins.site_id) || ss.find(x => x.name.toLowerCase() === String(ins.site_name || '').toLowerCase()); } catch {}
+    const tok = { 'dirección del sitio': st?.address || '', 'direccion del sitio': st?.address || '', 'sitio': ins.site_name || '', 'traza': ins.traza || st?.traza || '', 'grupo': st?.grupo || '' };
+    allItems.forEach(it => { const a = answers[it.id]; if (typeof a?.value === 'string' && a.value.includes('[')) a.value = a.value.replace(/\[([^\]]+)\]/g, (m, k) => (k.toLowerCase() in tok ? tok[k.toLowerCase()] : m)).trim(); });
+  }
 
   let dirty = false, timer = null;
   const setStatus = t => { const el = $('#save-st'); if (el) el.textContent = t; };
@@ -1152,7 +1168,7 @@ async function viewExecute(v, id){
     const p = sc.total ? Math.round(sc.answered*100/sc.total) : 0;
     const bar = $('#prog'); if (bar) bar.style.width = p + '%';
     const t = $('#prog-t'); if (t) t.textContent = `${sc.answered} de ${sc.total} respondidas · Puntaje ${pct(sc.score, sc.max)}${sc.flagged ? ' · ' + sc.flagged + ' señalados' : ''}`;
-    def.sections.forEach(s => { const e = $('#ss-' + s.id); if (e) e.textContent = sc.bySec[s.id].max ? `${sc.bySec[s.id].score} / ${sc.bySec[s.id].max}` : ''; });
+    def.sections.forEach(s => { const e = $('#ss-' + s.id); if (e) e.textContent = sc.bySec[s.id].max ? `${fmtPts(sc.bySec[s.id].score)} / ${sc.bySec[s.id].max}` : ''; });
   }
 
   v.innerHTML = `
@@ -1163,7 +1179,7 @@ async function viewExecute(v, id){
       <div class="muted sm" id="prog-t" style="margin-top:4px"></div>
     </div>
     ${def.sections.map((s, si) => `
-      <div class="card sec-card"><div class="sec-title"><span>${si+1}. ${esc(s.title)}</span><span class="sm" id="ss-${s.id}"></span></div>
+      <div class="card sec-card"><div class="sec-title"><span>${si+1}. ${esc(s.title)}</span><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="sm" id="ss-${s.id}"></span>${s.items.some(it => ['yesno','okfail','brm'].includes(it.type)) ? `<button type="button" class="sec-na" data-secna="${si}" title="Marca N/A las preguntas de esta sección que todavía no respondiste">N/A al resto</button>` : ''}</span></div>
         ${s.items.map(it => renderItem(it)).join('')}
       </div>`).join('')}
     <div class="card"><div class="err" id="fin-err"></div>
@@ -1181,6 +1197,9 @@ async function viewExecute(v, id){
       ctl = `<div class="opts">${opts.map(([val, txt]) => {
         const cls = val === 'na' ? 'na' : (it.good === 'none' ? 'neutral' : (val === good ? 'si' : 'no'));
         return `<button type="button" class="opt ${cls} ${a.value === val ? 'on' : ''}" data-set="${it.id}" data-val="${val}">${txt}</button>`; }).join('')}</div>`;
+    } else if (it.type === 'brm'){
+      ctl = `<div class="opts">${[['b','Bueno','si'],['r','Regular','warn'],['m','Malo','no'],['na','N/A','na']].map(([val, txt, cls]) =>
+        `<button type="button" class="opt ${cls} ${a.value === val ? 'on' : ''}" data-set="${it.id}" data-val="${val}">${txt}</button>`).join('')}</div>`;
     } else if (it.type === 'number'){
       const rng = (it.min !== undefined || it.max !== undefined) ? `Rango aceptable: ${it.min ?? '—'} a ${it.max ?? '—'} ${esc(it.unit||'')}` : (it.unit ? esc(it.unit) : '');
       ctl = `<div class="row"><input type="number" inputmode="decimal" step="any" data-num="${it.id}" value="${esc(a.value ?? '')}" style="max-width:180px"><span class="muted sm">${rng}</span></div>`;
@@ -1276,6 +1295,14 @@ async function viewExecute(v, id){
     });
   }
   bindItems(v); initSig(v); hydrate(v); updateProgress();
+  v.querySelectorAll('[data-secna]').forEach(b => b.onclick = () => {
+    const s = def.sections[Number(b.dataset.secna)];
+    const pend = s.items.filter(it => ['yesno','okfail','brm'].includes(it.type) && !isAnswered(it, answers[it.id]));
+    if (!pend.length) return toast('No quedan preguntas sin responder en esta sección.');
+    if (!confirm(`Se marcan como N/A ${pend.length} pregunta${pend.length === 1 ? '' : 's'} sin responder de "${s.title}". ¿Continuar?`)) return;
+    pend.forEach(it => { answers[it.id] = {...(answers[it.id] || {}), value: 'na'}; });
+    queueSave(); pend.forEach(it => rerenderItem(it.id));
+  });
 
   $('#b-later').onclick = async () => { await save(); leaveGuard = null; location.hash = '#/insp'; };
   $('#b-del').onclick = async () => { await save(); leaveGuard = null; deleteInspection(ins); };
@@ -1311,6 +1338,10 @@ async function viewReport(v, id){
       if (it.good === 'none') return `<div class="rp-ans" style="background:#1A3A6B">${txt}</div>`;
       return `<div class="rp-ans ${evalItem(it, a).ok ? 'a-si' : 'a-no'}">${txt}</div>`;
     }
+    if (it.type === 'brm'){
+      if (!v_) return '<div></div>';
+      return `<div class="rp-ans ${{b:'a-si', r:'a-warn', m:'a-no', na:'a-na'}[v_]}">${{b:'Bueno', r:'Regular', m:'Malo', na:'N/A'}[v_]}</div>`;
+    }
     if (it.type === 'number'){
       if (v_ === null || v_ === undefined || v_ === '') return '<div></div>';
       const r = evalItem(it, a);
@@ -1323,7 +1354,7 @@ async function viewReport(v, id){
     return '<div></div>';
   };
   const body = def.sections.map((s, si) => `
-    <div class="rp-sec"><span>${si+1}. ${esc(s.title)}</span><span class="sm" style="font-weight:400">${sc.bySec[s.id].max ? `${sc.bySec[s.id].score} / ${sc.bySec[s.id].max} (${pct(sc.bySec[s.id].score, sc.bySec[s.id].max)})` : ''}</span></div>
+    <div class="rp-sec"><span>${si+1}. ${esc(s.title)}</span><span class="sm" style="font-weight:400">${sc.bySec[s.id].max ? `${fmtPts(sc.bySec[s.id].score)} / ${sc.bySec[s.id].max} (${pct(sc.bySec[s.id].score, sc.bySec[s.id].max)})` : ''}</span></div>
     ${s.items.map(it => {
       if (it.type === 'heading') return `<div class="rp-subh"><span>${esc(it.label)}</span></div>`;
       const a = answers[it.id] || {};
@@ -1348,7 +1379,7 @@ async function viewReport(v, id){
       <div class="rp-logo">${LOGO(44)}<div><b>${esc(org?.name || 'InspectApp')}</b><div class="muted sm">InspectApp</div></div></div>
       <h1>${esc(ins.template_name).toUpperCase()}</h1>
       <div class="rp-sub"><span>${esc(ins.site_name || '')}</span><span class="st" style="${ins.status==='borrador' ? 'color:var(--amber)' : ''}">${ins.status === 'completada' ? 'Completada' : 'Borrador'}</span></div>
-      <div class="rp-score"><div><b>Puntuación</b><span>${sc.score} / ${sc.max} (${pct(sc.score, sc.max)})</span></div>
+      <div class="rp-score"><div><b>Puntuación</b><span>${fmtPts(sc.score)} / ${sc.max} (${pct(sc.score, sc.max)})</span></div>
         <div><b>Elementos señalados</b><span>${sc.flagged}</span></div><div><b>Tipo</b><span>${KIND_TXT[ins.kind]}</span></div></div>
       ${ins.traza ? `<div class="rp-kv"><b>TRAZA</b><span>${esc(ins.traza)}</span></div>` : ''}
       <div class="rp-kv"><b>NODO / SITIO</b><span>${esc(ins.site_name || '—')}</span></div>
@@ -1438,8 +1469,12 @@ function chartHBars(items, {stacked=false, unit='', max=null, onClick=null}={}){
 
 async function viewStats(v){
   let sites = [];
-  try { sites = await cached('sites-min', () => sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name')); } catch {}
+  try { sites = await cached('sites-min2', () => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name')); } catch {}
   const trazas = [...new Set(sites.map(s => s.traza).filter(Boolean).flatMap(t => String(t).split(', ')))].sort((a, b) => a.localeCompare(b, 'es', {numeric:true}));
+  let allTasksC = []; try { allTasksC = await cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', {ascending: true}).limit(500)); } catch {}
+  const contratos = [...new Set([...sites.map(s => s.grupo), ...allTasksC.map(t => t.contract)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const siteById = new Map(sites.map(s => [s.id, s]));
+  const contractOf = r => r.site_id && siteById.get(r.site_id)?.grupo || null;
   let saved = {}; try { saved = JSON.parse(localStorage.getItem('ia_stats') || '{}'); } catch {}
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">Estadísticas</h2><span class="muted sm" id="st-note"></span></div>
@@ -1447,12 +1482,14 @@ async function viewStats(v){
         <select id="sf-per" style="width:auto">
           <option value="30">Últimos 30 días</option><option value="90">Últimos 3 meses</option><option value="180">Últimos 6 meses</option><option value="365">Últimos 12 meses</option><option value="730">Últimos 2 años</option></select>
         <select id="sf-traza" style="width:auto"><option value="">Todas las trazas</option>${trazas.map(t => `<option>${esc(t)}</option>`).join('')}</select>
+        ${contratos.length ? `<select id="sf-ct" style="width:auto"><option value="">Todos los contratos</option>${contratos.map(k => `<option>${esc(k)}</option>`).join('')}</select>` : ''}
         <select id="sf-kind" style="width:auto"><option value="">Preventivo y correctivo</option><option value="preventivo">Solo preventivo</option><option value="correctivo">Solo correctivo</option></select>
       </div></div>
     <div id="st-body"><div class="card muted">Cargando…</div></div>`;
   $('#sf-per').value = saved.per || '90'; $('#sf-traza').value = saved.traza || ''; $('#sf-kind').value = saved.kind || '';
+  if ($('#sf-ct') && contratos.includes(saved.ct)) $('#sf-ct').value = saved.ct;
   const load = async () => {
-    const f = { per: $('#sf-per').value, traza: $('#sf-traza').value, kind: $('#sf-kind').value };
+    const f = { per: $('#sf-per').value, traza: $('#sf-traza').value, kind: $('#sf-kind').value, ct: $('#sf-ct')?.value || '' };
     try { localStorage.setItem('ia_stats', JSON.stringify(f)); } catch {}
     const from = new Date(Date.now() - Number(f.per) * 86400000);
     let rows = [];
@@ -1465,18 +1502,23 @@ async function viewStats(v){
     const loc = (await localAll()).filter(r => r.status === 'completada' && r._dirty && r.started_at >= from.toISOString());
     const ids = new Set(rows.map(r => r.id)); loc.forEach(l => { if (!ids.has(l.id)) rows.push(l); });
     const inTraza = r => !f.traza || String(r.traza || '').split(', ').includes(f.traza);
-    rows = rows.filter(r => inTraza(r) && (!f.kind || r.kind === f.kind));
+    const taskContract = new Map(allTasksC.map(t => [t.id, t.contract]));
+    const inCt = r => !f.ct || (r.task_id && taskContract.get(r.task_id) === f.ct) || contractOf(r) === f.ct;
+    rows = rows.filter(r => inTraza(r) && inCt(r) && (!f.kind || r.kind === f.kind));
     $('#st-note').textContent = online() ? '' : 'Sin conexión: datos de la última descarga';
     let perf = [];
     try {
       const [tasks, contrs] = await Promise.all([
-        cached('stats-tasks:' + f.per, () => sb.from('tasks').select('id,contractor_id,status,due_date,completed_at,quality,rejections').gte('due_date', from.toISOString().slice(0, 10)).limit(5000)),
+        cached('stats-tasks2:' + f.per, () => sb.from('tasks').select('id,contractor_id,contract,status,due_date,completed_at,quality,rejections').gte('due_date', from.toISOString().slice(0, 10)).limit(5000)),
         loadContractors()]);
-      perf = contractorPerformance(tasks, contrs, rows);
+      const tsel = tasks.filter(t => !f.ct || t.contract === f.ct);
+      perf = contractorPerformance(tsel, contrs, rows);
+      perf.byContract = contractSummary(tasks, contrs, rows);
+      perf.ct = f.ct;
     } catch {}
-    renderStats($('#st-body'), rows, sites.filter(inTraza), from, f, perf);
+    renderStats($('#st-body'), rows, sites.filter(s => inTraza(s) && (!f.ct || s.grupo === f.ct)), from, f, perf);
   };
-  ['#sf-per','#sf-traza','#sf-kind'].forEach(s => $(s).onchange = load);
+  ['#sf-per','#sf-traza','#sf-kind','#sf-ct'].forEach(s => $(s) && ($(s).onchange = load));
   load();
 }
 
@@ -1499,7 +1541,7 @@ function renderStats(box, rows, sites, from, f, perf = []){
   }
   // sitios sin visita en el período
   const visited = new Set([...bySite.keys()]);
-  const sinVisita = sites.filter(s => ['epi','repetidora','shelter'].includes(s.kind) && !visited.has(s.id));
+  const sinVisita = sites.filter(s => ['epi','sala','repetidora','shelter'].includes(s.kind) && !visited.has(s.id));
   const siteList = [...bySite.values()].map(s => ({ ...s, total: s.prev + s.corr + s.otro, avg: s.nPct ? s.sumPct / s.nPct : null }));
   // ítems que más fallan
   const fails = {};
@@ -1516,7 +1558,7 @@ function renderStats(box, rows, sites, from, f, perf = []){
   const topSites = [...siteList].sort((a, b) => b.total - a.total).slice(0, 10);
 
   if (!rows.length){
-    box.innerHTML = `<div class="card"><div class="empty">No hay inspecciones completadas en este período${f.traza ? ' para la traza ' + esc(f.traza) : ''}.<br>Cambiá el período o completá inspecciones para ver las estadísticas.</div></div>` + perfSection(perf);
+    box.innerHTML = `<div class="card"><div class="empty">No hay inspecciones completadas en este período${f.traza ? ' para la traza ' + esc(f.traza) : ''}.<br>Cambiá el período o completá inspecciones para ver las estadísticas.</div></div>` + contractSection(perf.byContract) + perfSection(perf);
     bindTips(box); return;
   }
   const scoreColor = p => p === null ? 'var(--muted)' : p >= 90 ? 'var(--si)' : p >= 75 ? 'var(--amber)' : 'var(--red)';
@@ -1551,7 +1593,7 @@ function renderStats(box, rows, sites, from, f, perf = []){
         <th class="sortable num" data-sort="avg">Puntaje</th><th class="sortable num" data-sort="last">Última visita</th></tr></thead>
         <tbody id="srows"></tbody></table></div>
       ${sinVisita.length ? `<details style="margin-top:12px"><summary class="sm" style="cursor:pointer;color:var(--red)">${sinVisita.length} nodo${sinVisita.length===1?'':'s'} sin visita en el período</summary><p class="sm muted">${sinVisita.map(s => esc(s.name)).join(' · ')}</p></details>` : ''}
-    </div>${perfSection(perf)}`;
+    </div>${contractSection(perf.byContract)}${perfSection(perf)}`;
   let sortK = 'total', sortD = -1;
   const renderRows = () => {
     const q = $('#sq').value.trim().toLowerCase();
@@ -1602,7 +1644,7 @@ const TASK_TYPES = {inspeccion:'Inspección', instalacion:'Instalación', repara
 const PRIORITIES = {baja:'Baja', media:'Media', alta:'Alta', urgente:'Urgente'};
 const TASK_ST = {sin_asignar:'Sin asignar', asignada:'Asignada', vista:'Vista', en_curso:'En curso', completada:'Completada', aprobada:'Aprobada', rechazada:'Rechazada', cancelada:'Cancelada'};
 const TASK_PILL = {sin_asignar:'p-pend', asignada:'p-info', vista:'p-info', en_curso:'p-pend', completada:'p-ok', aprobada:'p-ok', rechazada:'p-bad', cancelada:''};
-const TASK_COLS = 'id,history,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at';
+const TASK_COLS = 'id,history,contract,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at';
 const taskOpen = t => !['completada','aprobada','cancelada'].includes(t.status);
 const dueDate = d => new Date(d + 'T23:59:59');
 const isOverdue = t => taskOpen(t) && dueDate(t.due_date) < new Date();
@@ -1638,7 +1680,7 @@ function taskTable(rows, contrs){
   return `<div class="tblwrap"><table class="tbl"><thead><tr><th>Vence</th><th>Tarea</th>${isContractor() ? '' : '<th>Contratista</th>'}<th class="hide-sm">Tipo</th><th class="hide-sm">Avance</th><th>Estado</th></tr></thead><tbody>
     ${rows.map(t => { const done = (t.sites || []).filter(s => s.done).length, tot = (t.sites || []).length; return `<tr class="click" data-task="${t.id}">
       <td>${fmtDate(dueDate(t.due_date))}${isOverdue(t) ? '<div><span class="pill p-bad">Vencida</span></div>' : ''}</td>
-      <td><b>${esc(t.title)}</b>${t.priority === 'urgente' || t.priority === 'alta' ? ` <span class="pill ${t.priority === 'urgente' ? 'p-bad' : 'p-pend'}">${PRIORITIES[t.priority]}</span>` : ''}<div class="muted sm">${(t.sites || []).slice(0, 3).map(s => esc(s.site_name)).join(' · ')}${tot > 3 ? ` y ${tot - 3} más` : ''}</div></td>
+      <td><b>${esc(t.title)}</b>${t.priority === 'urgente' || t.priority === 'alta' ? ` <span class="pill ${t.priority === 'urgente' ? 'p-bad' : 'p-pend'}">${PRIORITIES[t.priority]}</span>` : ''}<div class="muted sm">${t.contract ? esc(t.contract) + ' · ' : ''}${(t.sites || []).slice(0, 3).map(s => esc(s.site_name)).join(' · ')}${tot > 3 ? ` y ${tot - 3} más` : ''}</div></td>
       ${isContractor() ? '' : `<td>${t.contractor_id ? esc(cn(t.contractor_id)) : cn(null)}</td>`}
       <td class="hide-sm">${TASK_TYPES[t.task_type]}</td><td class="hide-sm">${done} / ${tot}</td>
       <td><span class="pill ${TASK_PILL[t.status]}">${TASK_ST[t.status]}</span></td></tr>`; }).join('')}
@@ -1664,20 +1706,21 @@ async function viewTasks(v){
       <div class="row" style="margin-top:12px">
         <select id="tf-st" style="width:auto"><option value="abiertas">Abiertas</option><option value="revisar">${isContractor() ? 'Completadas' : 'Para revisar'}</option><option value="">Todas</option>${Object.entries(TASK_ST).map(([k, x]) => `<option value="${k}">${x}</option>`).join('')}</select>
         ${isContractor() ? '' : `<select id="tf-c" style="width:auto"><option value="">Todas las contratistas</option><option value="__none">Sin asignar</option>${contrs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>`}
+        ${[...new Set(tasks.map(t => t.contract).filter(Boolean))].length ? `<select id="tf-k" style="width:auto"><option value="">Todos los contratos</option>${[...new Set(tasks.map(t => t.contract).filter(Boolean))].sort().map(k => `<option>${esc(k)}</option>`).join('')}</select>` : ''}
         <input id="tf-q" class="grow" placeholder="Buscar tarea o sitio">
       </div></div>
     <div class="card" id="tlist"></div>
     ${!contrs.length && manage ? '<div class="banner warn"><span class="dot"></span><div>Todavía no cargaste contratistas. Entrá a <b>Contratistas</b> para crear la primera.</div></div>' : ''}`;
   const render = () => {
-    const st = $('#tf-st').value, c = $('#tf-c')?.value, q = $('#tf-q').value.trim().toLowerCase();
-    const rows = tasks.filter(t =>
+    const st = $('#tf-st').value, c = $('#tf-c')?.value, q = $('#tf-q').value.trim().toLowerCase(), k = $('#tf-k')?.value || '';
+    const rows = tasks.filter(t => (!k || t.contract === k) &&
       (st === '' || (st === 'abiertas' ? taskOpen(t) : st === 'revisar' ? t.status === 'completada' : t.status === st)) &&
       (!c || (c === '__none' ? !t.contractor_id : t.contractor_id === c)) &&
       (!q || (t.title + ' ' + (t.sites || []).map(s => s.site_name).join(' ')).toLowerCase().includes(q)));
     $('#tlist').innerHTML = taskTable(rows, contrs);
     $('#tlist').querySelectorAll('[data-task]').forEach(tr => tr.onclick = () => location.hash = '#/tasks/' + tr.dataset.task);
   };
-  $('#tf-st').onchange = render; $('#tf-q').oninput = render; $('#tf-c') && ($('#tf-c').onchange = render);
+  $('#tf-st').onchange = render; $('#tf-q').oninput = render; $('#tf-c') && ($('#tf-c').onchange = render); $('#tf-k') && ($('#tf-k').onchange = render);
   render();
   $('#b-newtask')?.addEventListener('click', () => editTask(null, contrs));
 }
@@ -1693,7 +1736,7 @@ async function editTask(t, contrs){
   const load = await contractorLoad();
   const [tpls, sites] = await Promise.all([
     cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')),
-    cached('sites-min', () => sb.from('sites').select('id,name,kind,traza').eq('active', true).order('name')).catch(() => []),
+    cached('sites-min2', () => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name')).catch(() => []),
   ]);
   if (!tpls.length) return toast('Primero cargá una plantilla.');
   const isNew = !t;
@@ -1706,6 +1749,8 @@ async function editTask(t, contrs){
     <div class="row"><div class="grow"><label>Tipo</label><select id="nt-type">${Object.entries(TASK_TYPES).map(([k, x]) => `<option value="${k}" ${t.task_type === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
       <div class="grow"><label>Prioridad</label><select id="nt-pr">${Object.entries(PRIORITIES).map(([k, x]) => `<option value="${k}" ${t.priority === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
       <div class="grow"><label>Fecha límite</label><input id="nt-due" type="date" value="${esc(t.due_date)}"></div></div>
+    <label>Contrato</label><input id="nt-ct" list="nt-cl" value="${esc(t.contract || '')}" placeholder="Se completa con el grupo de los sitios; podés escribir otro">
+    <datalist id="nt-cl">${[...new Set(sites.map(s => s.grupo).filter(Boolean))].map(g => `<option value="${esc(g)}">`).join('')}</datalist>
     <label>Planilla con la que se cierra cada sitio</label><select id="nt-tpl">${tpls.map(x => `<option value="${x.id}" ${t.template_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
     <label>Sitios</label>
     <div class="row"><input id="nt-sq" class="grow" list="nt-sl" placeholder="Escribí y tocá Agregar" autocomplete="off"><button class="btn sec" id="nt-sadd" type="button">Agregar</button></div>
@@ -1723,6 +1768,7 @@ async function editTask(t, contrs){
     const s = sites.find(x => x.name.toLowerCase() === raw.toLowerCase());
     if (chosen.some(c => c.site_name.toLowerCase() === raw.toLowerCase())) return toast('Ese sitio ya está en la tarea.');
     chosen.push({ site_id: s?.id || null, site_name: s ? s.name : raw, inspection_id: null, done: false });
+    if (s?.grupo && !$('#nt-ct').value.trim()) $('#nt-ct').value = s.grupo;
     $('#nt-sq').value = ''; chips();
   };
   $('#nt-sadd').onclick = add; $('#nt-sq').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } };
@@ -1730,7 +1776,8 @@ async function editTask(t, contrs){
   $('#nt-x').onclick = m.close;
   $('#nt-ok').onclick = async () => {
     const row = { title: $('#nt-title').value.trim(), task_type: $('#nt-type').value, priority: $('#nt-pr').value,
-      due_date: $('#nt-due').value, template_id: $('#nt-tpl').value, sites: chosen, description: $('#nt-desc').value.trim() || null };
+      due_date: $('#nt-due').value, template_id: $('#nt-tpl').value, sites: chosen, description: $('#nt-desc').value.trim() || null,
+      contract: $('#nt-ct').value.trim() || null };
     if (!row.title) return ($('#nt-err').textContent = 'Poné un título.');
     if (!row.due_date) return ($('#nt-err').textContent = 'Indicá la fecha límite.');
     if (!chosen.length) return ($('#nt-err').textContent = 'Agregá al menos un sitio.');
@@ -1777,7 +1824,7 @@ async function viewTask(v, id){
         ${isAdmin() ? '<button class="btn danger" id="t-del">Borrar</button>' : ''}
         ${t.status === 'completada' ? '<button class="btn" id="t-review">Revisar</button>' : ''}` : ''}</div></div>
     <div class="card">
-      <div class="row between"><div><h1>${esc(t.title)}</h1><div class="muted">${isContractor() ? '' : esc(c.name) + ' · '}${TASK_TYPES[t.task_type]} · Prioridad ${PRIORITIES[t.priority].toLowerCase()}</div></div>
+      <div class="row between"><div><h1>${esc(t.title)}</h1><div class="muted">${isContractor() ? '' : esc(c.name) + ' · '}${TASK_TYPES[t.task_type]} · Prioridad ${PRIORITIES[t.priority].toLowerCase()}${t.contract ? '<br>Contrato: ' + esc(t.contract) : ''}</div></div>
         <div style="text-align:right"><span class="pill ${TASK_PILL[t.status]}" style="font-size:14px">${TASK_ST[t.status]}</span>${isOverdue(t) ? ' <span class="pill p-bad" style="font-size:14px">Vencida</span>' : ''}</div></div>
       <div class="stats" style="margin-top:14px">
         <div class="stat"><span>Fecha límite</span><b style="font-size:18px">${fmtDate(dueDate(t.due_date))}</b><small>${taskOpen(t) ? (daysLeft(dueDate(t.due_date)) >= 0 ? `faltan ${daysLeft(dueDate(t.due_date))} días` : `vencida hace ${-daysLeft(dueDate(t.due_date))} días`) : ''}</small></div>
@@ -1933,10 +1980,29 @@ function contractorPerformance(tasks, contrs, inspRows){
       demora: lateDays.length ? lateDays.reduce((a, b) => a + b, 0) / lateDays.length : 0, reviewed: reviewed.length };
   }).filter(p => p.asignadas).sort((a, b) => (b.indice ?? -1) - (a.indice ?? -1));
 }
+function contractSummary(tasks, contrs, inspRows){
+  const groups = {};
+  tasks.forEach(t => { const k = t.contract || 'Sin contrato'; (groups[k] = groups[k] || []).push(t); });
+  return Object.entries(groups).map(([k, ts]) => {
+    const p = contractorPerformance(ts.map(t => ({ ...t, contractor_id: '__all' })), [{ id: '__all', name: k }], inspRows)[0];
+    const nContr = new Set(ts.map(t => t.contractor_id).filter(Boolean)).size;
+    return p ? { ...p, contract: k, nContr } : null;
+  }).filter(Boolean).sort((a, b) => a.contract.localeCompare(b.contract, 'es'));
+}
+function contractSection(list){
+  if (!list?.length) return '';
+  const col = p => p === null ? 'var(--muted)' : p >= 80 ? 'var(--si)' : p >= 60 ? 'var(--amber)' : 'var(--red)';
+  return `<div class="card"><h2>Tareas por contrato</h2>
+    <div class="tblwrap"><table class="tbl"><thead><tr><th>Contrato</th><th class="num">Contratistas</th><th class="num">Asignadas</th><th class="num">Terminadas</th><th class="num">Vencidas</th><th class="num">A tiempo</th><th class="num">Calidad</th><th class="num hide-sm">Rechazos</th><th class="num">Índice</th></tr></thead><tbody>
+    ${list.map(p => `<tr><td><b>${esc(p.contract)}</b></td><td class="num">${p.nContr}</td><td class="num">${p.asignadas}</td><td class="num">${p.finalizadas}</td>
+      <td class="num" style="color:${p.vencidas ? 'var(--red)' : 'inherit'}">${p.vencidas}</td><td class="num" style="color:${col(p.tiempo)}">${pct0(p.tiempo)}</td>
+      <td class="num" style="color:${col(p.calidad)}">${pct0(p.calidad)}</td><td class="num hide-sm">${p.rech}</td><td class="num" style="font-weight:700;color:${col(p.indice)}">${p.indice === null ? '—' : Math.round(p.indice)}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
 function perfSection(perf){
   if (!perf.length) return '';
   const col = p => p === null ? 'var(--muted)' : p >= 80 ? 'var(--si)' : p >= 60 ? 'var(--amber)' : 'var(--red)';
-  return `<div class="card"><h2>Desempeño de contratistas</h2>
+  return `<div class="card"><h2>Desempeño de contratistas${perf.ct ? ' · ' + esc(perf.ct) : ''}</h2>
     <p class="muted sm" style="margin-top:-6px">Índice = 40% tareas a tiempo + 40% calidad (calificación del supervisor o puntaje de las inspecciones) + 20% sin rechazos. Las tareas vencidas sin terminar cuentan como fuera de término.</p>
     ${chartHBars(perf.map(p => ({ label: p.c.name, v: p.indice ?? 0, display: p.indice === null ? '—' : Math.round(p.indice), c: COL_PREV,
       tip: `<b>${esc(p.c.name)}</b><br>Índice: ${p.indice === null ? '—' : Math.round(p.indice)}<br>A tiempo: ${pct0(p.tiempo)}<br>Calidad: ${pct0(p.calidad)}<br>Sin rechazos: ${pct0(p.sinRech)}` })), {max: 100})}
@@ -1957,13 +2023,16 @@ async function viewSites(v){
   const sites = await cached('sites-all', () => sb.from('sites').select('*').order('name'));
   const manage = isManager() && canWrite() && online();
   const trazas = [...new Set(sites.map(s => s.traza).filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), 'es', {numeric:true}));
+  const grupos = [...new Set(sites.map(s => s.grupo).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'es'));
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">Sitios <span class="muted sm">(${sites.length})</span></h2>
-      ${manage ? `<div class="row"><label class="btn sec" style="margin:0">Importar KMZ / KML<input type="file" accept=".kmz,.kml" id="kmz" class="hidden"></label><button class="btn" id="b-add">+ Sitio</button></div>` : ''}</div>
+      ${manage ? `<div class="row"><label class="btn sec" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="sxl" class="hidden"></label><label class="btn sec" style="margin:0">Importar KMZ / KML<input type="file" accept=".kmz,.kml" id="kmz" class="hidden"></label><button class="btn" id="b-add">+ Sitio</button></div>` : ''}</div>
+      ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado de sitios: <button class="link" id="b-smodel">descargá el modelo de Excel</button>, completalo y subilo con <b>Importar Excel</b>.</p>' : ''}
       <div class="row" style="margin-top:12px">
         <input id="q" class="grow" placeholder="Buscar sitio">
         <select id="f-k" style="width:auto"><option value="">Todos los tipos</option>${Object.entries(SITE_KINDS).map(([k,t]) => `<option value="${k}">${t}</option>`).join('')}</select>
         <select id="f-t" style="width:auto"><option value="">Todas las trazas</option>${trazas.map(t => `<option>${esc(t)}</option>`).join('')}</select>
+        ${grupos.length ? `<select id="f-g" style="width:auto"><option value="">Todos los grupos</option>${grupos.map(g => `<option>${esc(g)}</option>`).join('')}</select>` : ''}
       </div></div>
     <div class="card"><div id="map"></div><div class="row sm muted" style="margin-top:8px">${Object.entries(SITE_KINDS).filter(([k]) => k !== 'radioenlace').map(([k,t]) => `<span><span class="kind-dot" style="background:${SITE_COLORS[k]}"></span>${k === 'repetidora' ? 'Repetidora / radioenlace' : t}</span>`).join('')}</div></div>
     <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Tipo</th><th>Traza</th><th class="hide-sm">Grupo</th><th class="hide-sm">Coordenadas</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></div>`;
@@ -1974,10 +2043,10 @@ async function viewSites(v){
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap'}).addTo(mapObj);
   } else $('#map').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa.</p>';
   const render = () => {
-    const q = $('#q').value.trim().toLowerCase(), k = $('#f-k').value, t = $('#f-t').value;
-    const rows = sites.filter(s => (!q || (s.name + ' ' + (s.aliases||[]).join(' ')).toLowerCase().includes(q)) && (!k || s.kind === k) && (!t || s.traza === t));
+    const q = $('#q').value.trim().toLowerCase(), k = $('#f-k').value, t = $('#f-t').value, g = $('#f-g')?.value || '';
+    const rows = sites.filter(s => (!g || s.grupo === g) && (!q || (s.name + ' ' + (s.aliases||[]).join(' ') + ' ' + (s.address || '') + ' ' + (s.grupo || '')).toLowerCase().includes(q)) && (!k || s.kind === k) && (!t || s.traza === t));
     $('#rows').innerHTML = rows.slice(0, 500).map(s => `<tr>
-      <td><b>${esc(s.name)}</b>${s.active ? '' : ' <span class="pill p-bad">Inactivo</span>'}</td>
+      <td><b>${esc(s.name)}</b>${s.active ? '' : ' <span class="pill p-bad">Inactivo</span>'}${s.address ? `<div class="muted sm">${esc(s.address)}</div>` : ''}</td>
       <td><span class="kind-dot" style="background:${SITE_COLORS[s.kind]}"></span>${SITE_KINDS[s.kind]}</td>
       <td>${esc(s.traza || '')}</td><td class="hide-sm">${esc(s.grupo || '')}</td>
       <td class="hide-sm sm">${s.lat ? Number(s.lat).toFixed(5) + ', ' + Number(s.lng).toFixed(5) : (s.path ? 'Recorrido' : '—')}</td>
@@ -1993,9 +2062,11 @@ async function viewSites(v){
       if (layer.getLayers().length) mapObj.fitBounds(layer.getBounds(), {padding: [20, 20], maxZoom: 13});
     }
   };
-  $('#q').oninput = render; $('#f-k').onchange = render; $('#f-t').onchange = render;
+  $('#q').oninput = render; $('#f-k').onchange = render; $('#f-t').onchange = render; $('#f-g') && ($('#f-g').onchange = render);
   render();
   $('#b-add')?.addEventListener('click', () => editSite(null));
+  $('#b-smodel')?.addEventListener('click', downloadSitesModel);
+  $('#sxl')?.addEventListener('change', e => importSitesExcel(e.target.files[0], sites));
   $('#kmz')?.addEventListener('change', e => importKMZ(e.target.files[0], sites));
 }
 function editSite(s){
@@ -2006,6 +2077,7 @@ function editSite(s){
     <div class="row"><div class="grow"><label>Tipo</label><select id="s-kind">${Object.entries(SITE_KINDS).map(([k,t]) => `<option value="${k}" ${s.kind===k?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="grow"><label>Traza</label><input id="s-traza" value="${esc(s.traza||'')}"></div>
       <div style="width:120px"><label>Tipo de nodo</label><select id="s-nt"><option value="">—</option>${[1,2,3,4].map(n => `<option ${s.node_type==n?'selected':''}>${n}</option>`).join('')}</select></div></div>
+    <label>Dirección</label><input id="s-addr" value="${esc(s.address||'')}" placeholder="Calle y número, localidad">
     <div class="row"><div class="grow"><label>Latitud</label><input id="s-lat" type="number" step="any" value="${s.lat ?? ''}"></div><div class="grow"><label>Longitud</label><input id="s-lng" type="number" step="any" value="${s.lng ?? ''}"></div></div>
     <button class="link" id="s-gps" style="margin-top:6px">Usar mi ubicación actual</button>
     <label>Otros nombres (separados por coma)</label><input id="s-alias" value="${esc((s.aliases||[]).join(', '))}" placeholder="Ej.: C. Aricaiquin, Cacique">
@@ -2020,7 +2092,8 @@ function editSite(s){
     const row = { name: $('#s-name').value.trim(), kind: $('#s-kind').value, traza: $('#s-traza').value.trim() || null,
       node_type: $('#s-nt').value ? Number($('#s-nt').value) : null,
       lat: $('#s-lat').value === '' ? null : Number($('#s-lat').value), lng: $('#s-lng').value === '' ? null : Number($('#s-lng').value),
-      aliases: $('#s-alias').value.split(',').map(x => x.trim()).filter(Boolean), notes: $('#s-notes').value.trim() || null, active: $('#s-active').checked };
+      aliases: $('#s-alias').value.split(',').map(x => x.trim()).filter(Boolean), notes: $('#s-notes').value.trim() || null, active: $('#s-active').checked,
+      address: $('#s-addr').value.trim() || null };
     if (!row.name) return ($('#s-err').textContent = 'Poné un nombre.');
     const { error } = await (isNew ? sb.from('sites').insert({...row, org_id: me.org_id}) : sb.from('sites').update(row).eq('id', s.id));
     if (error) return ($('#s-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe un sitio con ese nombre y tipo.' : errText(error));
@@ -2031,6 +2104,72 @@ function editSite(s){
     const { error } = await sb.from('sites').delete().eq('id', s.id);
     if (error) return toast(errText(error)); m.close(); route();
   });
+}
+/* ---- Importación de sitios desde Excel ---- */
+const SITE_XL_HEAD = ['Nombre','Tipo','Dirección','Grupo / contrato','Traza','Latitud','Longitud','Tipo de nodo','Otros nombres'];
+function siteKind(t){
+  const n = norm(t);
+  if (!n) return 'epi';
+  if (/sala|carrier/.test(n)) return 'sala';
+  if (/repet/.test(n)) return 'repetidora';
+  if (/acued/.test(n)) return 'acueducto';
+  if (/tramo|fibra/.test(n)) return 'tramo_fo';
+  if (/radio/.test(n)) return 'radioenlace';
+  if (/shelter/.test(n)) return 'shelter';
+  if (/epi|nodo/.test(n)) return 'epi';
+  return 'otro';
+}
+function downloadSitesModel(){
+  if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([SITE_XL_HEAD, ['05 - ZUBIZARRETA', 'Sala técnica', 'Nueva York 3952, CABA', 'ASI – Salas de Carrier', '', '', '', '', 'Hospital Zubizarreta'],
+    ['San Javier', 'EPI', '', 'Santa Fe + Conectada', '15', -30.5795, -59.9318, 4, '']]);
+  ws['!cols'] = [{wch:28},{wch:18},{wch:34},{wch:26},{wch:8},{wch:12},{wch:12},{wch:12},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Sitios');
+  const wi = XLSX.utils.aoa_to_sheet([['Una fila por sitio. Obligatorio: Nombre.'], ['Tipo: EPI · Sala técnica · Repetidora · Acueducto · Tramo de fibra · Radioenlace · Shelter · Otro'],
+    ['Grupo / contrato: sirve para filtrar los sitios de cada contrato o cliente.'], ['Latitud y Longitud en grados decimales (ej.: -34.6037). Si no las tenés, dejalas vacías y cargalas después con "Usar mi ubicación".'],
+    ['Otros nombres: separados por coma, para encontrar el sitio aunque lo escriban distinto.']]);
+  wi['!cols'] = [{wch:120}]; XLSX.utils.book_append_sheet(wb, wi, 'Instrucciones');
+  XLSX.writeFile(wb, 'Modelo_sitios_InspectApp.xlsx');
+}
+async function importSitesExcel(file, existing){
+  if (!file) return;
+  if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
+  let rows = [];
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+    const ws = wb.Sheets['Sitios'] || wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    const hi = data.findIndex(r => r.some(c => norm(c) === 'nombre'));
+    if (hi < 0) throw new Error('No encontré la columna "Nombre". Usá el modelo de Excel de sitios.');
+    const head = data[hi].map(norm); const col = n => head.findIndex(x => x.startsWith(n));
+    const C = { n: col('nombre'), t: col('tipo de nodo') >= 0 ? head.findIndex(x => x === 'tipo') : col('tipo'), a: col('direccion'), g: col('grupo'), tr: col('traza'), la: col('latitud'), lo: col('longitud'), nt: col('tipo de nodo'), al: col('otros nombres') };
+    const g = (r, k) => C[k] >= 0 ? String(r[C[k]] ?? '').trim() : '';
+    const num = v => { const x = Number(String(v).replace(',', '.')); return v === '' || isNaN(x) ? null : x; };
+    rows = data.slice(hi + 1).filter(r => g(r, 'n')).map(r => ({
+      name: g(r, 'n'), kind: siteKind(g(r, 't')), address: g(r, 'a') || null, grupo: g(r, 'g') || null, traza: g(r, 'tr') || null,
+      lat: num(g(r, 'la')), lng: num(g(r, 'lo')), node_type: [1,2,3,4].includes(Number(g(r, 'nt'))) ? Number(g(r, 'nt')) : null,
+      aliases: g(r, 'al') ? g(r, 'al').split(',').map(x => x.trim()).filter(Boolean) : [] }));
+  } catch (e){ return toast('No se pudo leer el Excel: ' + errText(e)); }
+  if (!rows.length) return toast('El archivo no tiene sitios.');
+  const exist = new Set(existing.map(s => s.kind + '|' + s.name.toLowerCase()));
+  const nuevos = rows.filter(r => !exist.has(r.kind + '|' + r.name.toLowerCase()));
+  const m = modal(`<h2>Importar sitios</h2>
+    <p>Se encontraron <b>${rows.length}</b> sitios; <b>${nuevos.length}</b> son nuevos (los que ya existen con el mismo nombre y tipo no se tocan).</p>
+    <div class="tblwrap" style="max-height:260px;overflow:auto"><table class="tbl"><thead><tr><th>Nombre</th><th>Tipo</th><th>Dirección</th><th>Grupo</th></tr></thead><tbody>
+      ${nuevos.slice(0, 60).map(r => `<tr><td>${esc(r.name)}</td><td>${SITE_KINDS[r.kind]}</td><td class="sm">${esc(r.address || '')}</td><td class="sm">${esc(r.grupo || '')}</td></tr>`).join('')}</tbody></table></div>
+    ${nuevos.some(r => r.lat === null) ? '<p class="muted sm">Los sitios sin coordenadas no aparecen en el mapa: cargalas después desde Editar → "Usar mi ubicación actual" estando en el sitio.</p>' : ''}
+    <div class="err" id="sx-err"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="sx-x">Cancelar</button><button class="btn" id="sx-go" ${nuevos.length ? '' : 'disabled'}>Importar ${nuevos.length}</button></div>`, {wide:true});
+  $('#sx-x').onclick = m.close;
+  $('#sx-go').onclick = async () => {
+    $('#sx-go').disabled = true;
+    for (let i = 0; i < nuevos.length; i += 100){
+      const { error } = await sb.from('sites').insert(nuevos.slice(i, i + 100).map(r => ({ ...r, org_id: me.org_id })));
+      if (error){ $('#sx-err').textContent = errText(error); $('#sx-go').disabled = false; return; }
+    }
+    m.close(); toast(`${nuevos.length} sitios importados`); route();
+  };
 }
 async function readKML(file){
   if (/\.kml$/i.test(file.name)) return await file.text();
@@ -2116,12 +2255,12 @@ async function importKMZ(file, existing){
 /* =========================================================
    PLANTILLAS  (+ importar / exportar Excel)
    ========================================================= */
-const XL_HEAD = ['Sección','Pregunta','Tipo','Obligatoria','Pedir foto','Mínimo','Máximo','Unidad','Opciones','Respuesta correcta'];
-const XL_TYPE_OUT = {yesno:'Sí/No', okfail:'OK/Falla', number:'Número', text:'Texto', select:'Opciones', date:'Fecha', time:'Hora', photo:'Foto', signature:'Firma', heading:'Subtítulo'};
+const XL_HEAD = ['Sección','Pregunta','Tipo','Obligatoria','Pedir foto','Mínimo','Máximo','Unidad','Opciones','Respuesta correcta','Valor por defecto'];
+const XL_TYPE_OUT = {yesno:'Sí/No', okfail:'OK/Falla', brm:'B/R/M', number:'Número', text:'Texto', select:'Opciones', date:'Fecha', time:'Hora', photo:'Foto', signature:'Firma', heading:'Subtítulo'};
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 function xlType(t){
   const n = norm(t).replace(/\s*\/\s*/g, '/').replace(/\/n\/?a$/, '');
-  return ({'si/no':'yesno','sino':'yesno','si':'yesno','ok/falla':'okfail','ok':'okfail','numero':'number','numerico':'number','texto':'text','texto corto':'text','texto largo':'textlong',
+  return ({'si/no':'yesno','sino':'yesno','si':'yesno','ok/falla':'okfail','ok':'okfail','b/r/m':'brm','brm':'brm','bueno/regular/malo':'brm','numero':'number','numerico':'number','texto':'text','texto corto':'text','texto largo':'textlong',
     'opciones':'select','opcion':'select','lista':'select','fecha':'date','hora':'time','foto':'photo','fotos':'photo','firma':'signature','subtitulo':'heading','titulo':'heading'})[n];
 }
 const xlYes = v => ['si','x','1','true','verdadero','s','yes'].includes(norm(v));
@@ -2130,7 +2269,7 @@ function templateToRows(def){
   const rows = [XL_HEAD];
   for (const s of def.sections) for (const it of s.items){
     rows.push([s.title, it.label, it.type === 'text' && it.long ? 'Texto largo' : (XL_TYPE_OUT[it.type] || it.type), it.required ? 'Sí' : '', it.photos ? 'Sí' : '',
-      it.min ?? '', it.max ?? '', it.unit || '', (it.options || []).join(', '), it.type === 'yesno' ? ({no:'No', none:'Ninguna'}[it.good] || '') : '']);
+      it.min ?? '', it.max ?? '', it.unit || '', (it.options || []).join(', '), it.type === 'yesno' ? ({no:'No', none:'Ninguna'}[it.good] || '') : '', it.default ?? '']);
   }
   return rows;
 }
@@ -2140,7 +2279,7 @@ function rowsToTemplate(rows){
   const head = rows[hi].map(norm);
   const col = name => head.findIndex(h => h.startsWith(name));
   const C = { sec: col('seccion'), q: col('pregunta'), type: col('tipo'), req: col('obligatoria'), ph: col('pedir foto') >= 0 ? col('pedir foto') : col('foto'),
-    min: col('minimo'), max: col('maximo'), unit: col('unidad'), opts: col('opciones'), good: col('respuesta') };
+    min: col('minimo'), max: col('maximo'), unit: col('unidad'), opts: col('opciones'), good: col('respuesta'), def: col('valor por defecto') };
   const get = (r, k) => C[k] >= 0 ? r[C[k]] : '';
   const sections = [], warns = []; let cur = null, nq = 0;
   rows.slice(hi + 1).forEach((r, i) => {
@@ -2158,6 +2297,7 @@ function rowsToTemplate(rows){
     if (type === 'number'){ const mn = xlNum(get(r, 'min')), mx = xlNum(get(r, 'max')); if (mn !== undefined) it.min = mn; if (mx !== undefined) it.max = mx; if (String(get(r, 'unit')).trim()) it.unit = String(get(r, 'unit')).trim(); }
     if (type === 'select'){ it.options = String(get(r, 'opts')).split(/[,;|]/).map(x => x.trim()).filter(Boolean); if (!it.options.length) warns.push(`Fila ${hi + i + 2}: "${label}" es de opciones pero no tiene opciones.`); }
     if (type === 'yesno'){ const g = norm(get(r, 'good')); if (g === 'no') it.good = 'no'; else if (g.startsWith('ning')) it.good = 'none'; }
+    if ((type === 'text' || type === 'textlong') && String(get(r, 'def') ?? '').trim()) it.default = String(get(r, 'def')).trim();
     cur.items.push(it); if (type !== 'heading') nq++;
   });
   if (!nq) throw new Error('El archivo no tiene preguntas.');
@@ -2178,10 +2318,11 @@ function downloadModel(){
   ];
   const ins = [['Cómo completar el modelo'],[''],
     ['Una fila por pregunta. Las filas con la misma Sección quedan agrupadas.'],
-    ['Tipo: Sí/No · OK/Falla · Número · Texto · Texto largo · Opciones · Fecha · Hora · Foto · Firma · Subtítulo'],
+    ['Tipo: Sí/No · OK/Falla · B/R/M (Bueno/Regular/Malo) · Número · Texto · Texto largo · Opciones · Fecha · Hora · Foto · Firma · Subtítulo'],
     ['Obligatoria y Pedir foto: escribir Sí o dejar vacío.'],
     ['Mínimo / Máximo / Unidad: solo para Número. Fuera de rango se marca como señalado.'],
     ['Opciones: solo para Opciones, separadas por coma.'],
+    ['Valor por defecto: solo para Texto. Se completa solo en cada inspección y el técnico lo puede cambiar (útil para OC, expediente, cliente).'],
     ['Respuesta correcta: solo para Sí/No. Vacío = Sí es la correcta · No = la correcta es No · Ninguna = no puntúa.'],
   ];
   const wb = XLSX.utils.book_new();
@@ -2272,7 +2413,7 @@ async function viewTemplates(v){
   });
 }
 
-const ITEM_TYPES = {yesno:'Sí / No / N/A', okfail:'OK / Falla / N/A', number:'Número', text:'Texto', select:'Opciones', photo:'Solo fotos', date:'Fecha', time:'Hora', signature:'Firma', heading:'Subtítulo'};
+const ITEM_TYPES = {yesno:'Sí / No / N/A', okfail:'OK / Falla / N/A', brm:'Bueno / Regular / Malo / N/A', number:'Número', text:'Texto', select:'Opciones', photo:'Solo fotos', date:'Fecha', time:'Hora', signature:'Firma', heading:'Subtítulo'};
 async function viewTemplateEditor(v, id){
   const { data: t, error } = await sb.from('templates').select('*').eq('id', id).single();
   if (error) throw error;
@@ -2304,7 +2445,7 @@ async function viewTemplateEditor(v, id){
                 ${it.type === 'yesno' ? `<label>Respuesta correcta <select data-igood="${si}.${ii}"><option value="si" ${(it.good||'si')==='si'?'selected':''}>Sí</option><option value="no" ${it.good==='no'?'selected':''}>No</option><option value="none" ${it.good==='none'?'selected':''}>Ninguna (no puntúa)</option></select></label>` : ''}
                 ${it.type === 'number' ? `<label>Mín <input type="number" step="any" data-imin="${si}.${ii}" value="${it.min ?? ''}" style="width:90px"></label><label>Máx <input type="number" step="any" data-imax="${si}.${ii}" value="${it.max ?? ''}" style="width:90px"></label><label>Unidad <input data-iunit="${si}.${ii}" value="${esc(it.unit||'')}" style="width:90px"></label>` : ''}
                 ${it.type === 'select' ? `<label style="flex:1">Opciones (separadas por coma) <input data-iopts="${si}.${ii}" value="${esc((it.options||[]).join(', '))}" style="flex:1;min-width:200px"></label>` : ''}
-                ${it.type === 'text' ? `<label><input type="checkbox" data-ilong="${si}.${ii}" ${it.long?'checked':''}> Texto largo</label>` : ''}
+                ${it.type === 'text' ? `<label><input type="checkbox" data-ilong="${si}.${ii}" ${it.long?'checked':''}> Texto largo</label><label style="flex:1">Valor por defecto <input data-idef="${si}.${ii}" value="${esc(it.default ?? '')}" style="flex:1;min-width:180px" placeholder="Se completa solo; el técnico lo puede cambiar"></label>` : ''}
               </div>` : ''}
             </div>`).join('')}
           <div class="row" style="margin-top:10px"><button class="btn sec small" data-iadd="${si}">+ Pregunta</button><button class="btn sec small" data-hadd="${si}">+ Subtítulo</button></div>
@@ -2326,6 +2467,7 @@ async function viewTemplateEditor(v, id){
     v.querySelectorAll('[data-iunit]').forEach(i => i.oninput = () => at(i.dataset.iunit).unit = i.value || undefined);
     v.querySelectorAll('[data-iopts]').forEach(i => i.oninput = () => at(i.dataset.iopts).options = i.value.split(',').map(x => x.trim()).filter(Boolean));
     v.querySelectorAll('[data-ilong]').forEach(i => i.onchange = () => at(i.dataset.ilong).long = i.checked || undefined);
+    v.querySelectorAll('[data-idef]').forEach(i => i.oninput = () => at(i.dataset.idef).default = i.value || undefined);
     v.querySelectorAll('[data-idel]').forEach(b => b.onclick = () => { const [si, ii] = b.dataset.idel.split('.').map(Number); def.sections[si].items.splice(ii, 1); render(); });
     v.querySelectorAll('[data-imove]').forEach(b => b.onclick = () => { const [si, ii] = b.dataset.imove.split('.').map(Number); const arr = def.sections[si].items; const j = ii + Number(b.dataset.dir); if (j < 0 || j >= arr.length) return; [arr[ii], arr[j]] = [arr[j], arr[ii]]; render(); });
     v.querySelectorAll('[data-iadd]').forEach(b => b.onclick = () => { def.sections[b.dataset.iadd].items.push({ id: newId('i'), type: 'yesno', label: '' }); render(); });
