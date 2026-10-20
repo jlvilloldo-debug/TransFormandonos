@@ -8,11 +8,11 @@
 
 /* ---------- semáforo ---------- */
 const SEM = {
-  red:   { c: '#C8102E', o: 6, n: 'Crítico · atrasado · bloqueado' },
-  amber: { c: '#E8A317', o: 5, n: 'En curso · con pendientes' },
+  red:   { c: '#DC2626', o: 6, n: 'Crítico · atrasado · bloqueado' },
+  amber: { c: '#F59E0B', o: 5, n: 'En curso · con pendientes' },
   blue:  { c: '#2a78d6', o: 4, n: 'Programado' },
-  gray:  { c: '#8C97A4', o: 3, n: 'Sin visita · a instalar' },
-  green: { c: '#22B07D', o: 2, n: 'OK · terminado' },
+  gray:  { c: '#1A3A6B', o: 3, n: 'Sin visita · a instalar' },
+  green: { c: '#16A34A', o: 2, n: 'OK · terminado' },
   none:  { c: '#CBD2DA', o: 0, n: 'Sin datos' },
 };
 const worstColor = list => list.reduce((a, b) => (SEM[b]?.o ?? 0) > (SEM[a]?.o ?? 0) ? b : a, 'none');
@@ -28,7 +28,7 @@ const addDays = (s, n) => { const d = dOf(s); d.setDate(d.getDate() + n); return
 const diffDays = (a, b) => Math.round((dOf(b) - dOf(a)) / 86400000);
 const fmtD = s => s ? fmtDate(dOf(s)) : '—';
 const fmtDM = s => s ? dOf(s).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—';
-const semDot = (c, big) => `<i class="semdot${big ? ' big' : ''}" style="background:${SEM[c]?.c || SEM.none.c}"></i>`;
+const semDot = (c, big) => c === 'gray' ? `<i class="semdot ring${big ? ' big' : ''}"></i>` : c === 'none' ? `<i class="semdot nd${big ? ' big' : ''}"></i>` : `<i class="semdot${big ? ' big' : ''}" style="background:${SEM[c]?.c || SEM.none.c}"></i>`;
 
 const PROJ_KIND = { instalacion: 'Instalación / obra', mantenimiento: 'Mantenimiento', mixto: 'Mixto', otro: 'Otro' };
 const DEFAULT_STAGES = {
@@ -214,18 +214,20 @@ async function viewMap(v, preset){
       const lat = list.reduce((a, x) => a + Number(x.s.lat), 0) / list.length, lng = list.reduce((a, x) => a + Number(x.s.lng), 0) / list.length;
       const name = k.startsWith('p:') ? list[0].s.provincia : list[0].s.localidad;
       const cnt = ['red', 'amber', 'blue', 'gray', 'green'].map(c => [c, list.filter(x => x.color === c).length]).filter(c => c[1]);
-      const icon = L.divIcon({ className: '', iconSize: [40, 40], iconAnchor: [20, 20],
-        html: `<div class="clu${late ? ' pulse' : ''}" style="background:${SEM[col].c}">${list.length}</div>` });
-      L.marker([lat, lng], { icon, keyboard: false }).addTo(layer)
-        .bindTooltip(`<b>${esc(name)}</b><br>${cnt.map(([c, n]) => `${semDot(c)}${n}`).join(' &nbsp; ')}`, { direction: 'top' })
+      const icon = L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], iconAnchor: [0, 0],
+        html: `<div class="clu c-${col}${late ? ' pulse' : ''}">${esc(name || 'Grupo')} <i>${list.length}</i></div>` });
+      L.marker([lat, lng], { icon, keyboard: false, riseOnHover: true }).addTo(layer)
+        .bindTooltip(`<b>${esc(name)}</b><br>${cnt.map(([c, n]) => `${semDot(c)}${n}`).join(' &nbsp; ')}`, { direction: 'top', offset: [0, -14] })
         .on('click', () => pmap.fitBounds(L.latLngBounds(list.map(x => [x.s.lat, x.s.lng])), { padding: [40, 40], maxZoom: 13 }));
     }
     for (const x of singles){
       const ll = [Number(x.s.lat), Number(x.s.lng)];
-      const m = x.late || (x.color === 'red' && x.cols.pend === 'red')
-        ? L.marker(ll, { icon: L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: `<div class="pin${x.late ? ' pulse' : ''}" style="background:${SEM[x.color].c}"></div>` }) })
-        : L.circleMarker(ll, { radius: x.color === 'none' ? 4 : 7, color: '#fff', weight: 1.5, fillColor: SEM[x.color].c, fillOpacity: 1 });
-      m.bindPopup(() => popup(x), { maxWidth: 300 }).addTo(layer);
+      const crit = x.cols.pend === 'red';
+      const html = crit ? `<div class="mk-pin${x.late ? ' pulse' : ''}"><b>!</b></div>`
+        : `<div class="mk mk-${x.color}${x.late ? ' pulse' : ''}"></div>`;
+      const m = L.marker(ll, { icon: L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], iconAnchor: [0, 0], html }), keyboard: false, riseOnHover: true, zIndexOffset: SEM[x.color].o * 100 });
+      if (z >= 10) m.bindTooltip(esc(x.s.name), { permanent: true, direction: 'right', offset: crit ? [10, -16] : [9, 0], className: 'mk-lbl' });
+      m.bindPopup(() => popup(x), { maxWidth: 300, offset: crit ? [0, -26] : [0, -4] }).addTo(layer);
     }
     if (!fitted && withC.length){ fitted = true; pmap.fitBounds(L.latLngBounds(withC.map(x => [Number(x.s.lat), Number(x.s.lng)])), { padding: [30, 30], maxZoom: 12 }); }
     // leyenda con cantidades

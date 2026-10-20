@@ -217,11 +217,29 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .layerbar button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
 #pmap{height:62vh;min-height:380px;border-radius:10px;border:1px solid var(--line);position:relative;z-index:0}
 .sem-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin-top:8px;color:var(--text)}
-.clu{width:40px;height:40px;border-radius:50%;color:#fff;font-weight:700;display:grid;place-items:center;border:3px solid rgba(255,255,255,.9);box-shadow:0 1px 4px rgba(0,0,0,.35);font-size:14px}
-.pin{width:22px;height:22px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.semdot.ring{background:#fff;border:3px solid #1A3A6B;box-sizing:border-box}
+.semdot.nd{background:#fff;border:2px solid #5B6878;box-sizing:border-box;width:8px;height:8px}
+.mk-wrap{background:none;border:0}
+.clu{position:absolute;transform:translate(-50%,-50%);color:#fff;border-radius:99px;padding:5px 8px 5px 11px;font:700 13px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);white-space:nowrap;display:flex;gap:6px;align-items:center;cursor:pointer}
+.clu i{background:#fff;border-radius:99px;padding:0 7px;font-style:normal}
+.clu.c-red{background:#DC2626} .clu.c-red i{color:#DC2626}
+.clu.c-amber{background:#F59E0B} .clu.c-amber i{color:#8a5a00}
+.clu.c-blue{background:#2a78d6} .clu.c-blue i{color:#2a78d6}
+.clu.c-gray,.clu.c-none{background:#1A3A6B} .clu.c-gray i,.clu.c-none i{color:#1A3A6B}
+.clu.c-green{background:#16A34A} .clu.c-green i{color:#16A34A}
+.mk{position:absolute;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;box-sizing:border-box;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:pointer}
+.mk-red{background:#DC2626} .mk-amber{background:#F59E0B} .mk-blue{background:#2a78d6} .mk-green{background:#16A34A}
+.mk-gray{width:16px;height:16px;background:#fff;border:3.5px solid #1A3A6B;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.mk-none{width:10px;height:10px;background:#fff;border:2px solid #5B6878;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+.mk-pin{position:absolute;width:26px;height:26px;transform:translate(-50%,-100%) rotate(-45deg);transform-origin:center;margin-top:-4px;border-radius:50% 50% 50% 0;background:#DC2626;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.5),0 0 0 5px rgba(220,38,38,.25);display:grid;place-items:center;cursor:pointer}
+.mk-pin b{transform:rotate(45deg);color:#fff;font:800 14px/1 system-ui,Arial}
+.leaflet-tooltip.mk-lbl{background:none;border:0;box-shadow:none;padding:0;font:600 11.5px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#0F2A4A;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 2px #fff}
+.leaflet-tooltip.mk-lbl::before{display:none}
 .pulse{animation:pulse 1.4s ease-out infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(200,16,46,.7)}70%{box-shadow:0 0 0 14px rgba(200,16,46,0)}100%{box-shadow:0 0 0 0 rgba(200,16,46,0)}}
-@media (prefers-reduced-motion:reduce){.pulse{animation:none;outline:3px solid #C8102E}}
+.mk-pin.pulse{animation:pulsepin 1.4s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(220,38,38,.75),0 1px 4px rgba(0,0,0,.4)}70%{box-shadow:0 0 0 14px rgba(220,38,38,0),0 1px 4px rgba(0,0,0,.4)}100%{box-shadow:0 0 0 0 rgba(220,38,38,0),0 1px 4px rgba(0,0,0,.4)}}
+@keyframes pulsepin{0%{box-shadow:0 0 0 0 rgba(220,38,38,.75),0 2px 5px rgba(0,0,0,.5)}70%{box-shadow:0 0 0 14px rgba(220,38,38,0),0 2px 5px rgba(0,0,0,.5)}100%{box-shadow:0 0 0 0 rgba(220,38,38,0),0 2px 5px rgba(0,0,0,.5)}}
+@media (prefers-reduced-motion:reduce){.pulse,.mk-pin.pulse{animation:none;outline:3px solid #DC2626}}
 .pp{font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;min-width:220px}
 .pp-sec{margin-top:8px;padding-top:6px;border-top:1px solid var(--line)}
 .pp-it{margin:4px 0 0 16px}
@@ -373,7 +391,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.0';
+const APP_VERSION = '4.1';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
