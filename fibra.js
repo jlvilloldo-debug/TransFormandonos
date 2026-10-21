@@ -244,7 +244,7 @@ async function viewTools(v){
 /* ---------- alta de tramo: KMZ + planilla ---------- */
 function newRouteModal(){
   if (!needOnline()) return;
-  let kmz = null, sheet = null, built = null;
+  let kmz = null, sheet = null, built = null, exported = null, routesCache = null;
   const m = modal(`<h2>Nuevo tramo de fibra</h2>
     <label>Nombre del tramo</label><input id="nr-n" maxlength="200" placeholder="Ej.: Traza 15 · Santa Fe – Helvecia">
     <label>KMZ / KML con el recorrido y los elementos</label><input type="file" id="nr-k" accept=".kmz,.kml">
@@ -262,9 +262,13 @@ function newRouteModal(){
   $('#nr-x2').onclick = m.close;
   const ready = () => { $('#nr-go').disabled = !kmz; };
   $('#nr-k').onchange = async e => {
-    $('#nr-err').textContent = ''; kmz = null; ready();
+    $('#nr-err').textContent = ''; kmz = null; exported = null; built = null; $('#nr-go').textContent = 'Procesar'; ready();
     try {
-      const pms = parseKML(await readKML(e.target.files[0]));
+      const txt = await readKML(e.target.files[0]);
+      // ¿es un KMZ que exportó la propia app? (no es un recorrido original)
+      const ex = /Exportado de InspectApp/i.test(txt.slice(0, 5000)) ? (/<Document>\s*<name>([^<]{0,300})<\/name>/i.exec(txt.slice(0, 5000)) || [])[1] || 'otro tramo' : null;
+      exported = ex ? ex.replace(/&amp;/g, '&').replace(/ · actualizado.*$/, '') : null;
+      const pms = parseKML(txt);
       const lines = pms.filter(x => !x.isPoint && x.pts.length > 1).map(x => ({ name: x.name || 'Tramo', pts: x.pts.map(p => [p[0], p[1]]) }));
       const pts = pms.filter(x => x.isPoint && x.pts.length).map(x => ({ name: (x.name || '').trim().slice(0, 200), folder: x.path.join(' / '), p: [x.pts[0][0], x.pts[0][1]] }));
       if (!lines.length) throw new Error('El KMZ no tiene líneas con el recorrido de la fibra.');
@@ -276,7 +280,7 @@ function newRouteModal(){
       const pref = kmz.ends.findIndex(x => /^dc$|santa fe/i.test(x.name)); if (pref >= 0) $('#nr-a').value = String(pref);
       $('#nr-more').classList.remove('hidden');
       const cnt = {}; pts.forEach(x => { const k = kindOf(x.name, x.folder); cnt[k] = (cnt[k] || 0) + 1; });
-      $('#nr-info').innerHTML = `<b>KMZ:</b> ${lines.length} líneas de recorrido · ${Object.entries(cnt).map(([k, n]) => `${n} ${esc(FE_KINDS[k].toLowerCase())}`).join(' · ')}` + ($('#nr-info').dataset.x || '');
+      $('#nr-info').innerHTML = (exported ? `<div class="banner warn" style="margin:0 0 8px"><span class="dot"></span><div><b>Ojo: este archivo es una exportación de InspectApp del tramo "${esc(exported)}"</b>, no un recorrido original. Si es el KMZ de otro tramo, verificá que hayas elegido el archivo correcto.</div></div>` : '') + `<b>KMZ:</b> ${lines.length} líneas de recorrido · ${Object.entries(cnt).map(([k, n]) => `${n} ${esc(FE_KINDS[k].toLowerCase())}`).join(' · ')}` + ($('#nr-info').dataset.x || '');
       if (!$('#nr-n').value) $('#nr-n').value = e.target.files[0].name.replace(/\.(kmz|kml)$/i, '').replace(/[_]+/g, ' ').slice(0, 120);
     } catch (x){ $('#nr-err').textContent = 'KMZ: ' + errText(x); }
     ready();
@@ -303,6 +307,15 @@ function newRouteModal(){
     const ch = chainLines(kmz.lines, A.p);
     const cum = cumOf(ch.path), L = cum[cum.length - 1];
     if (L < 50) return ($('#nr-err').textContent = 'No pude armar el recorrido desde esa punta. Probá con la otra punta.');
+    // ¿ya existe un tramo con este mismo recorrido?
+    if (!routesCache){ const { data } = await sb.from('fiber_routes').select('id,name,route_length_m,path'); routesCache = data || []; }
+    const p0 = ch.path[0], p1 = ch.path[ch.path.length - 1];
+    const dup = routesCache.find(r => { const q = r.path || []; if (q.length < 2 || !r.route_length_m) return false;
+      const q0 = q[0], q1 = q[q.length - 1];
+      const same = (havm(p0, q0) < 300 && havm(p1, q1) < 300) || (havm(p0, q1) < 300 && havm(p1, q0) < 300);
+      return same && Math.abs(r.route_length_m - L) / L < 0.01; });
+    if (dup && !confirm(`El recorrido de este KMZ es igual al del tramo "${dup.name}" que ya está cargado (${(dup.route_length_m / 1000).toFixed(2).replace('.', ',')} km, mismas puntas).\n\n¿Seguro que querés crear otro tramo con el mismo recorrido?`)) return;
+    if (exported && !confirm(`Este KMZ fue exportado por InspectApp desde el tramo "${exported}".\n\n¿Seguro que es el recorrido del tramo que estás creando?`)) return;
     const els = kmz.pts.map(x => { const pr = projectOn(ch.path, cum, x.p); const kind = kindOf(x.name, x.folder);
       return { id: uid(), kind, name: x.name || FE_KINDS[kind], subtype: x.name.slice(0, 120), lat: x.p[1], lng: x.p[0], chain_m: Math.round(pr.chain * 10) / 10, off: pr.off, reserve_m: RES_KINDS.includes(kind) ? R : null, status: 'kmz' }; });
     let approx = [], match = { pairs: [], h: 0 };
@@ -511,7 +524,7 @@ async function viewFiberRoute(v, id){
       ${sor.events.map((x, i) => `<tr class="${x.loss > thr ? 'sor-bad' : ''}"><td>${x.n}</td><td class="num">${fmtM(x.m)}</td><td class="num">${x.loss ? x.loss.toFixed(3).replace('.', ',') + ' dB' : '—'}</td><td class="hide-sm sm">${x.end ? 'Fin de fibra' : x.reflective ? 'Reflectivo (conector / corte)' : 'Empalme / curvatura'}${x.comment ? ' · ' + esc(x.comment) : ''}</td>
         <td><button class="btn small ${x.loss > thr || x.end ? '' : 'sec'}" data-sev="${i}">Ubicar</button></td></tr>`).join('')}</tbody></table></div></div>`;
     $('#fl-sorbox').querySelectorAll('[data-sev]').forEach(b => b.onclick = () => { const x = sor.events[Number(b.dataset.sev)]; $('#fl-d').value = Math.round(x.m * 10) / 10; $('#fl-u').value = 'm'; FSTATE.unit = 'm'; locate(x.m, { sor: true, loss: x.loss || null, fiber: fib ? Number(fib) : null }); });
-    if (!Lopt && endEv && isManager() && canWrite() && online() && confirm(`El tramo no tiene longitud óptica cargada. ¿Usar el fin de fibra de este .sor (${fmtM(endEv.m)}) como longitud óptica?`)){
+    if (!Lopt && endEv && isManager() && canWrite() && online() && confirm(`Tramo "${route.name}" (${route.end_a || 'A'} → ${route.end_b || 'B'}): no tiene longitud óptica cargada.\n\nEl archivo ${f.name} termina a ${fmtM(endEv.m)}. ¿Guardar ese valor como longitud óptica de ESTE tramo?\n\nSi el .sor es de otro tramo, tocá Cancelar.`)){
       await sb.from('fiber_routes').update({ optical_length_m: Math.round(endEv.m - (FSTATE.launch ? Number(FSTATE.launchLen) || 0 : 0)) }).eq('id', route.id); route_();
     }
   };
@@ -671,6 +684,8 @@ function editRouteModal(r){
     <div class="row between" style="margin-top:10px">${isAdmin() ? '<button class="btn danger small" id="er-del">Eliminar tramo</button>' : '<span></span>'}<div class="row"><button class="btn sec" id="er-x">Cancelar</button><button class="btn" id="er-ok">Guardar</button></div></div>`);
   $('#er-x').onclick = m.close;
   $('#er-ok').onclick = async () => {
+    const nl = Number($('#er-l').value) || null, ol = Number(r.optical_length_m) || null;
+    if (nl !== ol && !confirm(`Vas a cambiar la longitud óptica del tramo "${r.name}":\n\nAntes: ${ol ? ol + ' m (' + fmtM(ol) + ')' : 'sin cargar'}\nAhora: ${nl ? nl + ' m (' + fmtM(nl) + ')' : 'sin cargar'}\n\nOjo: el valor va en METROS. ¿Confirmar?`)) return;
     const { error } = await sb.from('fiber_routes').update({ name: $('#er-n').value.trim() || r.name, end_a: $('#er-a').value.trim() || null, end_b: $('#er-b').value.trim() || null,
       optical_length_m: Number($('#er-l').value) || null, reserve_m: Number($('#er-r').value) || 0, threshold_db: Number($('#er-t').value) || 0.1, cable: $('#er-c').value.trim() || null }).eq('id', r.id);
     if (error) return ($('#er-err').textContent = errText(error)); m.close(); toast('Tramo guardado'); route_();
@@ -701,6 +716,6 @@ async function exportFiberKMZ(ctx){
     <Folder><name>Elementos</name>${folders}</Folder>${evs ? `<Folder><name>Eventos ubicados</name>${evs}</Folder>` : ''}</Document></kml>`;
   const zip = new JSZip(); zip.file('doc.kml', kml);
   const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.google-earth.kmz' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${route.name.replace(/[\\/:*?"<>|]/g, '').slice(0, 100)} - ${todayStr()}.kmz`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `InspectApp - ${route.name.replace(/[\\/:*?"<>|]/g, '').slice(0, 100)} - exportado ${todayStr()}.kmz`;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
 }
