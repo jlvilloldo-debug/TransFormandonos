@@ -282,7 +282,23 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .prio-opts button.on[data-p=alta]{background:var(--amber);color:#fff;border-color:var(--amber)}
 .prio-opts button.on[data-p=normal]{background:var(--navy-2);color:#fff;border-color:var(--navy-2)}
 .qr{background:#fff;padding:8px;border-radius:8px;border:1px solid var(--line);width:200px;height:200px}
-@media (max-width:640px){ .g-lb{width:150px} #pmap{height:58vh} }
+/* herramienta de fibra */
+#fmap{height:62vh;min-height:380px;border-radius:10px;border:1px solid var(--line);position:relative;z-index:0}
+.fe-ic{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;box-sizing:border-box;font:800 11px/1 system-ui,Arial;color:#fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.sem-legend .fe-ic{position:static;transform:none;display:inline-grid;margin-right:6px;vertical-align:-3px}
+.fe-bot{width:16px;height:16px;border-radius:4px;border:2px solid #fff}
+.fe-bot.q-ok{background:#16A34A} .fe-bot.q-warn{background:#F59E0B} .fe-bot.q-bad{background:#DC2626} .fe-bot.q-none{background:#475569}
+.fe-bot.q-unk{background:#fff;border:2px dashed #1A3A6B;color:#1A3A6B}
+.fe-cruz{width:12px;height:12px;background:#7C3AED;border:2px solid #fff;transform:translate(-50%,-50%) rotate(45deg)}
+.sem-legend .fe-cruz{transform:rotate(45deg)}
+.fe-cam{width:12px;height:12px;background:#92400E;border:2px solid #fff;border-radius:2px}
+.fe-otro{width:10px;height:10px;background:#94A3B8;border:2px solid #fff;border-radius:50%}
+.fe-epi{width:20px;height:20px;background:#1A3A6B;border:2px solid #fff;border-radius:5px}
+.fe-end{position:absolute;transform:translate(-50%,-140%);background:#1A3A6B;color:#fff;border:2px solid #fff;border-radius:99px;padding:3px 10px;font:700 12px/1.2 system-ui,Arial;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.fe-upd-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#22B07D;border:1.5px solid #fff;box-shadow:0 0 0 1px #178A61;margin-right:6px;vertical-align:-1px}
+.fe-upd-abs{position:absolute;transform:translate(4px,-14px);margin:0}
+tr.sor-bad td{background:var(--red-bg)}
+@media (max-width:640px){ .g-lb{width:150px} #pmap,#fmap{height:58vh} }
 @media (max-width:720px){ .chart-grid{grid-template-columns:1fr} }
 @media (max-width:640px){ .hide-sm{display:none} main{padding:10px} .card{padding:14px} .sec-title{margin:0 -14px} #report{padding:18px} .ed-item{grid-template-columns:1fr} .vbars{height:170px} }
 @media print{
@@ -368,6 +384,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
     <button data-tab="home">Inicio</button>
     <button data-tab="map">Mapa</button>
     <button data-tab="proj">Proyectos</button>
+    <button data-tab="tools">🧰 Herramientas</button>
     <button data-tab="insp">Inspecciones</button>
     <button data-tab="tasks" id="tab-tasks">Tareas</button>
     <button data-tab="stats">Estadísticas</button>
@@ -386,12 +403,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 <div id="tip" class="tip hidden"></div>
 
 <script src="proyectos.js"></script>
+<script src="fibra.js"></script>
 <script>
 /* =================== CONFIGURACIÓN =================== */
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.1';
+const APP_VERSION = '4.2';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -1009,6 +1027,7 @@ async function route(){
   const [, tab='home', id] = (location.hash || '#/home').split('/');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
   if (tab !== 'map' && typeof pmap !== 'undefined' && pmap){ pmap.remove(); pmap = null; }
+  if (typeof fmap !== 'undefined' && fmap){ fmap.remove(); fmap = null; }
   $('#modal-root').innerHTML = ''; hideTip();
   const v = $('#view'); v.innerHTML = '<div class="card muted">Cargando…</div>';
   try {
@@ -1020,6 +1039,8 @@ async function route(){
     else if (tab === 'map') await viewMap(v, id);
     else if (tab === 'proj' && id) await viewProject(v, id);
     else if (tab === 'proj') await viewProjects(v);
+    else if (tab === 'tools' && id) await viewFiberRoute(v, id);
+    else if (tab === 'tools') await viewTools(v);
     else if (isContractor() && ['stats','sites','tpl','org'].includes(tab)) location.hash = '#/tasks';
     else if (tab === 'tasks' && id === 'contratistas') await viewContractors(v);
     else if (tab === 'tasks' && id) await viewTask(v, id);
