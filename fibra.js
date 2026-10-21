@@ -1,6 +1,6 @@
 /* =====================================================================
    InspectApp · Transformándonos — v4.2
-   Herramientas → Fibra óptica: tramos (KMZ + planilla de empalmes),
+   Herramientas → Fibra óptica: tramos Sitio A → Sitio B (KMZ validado con el .sor),
    ubicar eventos del OTDR (.sor o distancia), actualizar elementos en
    campo con GPS e historial, exportar KMZ.
    Solo declara funciones (y un listener de conexión): no ejecuta nada al cargarse.
@@ -19,21 +19,45 @@ function havm(a, b){ // a, b = [lng, lat]
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
 }
 function cumOf(path){ const c = [0]; for (let i = 1; i < path.length; i++) c.push(c[i - 1] + havm(path[i - 1], path[i])); return c; }
-/* encadena los tramos del recorrido empezando por la punta A */
-function chainLines(lines, start){
-  const segs = lines.map(l => l.pts), used = new Set(); let cur = start, path = [start];
-  const order = [];
-  for (;;){
+/* Recorrido de A a B: camino más corto sobre la red de líneas del KMZ
+   (una línea larga de toda la traza, o varias líneas cortadas, con ramales). */
+function pathAtoB(lines, A, B){
+  const nodes = [], adj = [];
+  const add = p => { nodes.push(p); adj.push([]); return nodes.length - 1; };
+  const link = (i, j) => { const w = havm(nodes[i], nodes[j]); adj[i].push([j, w]); adj[j].push([i, w]); };
+  const segs = []; // [i, j] aristas para proyectar
+  const lineNodes = lines.map(l => { const ids = l.pts.map(add); for (let k = 1; k < ids.length; k++){ link(ids[k - 1], ids[k]); segs.push([ids[k - 1], ids[k]]); } return ids; });
+  // unir extremos de cada línea con el punto más cercano de otra línea (hasta 250 m)
+  lineNodes.forEach((ids, li) => [ids[0], ids[ids.length - 1]].forEach(e => {
     let best = null;
-    segs.forEach((P, i) => { if (used.has(i) || P.length < 2) return;
-      for (const rev of [false, true]){ const Q = rev ? [...P].reverse() : P; const d = havm(cur, Q[0]); if (!best || d < best.d) best = { d, i, Q }; } });
-    if (!best || best.d > 600) break;
-    used.add(best.i); order.push({ name: lines[best.i].name, gap: Math.round(best.d) });
-    path = path.concat(best.Q); cur = best.Q[best.Q.length - 1];
-  }
-  // quitar puntos repetidos consecutivos
-  path = path.filter((p, i) => i === 0 || p[0] !== path[i - 1][0] || p[1] !== path[i - 1][1]).map(p => [Math.round(p[0] * 1e7) / 1e7, Math.round(p[1] * 1e7) / 1e7]);
-  return { path, order, unused: lines.filter((l, i) => !used.has(i)).map(l => l.name) };
+    lineNodes.forEach((o, lj) => { if (lj === li) return; for (const k of o){ const d = havm(nodes[e], nodes[k]); if (d < 250 && (!best || d < best.d)) best = { k, d }; } });
+    if (best) link(e, best.k);
+  }));
+  const snap = p => { // proyecta el punto sobre la arista más cercana y crea un nodo ahí
+    let best = null;
+    for (const [i, j] of segs){
+      const a = nodes[i], b = nodes[j], kx = Math.cos(a[1] * Math.PI / 180) * 111320, ky = 110540;
+      const bx = (b[0] - a[0]) * kx, by = (b[1] - a[1]) * ky, px = (p[0] - a[0]) * kx, py = (p[1] - a[1]) * ky;
+      const L2 = bx * bx + by * by, t = L2 ? Math.max(0, Math.min(1, (px * bx + py * by) / L2)) : 0, d = Math.hypot(px - t * bx, py - t * by);
+      if (!best || d < best.d) best = { i, j, t, d };
+    }
+    if (!best) return null;
+    const a = nodes[best.i], b = nodes[best.j], q = add([a[0] + best.t * (b[0] - a[0]), a[1] + best.t * (b[1] - a[1])]);
+    link(q, best.i); link(q, best.j);
+    return { id: q, off: best.d };
+  };
+  const sa = snap(A), sb_ = snap(B);
+  if (!sa || !sb_) return null;
+  // Dijkstra con montículo binario
+  const N = nodes.length, dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), heap = [];
+  const push = (d, i) => { heap.push([d, i]); let c = heap.length - 1; while (c > 0){ const p2 = (c - 1) >> 1; if (heap[p2][0] <= heap[c][0]) break; [heap[p2], heap[c]] = [heap[c], heap[p2]]; c = p2; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length){ heap[0] = last; let c = 0; for (;;){ const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
+  dist[sa.id] = 0; push(0, sa.id);
+  while (heap.length){ const [d, i] = pop(); if (d > dist[i]) continue; if (i === sb_.id) break; for (const [j, w] of adj[i]){ const nd = d + w; if (nd < dist[j]){ dist[j] = nd; prev[j] = i; push(nd, j); } } }
+  if (!isFinite(dist[sb_.id])) return null;
+  const out = []; for (let i = sb_.id; i !== -1; i = prev[i]) out.push(nodes[i]); out.reverse();
+  const path = out.filter((p, i) => i === 0 || p[0] !== out[i - 1][0] || p[1] !== out[i - 1][1]).map(p => [Math.round(p[0] * 1e7) / 1e7, Math.round(p[1] * 1e7) / 1e7]);
+  return { path, offA: sa.off, offB: sb_.off };
 }
 function projectOn(path, cum, p){
   let best = null;
@@ -62,25 +86,20 @@ function pathBetween(path, cum, c1, c2){
 }
 
 /* ---------- modelo fibra ↔ recorrido ----------
-   Anclas: puntos con progresiva óptica conocida (empalmes emparejados con su botella,
-   cortes reparados con ubicación real y las dos puntas). Entre dos anclas la fibra =
-   recorrido × k + reservas intermedias (+ media reserva de cada botella ancla). */
-function fiberModel(route, elements, events){
+   Anclas: empalmes del .sor emparejados con una caja confirmada (coincide con el KMZ o
+   actualizada en campo), cortes reparados con ubicación real y las dos puntas.
+   Entre dos anclas la fibra = recorrido × k + reservas intermedias (+ media reserva de las cajas ancla). */
+function fiberModel(route, elements, events, val){
   const L = Number(route.route_length_m) || 0, R = Number(route.reserve_m ?? 30);
-  const res = elements.filter(e => RES_KINDS.includes(e.kind) && e.chain_m != null && e.chain_m !== undefined).map(e => ({ c: Number(e.chain_m), r: Number(e.reserve_m ?? R), e })).sort((a, b) => a.c - b.c);
-  const splices = route.splices || [];
-  const anchors = [{ o: 0, c: 0, h: 0, label: route.end_a || 'Punta A' }];
-  for (const e of elements){
-    if (!e.splice_no || e.status === 'aproximado' || e.chain_m == null) continue;
-    const s = splices.find(x => x.n === e.splice_no); if (!s || !(s.a > 0)) continue;
-    anchors.push({ o: Number(s.a), c: Number(e.chain_m), h: (RES_KINDS.includes(e.kind) ? Number(e.reserve_m ?? R) : 0) / 2, label: `Empalme ${s.n}`, e });
-  }
-  for (const ev of events || []) if (ev.real_lat != null && ev.real_lat !== undefined && ev.chain_real !== undefined) anchors.push({ o: Number(ev.otdr_a), c: ev.chain_real, h: 0, label: 'Corte reparado ' + fmtDate(ev.created_at) });
+  const res = elements.filter(e => RES_KINDS.includes(e.kind) && e.chain_m != null && e.status !== 'aproximado').map(e => ({ c: Number(e.chain_m), r: Number(e.reserve_m ?? R), e })).sort((a, b) => a.c - b.c);
+  val = val || validateRoute(route, elements);
+  const anchors = [{ o: 0, c: 0, h: 0, label: route.end_a || 'Sitio A' }];
+  for (const p of val.pairs){ if (p.e && p.anchor) anchors.push({ o: p.s.a, c: Number(p.e.chain_m), h: (RES_KINDS.includes(p.e.kind) ? Number(p.e.reserve_m ?? R) : 0) / 2, label: `Empalme ${p.s.n}`, e: p.e }); }
+  for (const ev of events || []) if (ev.real_lat != null && ev.chain_real !== undefined) anchors.push({ o: Number(ev.otdr_a), c: ev.chain_real, h: 0, label: 'Corte reparado ' + fmtDate(ev.created_at) });
   const Lopt = Number(route.optical_length_m) || null;
   const totalRes = res.reduce((a, x) => a + x.r, 0);
-  anchors.push({ o: Lopt || (L * 1.02 + totalRes), c: L, h: 0, label: route.end_b || 'Punta B', est: !Lopt });
+  anchors.push({ o: Lopt || (L * 1.02 + totalRes), c: L, h: 0, label: route.end_b || 'Sitio B', est: !Lopt });
   anchors.sort((a, b) => a.o - b.o);
-  // descartar anclas que contradicen el orden del recorrido
   const clean = [anchors[0]];
   for (const a of anchors.slice(1)) if (a.c > clean[clean.length - 1].c + 1 && a.o > clean[clean.length - 1].o) clean.push(a);
   const vanos = [];
@@ -92,7 +111,77 @@ function fiberModel(route, elements, events){
     if (!(k > 0.85 && k < 1.35)){ low = true; k = Math.max(0.85, Math.min(1.35, (B.o - A.o) / Math.max(1, B.c - A.c))); }
     vanos.push({ A, B, inside, k, low });
   }
-  return { anchors: clean, vanos, Lopt, L, R };
+  return { anchors: clean, vanos, Lopt, L, R, val };
+}
+/* Une los eventos de uno o más .sor (A→B y B→A) en una lista de empalmes medidos desde A */
+function combineSors(files){
+  const ends = files.map(f => f.end).filter(x => x > 0);
+  const Lopt = ends.length ? ends.reduce((a, b) => a + b, 0) / ends.length : null;
+  const pts = [];
+  for (const f of files){
+    for (const ev of f.events){
+      if (ev.end || ev.m - f.launch < 30) continue;
+      const o = ev.m - f.launch;
+      const a = f.dir === 'AB' ? o : (Lopt ? Lopt - o : null);
+      if (a == null || a <= 20 || (Lopt && a >= Lopt - 20)) continue;
+      pts.push({ a, dir: f.dir, loss: ev.loss });
+    }
+  }
+  pts.sort((x, y) => x.a - y.a);
+  const out = [];
+  for (const p of pts){
+    const last = out[out.length - 1];
+    if (last && p.a - last.aMax <= 30){ last.items.push(p); last.aMax = p.a; continue; }
+    out.push({ items: [p], aMax: p.a });
+  }
+  return { Lopt, splices: out.map((g, i) => {
+    const ab = g.items.filter(x => x.dir === 'AB').map(x => x.loss), ba = g.items.filter(x => x.dir === 'BA').map(x => x.loss);
+    const lab = ab.length ? ab.reduce((a, b) => a + b, 0) / ab.length : null, lba = ba.length ? ba.reduce((a, b) => a + b, 0) / ba.length : null;
+    const avg = lab != null && lba != null ? (lab + lba) / 2 : (lab ?? lba);
+    return { n: i + 1, a: Math.round(g.items.reduce((s, x) => s + x.a, 0) / g.items.length * 10) / 10, ab: lab, ba: lba, avg, worst: Math.max(...g.items.map(x => x.loss)), seen: ab.length && ba.length ? 'AB/BA' : ab.length ? 'AB' : 'BA', fibers: 1, vals: [avg] };
+  }) };
+}
+/* Contrasta los empalmes del .sor con las cajas del KMZ */
+function validateRoute(route, elements, margin = 50){
+  const splices = route.splices || [], R = Number(route.reserve_m ?? 30), L = Number(route.route_length_m) || 0;
+  const cand = elements.filter(e => (e.kind === 'botella' || e.kind === 'epi' || e.kind === 'dc') && e.chain_m != null && Number(e.chain_m) > 40 && Number(e.chain_m) < L - 40).sort((a, b) => a.chain_m - b.chain_m);
+  const resC = elements.filter(e => RES_KINDS.includes(e.kind) && e.chain_m != null && e.status !== 'aproximado').map(e => Number(e.chain_m)).sort((a, b) => a - b);
+  const model = (c, h) => c * (1 + h) + R * resC.filter(x => x < c - 1).length;
+  const fixed = new Map(); // empalmes ya ligados a una caja (creada o confirmada en campo)
+  elements.forEach(e => { if (e.splice_no && (e.status === 'actualizado' || e.status === 'aproximado')) fixed.set(e.splice_no, e); });
+  let best = { err: Infinity, h: 0.02 };
+  const kmzB = cand.filter(e => e.status === 'kmz' && !e.splice_no);
+  if (splices.length && kmzB.length) for (let h = 0; h <= 0.08; h += 0.0025){
+    const err = kmzB.reduce((s, e) => s + Math.min(...splices.map(x => Math.abs(model(e.chain_m, h) - x.a)), 3000), 0);
+    if (err < best.err) best = { err, h };
+  }
+  // emparejar en orden (programación dinámica): el .sor y el KMZ van en el mismo sentido
+  const free = splices.filter(x => !fixed.has(x.n)), pool = cand.filter(e => e.status !== 'aproximado' && !(e.splice_no && fixed.get(e.splice_no) === e));
+  const align = (resid, tolOf) => {
+    const n = free.length, m = pool.length, f = Array.from({ length: n + 1 }, () => new Float64Array(m + 1)), w = (i, j) => { const r = resid(i, j), t = tolOf(i); return Math.abs(r) < t ? 1 - 0.7 * Math.abs(r) / t : -1; };
+    for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) f[i][j] = Math.max(f[i - 1][j], f[i][j - 1], f[i - 1][j - 1] + Math.max(w(i - 1, j - 1), -1e9) * (w(i - 1, j - 1) > 0 ? 1 : 0) - (w(i - 1, j - 1) > 0 ? 0 : 1e9));
+    const res = new Map(); let i = n, j = m;
+    while (i > 0 && j > 0){ const ww = w(i - 1, j - 1); if (ww > 0 && Math.abs(f[i][j] - (f[i - 1][j - 1] + ww)) < 1e-9){ res.set(i - 1, j - 1); i--; j--; } else if (f[i - 1][j] >= f[i][j - 1]) i--; else j--; }
+    return res;
+  };
+  const d0 = (i, j) => model(pool[j].chain_m, best.h) - free[i].a;
+  const mt = align(d0, i => Math.max(300, 0.05 * free[i].a));
+  // margen de estimación: crece con la distancia al punto firme más cercano (las puntas o una caja confirmada en campo)
+  const Lo = Number(route.optical_length_m) || (splices.length ? splices[splices.length - 1].a : L);
+  const firm = [0, Lo, ...[...fixed.entries()].filter(([, e]) => e.status === 'actualizado').map(([n]) => (splices.find(x => x.n === n) || {}).a).filter(x => x != null)];
+  const marginAt = x => Math.round(Math.max(margin, 0.012 * Math.min(...firm.map(f => Math.abs(f - x)))));
+  const used = new Set([...fixed.values()].map(e => e.id)), pairs = [];
+  for (const sp of splices){
+    const fe = fixed.get(sp.n), mg = marginAt(sp.a);
+    if (fe){ pairs.push({ s: sp, e: fe, d: null, mg, status: fe.status === 'actualizado' ? 'confirmada' : 'a_confirmar', anchor: fe.status === 'actualizado' }); continue; }
+    const i = free.indexOf(sp), j = mt.get(i);
+    if (j == null){ pairs.push({ s: sp, e: null, d: null, mg, status: 'falta', anchor: false }); continue; }
+    const e = pool[j], d = d0(i, j); used.add(e.id);
+    const ok = Math.abs(d) <= mg || e.status === 'actualizado';
+    pairs.push({ s: sp, e, d, mg, status: ok ? 'coincide' : 'desplazada', anchor: Math.abs(d) <= margin || e.status === 'actualizado' });
+  }
+  const orphans = cand.filter(e => e.kind === 'botella' && !used.has(e.id));
+  return { pairs, orphans, h: best.h };
 }
 function otdrToChain(model, o){
   const v = model.vanos.find(x => o >= x.A.o && o <= x.B.o) || (o < 0 ? model.vanos[0] : model.vanos[model.vanos.length - 1]);
@@ -150,218 +239,260 @@ function parseSor(buf){
   return { wl, pulse, ior, events, label: label.trim().slice(0, 80) };
 }
 
-/* ---------- planilla de empalmes ---------- */
-function parseSpliceSheet(wb){
-  const ev = new Map(); let Lopt = null, endA = null, endB = null, cable = null, nFib = 0;
-  for (const sn of wb.SheetNames){
-    const rows = sheetRows(wb.Sheets[sn]);
-    for (const r of rows.slice(0, 20)){
-      const k = norm(r[0]); const val = r.slice(1).find(x => xlStr(x) !== '');
-      if (/^long\.? ?optica/.test(k) && val !== undefined && Lopt == null){ const n = xlNumber(val); if (n) Lopt = n < 2000 ? n * 1000 : n; }
-      if (/^nodo origen/.test(k) && val && !endA) endA = xlStr(val);
-      if (/^nodo destino/.test(k) && val && !endB) endB = xlStr(val);
-      if (/^cable/.test(k) && val && !cable) cable = xlStr(val);
-    }
-    if (!/empalme/i.test(sn) && !rows.some(r => r.some(c => /^evento/.test(norm(c))))) continue;
-    const hi = rows.findIndex(r => r.some(c => /^evento/.test(norm(c))) && r.some(c => /progresiva/.test(norm(c))));
-    if (hi < 0) continue;
-    const sub = rows[hi + 1] || [];
-    // cada fibra: columnas De A→B · De B→A · At Prom (el promedio puede venir vacío)
-    const trip = []; sub.forEach((c, i) => { if (/prom/.test(norm(c))) trip.push({ ab: i - 2, ba: i - 1, pr: i }); });
-    if (!trip.length) sub.forEach((c, i) => { if (/a.?→.?b|a->b/.test(norm(c)) && i > 2) trip.push({ ab: i, ba: -1, pr: -1 }); });
-    nFib += trip.length;
-    for (const r of rows.slice(hi + 2)){
-      const n = xlNumber(r[0]), a = xlNumber(r[1]), b = xlNumber(r[2]);
-      if (!n || a == null) continue;
-      const vals = trip.map(t => { const pr = t.pr >= 0 ? xlNumber(r[t.pr]) : null; if (pr != null && xlStr(r[t.pr]) !== '') return pr;
-        const ab = xlNumber(r[t.ab]), ba = t.ba >= 0 ? xlNumber(r[t.ba]) : null;
-        if (ab != null && ba != null && ab !== 0 && ba !== 0) return (ab + ba) / 2;
-        return ab != null ? ab : ba; }).filter(x => x != null);
-      const cur = ev.get(n) || { n, a, b, vals: [] };
-      cur.vals.push(...vals); ev.set(n, cur);
-    }
-  }
-  const splices = [...ev.values()].sort((x, y) => x.a - y.a).map(s => {
-    const v = s.vals.filter(x => x !== 0);
-    return { n: s.n, a: s.a, b: s.b, worst: v.length ? Math.max(...v) : null, avg: v.length ? v.reduce((p, q) => p + q, 0) / v.length : null, fibers: s.vals.length, vals: s.vals.map(x => Math.round(x * 1000) / 1000) };
-  });
-  return { splices, Lopt, endA, endB, cable, nFib };
-}
-/* empareja empalmes con botellas / nodos del recorrido (en orden) */
-function matchSplices(splices, elements, R){
-  const cand = elements.filter(e => ['botella', 'epi', 'dc'].includes(e.kind) && e.chain_m != null).sort((a, b) => a.chain_m - b.chain_m);
-  const res = elements.filter(e => RES_KINDS.includes(e.kind)).map(e => e.chain_m).sort((a, b) => a - b);
-  const model = (c, h) => c * (1 + h) + R * res.filter(x => x < c - 1).length;
-  let best = { err: Infinity, h: 0.02 };
-  for (let h = 0; h <= 0.08; h += 0.0025){
-    const err = cand.filter(e => e.kind === 'botella').reduce((s, e) => s + Math.min(...splices.map(x => Math.abs(model(e.chain_m, h) - x.a)), 5000), 0);
-    if (err < best.err) best = { err, h };
-  }
-  const used = new Set(); let lastC = -1; const pairs = [];
-  for (const s of splices){
-    const tol = Math.max(250, 0.03 * s.a);
-    let pick = null;
-    for (const e of cand){ if (used.has(e.id) || e.chain_m <= lastC) continue; const d = Math.abs(model(e.chain_m, best.h) - s.a); if (d <= tol && (!pick || d < pick.d)) pick = { e, d }; }
-    if (pick){ used.add(pick.e.id); lastC = pick.e.chain_m; pairs.push({ s, e: pick.e, d: pick.d }); }
-  }
-  return { pairs, h: best.h };
-}
 function kindOf(name, folder){
-  const n = norm(name), f = norm(folder || '');
-  if (/botella|empalme|caja de empalme/.test(n)) return 'botella';
-  if (/cruz|ganancia/.test(n)) return 'cruz';
-  if (/reserva|rulo/.test(n)) return 'reserva';
-  if (/^epi|nodo|shelter/.test(n)) return 'epi';
+  const n = norm(name), f = norm(folder || '').split(' / ').pop() || '';
+  if (/^vanos?$|^linea vano|^progresiva/.test(f)) return null;          // etiquetas: no son elementos
+  if (/ganancia|cruz/.test(f) || /cruz|ganancia/.test(n)) return 'cruz';
+  if (/reserva|rulo/.test(f) || /reserva|rulo/.test(n)) return 'reserva';
+  if (/caja|empalme|botella/.test(f) || /botella|empalme|caja de empalme/.test(n)) return 'botella';
+  if (/^nodo|^epi|shelter/.test(f) || /^epi|^nodo|shelter/.test(n)) return 'epi';
   if (/^dc$|data ?center|central|^cpd/.test(n)) return 'dc';
-  if (/camara/.test(n)) return 'camara';
-  if (/poste|mensula|luminaria|columna/.test(n)) return 'poste';
-  if (/botella/.test(f)) return 'botella';
-  if (/poste/.test(f)) return 'poste';
+  if (/camara/.test(f) || /camara/.test(n)) return 'camara';
+  if (/poste|mensula|columna/.test(f) || /poste|mensula|luminaria|columna/.test(n)) return 'poste';
   return 'otro';
 }
 
 /* =====================================================================
    PANTALLAS
    ===================================================================== */
-const FR_COLS = 'id,name,end_a,end_b,cable,optical_length_m,route_length_m,reserve_m,threshold_db,ior,notes,updated_at';
+const FR_COLS = 'id,name,traza,end_a,end_b,cable,optical_length_m,route_length_m,reserve_m,threshold_db,ior,notes,updated_at';
 async function viewTools(v){
   const routes = await cached('fr-list', () => sb.from('fiber_routes').select(FR_COLS).order('name'));
   const manage = isManager() && canWrite() && online();
+  const groups = new Map(); routes.forEach(r => { const k = r.traza || 'Sin traza'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+  const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   v.innerHTML = `
     <div class="card"><h2 style="margin:0">🧰 Herramientas</h2><p class="muted sm" style="margin:6px 0 0">Funcionan también sin señal con lo que ya está descargado en el teléfono.</p></div>
-    <div class="card"><div class="row between"><div><h2 style="margin:0">Fibra óptica: ubicar eventos y cortes</h2>
-      <p class="muted sm" style="margin:4px 0 0">Cargás el KMZ del tramo y la planilla de empalmes. Después ubicás cualquier evento del OTDR (distancia o archivo .sor) en el mapa, y los técnicos actualizan la posición de botellas, reservas y postes desde el lugar.</p></div>
+    <div class="card"><div class="row between"><div><h2 style="margin:0">Fibra óptica: tramos, validación con .sor y ubicación de eventos</h2>
+      <p class="muted sm" style="margin:4px 0 0">Cada tramo va de un Sitio A a un Sitio B. Se carga con su KMZ y se valida con el .sor, que es la referencia: la app marca qué cajas coinciden, cuáles están corridas y cuáles faltan, y los técnicos corrigen la posición en el lugar.</p></div>
       ${manage ? '<button class="btn" id="fr-new">+ Tramo</button>' : ''}</div>
-      <div class="tblwrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Tramo</th><th class="hide-sm">Puntas</th><th class="num">Recorrido</th><th class="num hide-sm">Long. óptica</th><th></th></tr></thead><tbody>
-      ${routes.map(r => `<tr class="click" data-fr="${r.id}"><td><b>${esc(r.name)}</b>${r.cable ? `<div class="muted sm">${esc(r.cable)}</div>` : ''}</td><td class="hide-sm sm">${esc(r.end_a || '')} → ${esc(r.end_b || '')}</td>
-        <td class="num">${r.route_length_m ? (r.route_length_m / 1000).toFixed(2).replace('.', ',') + ' km' : '—'}</td><td class="num hide-sm">${r.optical_length_m ? (r.optical_length_m / 1000).toFixed(3).replace('.', ',') + ' km' : '—'}</td><td>›</td></tr>`).join('') || `<tr><td colspan="5" class="muted">${manage ? 'Todavía no hay tramos. Cargá el primero con <b>+ Tramo</b>.' : 'Todavía no hay tramos cargados.'}</td></tr>`}
-      </tbody></table></div></div>`;
+      ${routes.length ? keys.map(k => `<h3 style="margin:16px 0 4px">${esc(k)}</h3><div class="tblwrap"><table class="tbl"><tbody>
+        ${groups.get(k).map(r => `<tr class="click" data-fr="${r.id}"><td><b>${esc(r.end_a || 'A')} → ${esc(r.end_b || 'B')}</b><div class="muted sm">${esc(r.name)}${r.cable ? ' · ' + esc(r.cable) : ''}</div></td>
+          <td class="num sm">${r.optical_length_m ? 'Fibra ' + (r.optical_length_m / 1000).toFixed(3).replace('.', ',') + ' km' : '<span class="muted">sin .sor</span>'}<div class="muted">recorrido ${r.route_length_m ? (r.route_length_m / 1000).toFixed(2).replace('.', ',') + ' km' : '—'}</div></td><td style="width:20px">›</td></tr>`).join('')}
+      </tbody></table></div>`).join('') : `<p class="muted" style="margin-top:12px">${manage ? 'Todavía no hay tramos. Cargá el primero con <b>+ Tramo</b>.' : 'Todavía no hay tramos cargados.'}</p>`}</div>`;
   v.querySelectorAll('[data-fr]').forEach(tr => tr.onclick = () => location.hash = '#/tools/' + tr.dataset.fr);
-  $('#fr-new')?.addEventListener('click', newRouteModal);
+  $('#fr-new')?.addEventListener('click', () => newRouteModal(routes));
   fiberFlush();
 }
 
-/* ---------- alta de tramo: KMZ + planilla ---------- */
-function newRouteModal(){
+/* ---------- lectura de varios .sor con su sentido ---------- */
+const sorGuessDir = (fname, a, b) => {
+  const f = norm(fname).replace(/[^a-z0-9 ]/g, ' '), k = x => norm(x).replace(/^epi\s*-?\s*/, '').slice(0, 5);
+  const ia = a ? f.indexOf(k(a)) : -1, ib = b ? f.indexOf(k(b)) : -1;
+  if (ia >= 0 && ib >= 0) return ia < ib ? 'AB' : 'BA';
+  if (ia >= 0) return 'AB'; if (ib >= 0) return 'BA'; return null;
+};
+function sorPanel(box, getNames, onChange){
+  const files = [];
+  const draw = () => {
+    box.innerHTML = files.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Archivo .sor</th><th>Sentido</th><th class="num">Fin de fibra</th><th class="num">Empalmes</th><th></th></tr></thead><tbody>
+      ${files.map((f, i) => `<tr><td class="sm">${esc(f.name)}<div class="muted">${f.wl} nm · ${f.pulse} ns</div></td>
+        <td><select data-sd="${i}" style="width:auto;padding:6px"><option value="AB" ${f.dir === 'AB' ? 'selected' : ''}>${esc(getNames().a || 'A')} → ${esc(getNames().b || 'B')}</option><option value="BA" ${f.dir === 'BA' ? 'selected' : ''}>${esc(getNames().b || 'B')} → ${esc(getNames().a || 'A')}</option></select></td>
+        <td class="num sm">${f.end ? fmtM(f.end - f.launch) : '<span style="color:var(--amber)">sin fin (¿cortada?)</span>'}</td><td class="num">${f.events.filter(x => !x.end && x.m - f.launch > 30).length}</td>
+        <td><button class="iconbtn" data-sx="${i}" type="button" title="Quitar">✕</button></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted sm" style="margin:4px 0">Subí uno o dos .sor del tramo (ideal: uno de cada punta).</p>';
+    box.querySelectorAll('[data-sd]').forEach(x => x.onchange = () => { files[x.dataset.sd].dir = x.value; onChange(); });
+    box.querySelectorAll('[data-sx]').forEach(x => x.onclick = () => { files.splice(Number(x.dataset.sx), 1); draw(); onChange(); });
+  };
+  return {
+    files, draw,
+    async add(fileList, launch){
+      for (const f of [...fileList].slice(0, 6)){
+        try { const r = parseSor(await f.arrayBuffer()); const endEv = r.events.find(x => x.end);
+          const n = getNames(); files.push({ name: f.name.slice(0, 120), wl: r.wl, pulse: r.pulse, ior: r.ior, events: r.events, end: endEv ? endEv.m : null, launch, dir: sorGuessDir(f.name, n.a, n.b) || (files.some(x => x.dir === 'AB') && !files.some(x => x.dir === 'BA') ? 'BA' : 'AB') }); }
+        catch (x){ toast(f.name + ': ' + errText(x)); }
+      }
+      draw(); onChange();
+    },
+    setLaunch(l){ files.forEach(f => f.launch = l); draw(); onChange(); },
+    combined(){ return files.length ? combineSors(files.map(f => ({ ...f, end: f.end ? f.end - f.launch : null }))) : null; },
+    meta(){ return files.map(f => ({ name: f.name, dir: f.dir, launch: f.launch, end: f.end ? Math.round((f.end - f.launch) * 10) / 10 : null, wl: f.wl, pulse: f.pulse, events: f.events.filter(x => !x.end).length })); },
+  };
+}
+const valTxt = { coincide: '🟢 Coincide', desplazada: '🟡 Fuera del margen', falta: '🔴 Falta en el KMZ', a_confirmar: '❔ A confirmar', confirmada: '✅ Confirmada en campo' };
+
+/* ---------- alta de tramo: KMZ + Sitio A / Sitio B + .sor ---------- */
+function newRouteModal(existing){
   if (!needOnline()) return;
-  let kmz = null, sheet = null, built = null, exported = null, routesCache = null;
+  let kmz = null, built = null, exported = null;
+  const trazas = [...new Set((existing || []).map(r => r.traza).filter(Boolean))];
   const m = modal(`<h2>Nuevo tramo de fibra</h2>
-    <label>Nombre del tramo</label><input id="nr-n" maxlength="200" placeholder="Ej.: Traza 15 · Santa Fe – Helvecia">
-    <label>KMZ / KML con el recorrido y los elementos</label><input type="file" id="nr-k" accept=".kmz,.kml">
-    <label>Planilla de empalmes (opcional, recomendada)</label><input type="file" id="nr-x" accept=".xlsx,.xls">
-    <div id="nr-info" class="sm" style="margin-top:10px"></div>
+    <div class="row"><div class="grow"><label>Traza</label><input id="nr-tz" maxlength="120" list="nr-tzl" placeholder="Ej.: Traza 4"><datalist id="nr-tzl">${trazas.map(t => `<option value="${esc(t)}">`).join('')}</datalist></div>
+      <div class="grow"><label>Nombre del tramo (opcional)</label><input id="nr-n" maxlength="200" placeholder="Se arma con Sitio A → Sitio B"></div></div>
+    <label>KMZ / KML del tramo</label><input type="file" id="nr-k" accept=".kmz,.kml">
+    <div id="nr-info" class="sm" style="margin-top:8px"></div>
     <div id="nr-more" class="hidden">
-      <div class="row"><div class="grow"><label>Punta A (origen de las progresivas)</label><select id="nr-a"></select></div><div class="grow"><label>Punta B</label><input id="nr-b" maxlength="120"></div></div>
-      <div class="row"><div class="grow"><label>Reserva por botella / cruz (m)</label><input id="nr-r" type="number" min="0" value="30"></div>
-        <div class="grow"><label>Umbral de empalme (dB)</label><input id="nr-t" type="number" min="0" step="0.01" value="0.10"></div>
-        <div class="grow"><label>Longitud óptica (m)</label><input id="nr-l" type="number" min="0" step="1" placeholder="de la planilla o del .sor"></div></div>
-      <label>Cable</label><input id="nr-c" maxlength="120" placeholder="Ej.: 96FO">
+      <div class="row" style="align-items:flex-start">
+        <div class="grow"><label>Sitio A</label><select id="nr-as"></select><input id="nr-an" maxlength="120" placeholder="Nombre del Sitio A" style="margin-top:6px"><input id="nr-ac" class="hidden" placeholder="Coordenadas: -31.4110, -60.7460" style="margin-top:6px"></div>
+        <div class="grow"><label>Sitio B</label><select id="nr-bs"></select><input id="nr-bn" maxlength="120" placeholder="Nombre del Sitio B" style="margin-top:6px"><input id="nr-bc" class="hidden" placeholder="Coordenadas: -31.2705, -60.7622" style="margin-top:6px"></div></div>
+      <label>Mediciones .sor del tramo (la referencia)</label>
+      <div class="row"><label class="btn sec small" style="margin:0">Agregar .sor<input type="file" id="nr-s" accept=".sor" multiple class="hidden"></label>
+        <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="nr-bob" style="width:auto"> Con bobina de lanzamiento</label>
+        <input id="nr-bl" type="number" min="0" value="1000" style="width:100px" class="hidden" title="Largo de la bobina (m)"></div>
+      <div id="nr-sor"></div>
+      <div class="row"><div class="grow"><label>Longitud óptica del tramo (m)</label><input id="nr-l" type="number" min="0" step="0.1" placeholder="Sale del .sor; si no hay o está cortado, cargala a mano"></div>
+        <div style="width:150px"><label>Reserva por caja / cruz (m)</label><input id="nr-r" type="number" min="0" value="30"></div>
+        <div style="width:130px"><label>Umbral empalme (dB)</label><input id="nr-t" type="number" min="0" step="0.01" value="0.10"></div>
+        <div style="width:120px"><label>Cable</label><input id="nr-c" maxlength="120" placeholder="96FO"></div></div>
     </div>
+    <div id="nr-val" class="sm" style="margin-top:10px"></div>
     <div class="err" id="nr-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="nr-x2">Cancelar</button><button class="btn" id="nr-go" disabled>Procesar</button></div>`, { wide: true });
   $('#nr-x2').onclick = m.close;
-  const ready = () => { $('#nr-go').disabled = !kmz; };
+  const reset = () => { built = null; $('#nr-go').textContent = 'Procesar'; $('#nr-val').innerHTML = ''; };
+  const names = () => ({ a: $('#nr-an')?.value.trim(), b: $('#nr-bn')?.value.trim() });
+  const sor = sorPanel($('#nr-sor'), names, () => { const c = sor.combined(); if (c && c.Lopt) $('#nr-l').value = Math.round(c.Lopt * 10) / 10; reset(); });
+  sor.draw();
+  const launch = () => $('#nr-bob').checked ? Number($('#nr-bl').value) || 0 : 0;
+  $('#nr-bob').onchange = () => { $('#nr-bl').classList.toggle('hidden', !$('#nr-bob').checked); sor.setLaunch(launch()); };
+  $('#nr-bl').oninput = () => sor.setLaunch(launch());
+  $('#nr-s').onchange = e => sor.add(e.target.files, launch());
+  const siteOpts = () => {
+    const ends = [];
+    kmz.lines.forEach(l => { ends.push({ name: `Inicio de la línea "${l.name}"`, p: l.pts[0] }); ends.push({ name: `Fin de la línea "${l.name}"`, p: l.pts[l.pts.length - 1] }); });
+    kmz.sites = [...kmz.nodes, ...ends.slice(0, 20)];
+    return kmz.sites.map((x, i) => `<option value="${i}">${esc(x.name)}</option>`).join('') + '<option value="coord">Otro punto: ingresar coordenadas…</option>';
+  };
+  const bindSite = (sel, nm, co) => { $(sel).onchange = () => { const v = $(sel).value; $(co).classList.toggle('hidden', v !== 'coord'); if (v !== 'coord'){ const x = kmz.sites[Number(v)]; $(nm).value = (x.short || x.name).slice(0, 120); } reset(); sor.draw(); }; $(nm).oninput = () => sor.draw(); $(co).oninput = reset; };
   $('#nr-k').onchange = async e => {
-    $('#nr-err').textContent = ''; kmz = null; exported = null; built = null; $('#nr-go').textContent = 'Procesar'; ready();
+    $('#nr-err').textContent = ''; kmz = null; exported = null; reset(); $('#nr-go').disabled = true;
     try {
       const txt = await readKML(e.target.files[0]);
-      // ¿es un KMZ que exportó la propia app? (no es un recorrido original)
-      const ex = /Exportado de InspectApp/i.test(txt.slice(0, 5000)) ? (/<Document>\s*<name>([^<]{0,300})<\/name>/i.exec(txt.slice(0, 5000)) || [])[1] || 'otro tramo' : null;
-      exported = ex ? ex.replace(/&amp;/g, '&').replace(/ · actualizado.*$/, '') : null;
+      exported = /Exportado de InspectApp/i.test(txt.slice(0, 5000)) ? ((/<Document>\s*<name>([^<]{0,300})<\/name>/i.exec(txt.slice(0, 5000)) || [])[1] || 'otro tramo').replace(/&amp;/g, '&').replace(/ · actualizado.*$/, '') : null;
       const pms = parseKML(txt);
-      const lines = pms.filter(x => !x.isPoint && x.pts.length > 1).map(x => ({ name: x.name || 'Tramo', pts: x.pts.map(p => [p[0], p[1]]) }));
-      const pts = pms.filter(x => x.isPoint && x.pts.length).map(x => ({ name: (x.name || '').trim().slice(0, 200), folder: x.path.join(' / '), p: [x.pts[0][0], x.pts[0][1]] }));
+      const isVano = x => /vano/i.test(x.name || '') || x.path.some(f => /vano/i.test(f));
+      const lines = pms.filter(x => !x.isPoint && x.pts.length > 1 && !isVano(x)).map(x => ({ name: (x.name || 'Recorrido').slice(0, 120), pts: x.pts.map(p => [p[0], p[1]]) }));
+      const pts = pms.filter(x => x.isPoint && x.pts.length).map(x => ({ name: (x.name || '').trim().slice(0, 200), folder: x.path.join(' / '), p: [x.pts[0][0], x.pts[0][1]] }))
+        .map(x => ({ ...x, kind: kindOf(x.name, x.folder) })).filter(x => x.kind);
       if (!lines.length) throw new Error('El KMZ no tiene líneas con el recorrido de la fibra.');
-      if (pts.length > 20000) throw new Error('El KMZ tiene demasiados elementos (más de 20.000).');
-      kmz = { lines, pts };
-      const ends = pts.filter(x => ['epi', 'dc'].includes(kindOf(x.name, x.folder)));
-      $('#nr-a').innerHTML = (ends.length ? ends : pts.slice(0, 200)).map((x, i) => `<option value="${i}">${esc(x.name)}</option>`).join('');
-      kmz.ends = ends.length ? ends : pts.slice(0, 200);
-      const pref = kmz.ends.findIndex(x => /^dc$|santa fe/i.test(x.name)); if (pref >= 0) $('#nr-a').value = String(pref);
-      $('#nr-more').classList.remove('hidden');
-      const cnt = {}; pts.forEach(x => { const k = kindOf(x.name, x.folder); cnt[k] = (cnt[k] || 0) + 1; });
-      $('#nr-info').innerHTML = (exported ? `<div class="banner warn" style="margin:0 0 8px"><span class="dot"></span><div><b>Ojo: este archivo es una exportación de InspectApp del tramo "${esc(exported)}"</b>, no un recorrido original. Si es el KMZ de otro tramo, verificá que hayas elegido el archivo correcto.</div></div>` : '') + `<b>KMZ:</b> ${lines.length} líneas de recorrido · ${Object.entries(cnt).map(([k, n]) => `${n} ${esc(FE_KINDS[k].toLowerCase())}`).join(' · ')}` + ($('#nr-info').dataset.x || '');
-      if (!$('#nr-n').value) $('#nr-n').value = e.target.files[0].name.replace(/\.(kmz|kml)$/i, '').replace(/[_]+/g, ' ').slice(0, 120);
+      if (pts.length > 25000) throw new Error('El KMZ tiene demasiados elementos.');
+      const nodes = pts.filter(x => x.kind === 'epi' || x.kind === 'dc').map(x => ({ ...x, short: x.name.replace(/^caja de empalme\s*/i, '').replace(/^epi\s*-?\s*/i, '') }));
+      // un mismo nodo puede venir como "Nodo" y como "Caja de empalme EPI…": dejar uno por lugar
+      const uniq = []; nodes.forEach(n => { if (!uniq.some(u => havm(u.p, n.p) < 30)) uniq.push(n); });
+      kmz = { lines, pts, nodes: uniq };
+      const cnt = {}; pts.forEach(x => { cnt[x.kind] = (cnt[x.kind] || 0) + 1; });
+      $('#nr-info').innerHTML = (exported ? `<div class="banner warn" style="margin:0 0 8px"><span class="dot"></span><div><b>Ojo: este archivo es una exportación de InspectApp del tramo "${esc(exported)}"</b>, no un KMZ original.</div></div>` : '') +
+        `<b>KMZ:</b> ${lines.length} línea${lines.length === 1 ? '' : 's'} de recorrido (${lines.map(l => esc(l.name) + ' ' + (cumOf(l.pts).pop() / 1000).toFixed(1).replace('.', ',') + ' km').slice(0, 4).join(' · ')}${lines.length > 4 ? '…' : ''}) · ${Object.entries(cnt).map(([k, n]) => `${n} ${esc(FE_KINDS[k].toLowerCase())}`).join(' · ')}`;
+      $('#nr-as').innerHTML = siteOpts(); $('#nr-bs').innerHTML = siteOpts();
+      if (kmz.sites.length > 1){ $('#nr-as').value = '0'; $('#nr-bs').value = String(uniq.length > 1 ? uniq.length - 1 : 1); }
+      bindSite('#nr-as', '#nr-an', '#nr-ac'); bindSite('#nr-bs', '#nr-bn', '#nr-bc');
+      $('#nr-as').onchange(); $('#nr-bs').onchange();
+      $('#nr-more').classList.remove('hidden'); $('#nr-go').disabled = false;
     } catch (x){ $('#nr-err').textContent = 'KMZ: ' + errText(x); }
-    ready();
   };
-  $('#nr-x').onchange = async e => {
-    $('#nr-err').textContent = ''; sheet = null;
-    try {
-      sheet = parseSpliceSheet(await readWorkbook(e.target.files[0]));
-      if (!sheet.splices.length) throw new Error('No encontré la tabla de empalmes (columnas Evento y Progresiva).');
-      const t = `<br><b>Planilla:</b> ${sheet.splices.length} empalmes${sheet.Lopt ? ` · longitud óptica ${(sheet.Lopt / 1000).toFixed(3).replace('.', ',')} km` : ''}${sheet.endA ? ` · ${esc(sheet.endA)} → ${esc(sheet.endB || '')}` : ''}`;
-      $('#nr-info').dataset.x = t; $('#nr-info').innerHTML += t;
-      if (sheet.Lopt) $('#nr-l').value = Math.round(sheet.Lopt);
-      if (sheet.endB) $('#nr-b').value = sheet.endB;
-      if (sheet.cable) $('#nr-c').value = sheet.cable;
-      if (sheet.endA && kmz){ const i = kmz.ends.findIndex(x => norm(x.name).includes(norm(sheet.endA)) || (/santa fe/i.test(sheet.endA) && /^dc$/i.test(x.name))); if (i >= 0) $('#nr-a').value = String(i); }
-    } catch (x){ $('#nr-err').textContent = 'Planilla: ' + errText(x); }
-  };
+  const siteP = (sel, co) => { const v = $(sel).value; if (v === 'coord'){ const m2 = /(-?\d+(?:[.,]\d+)?)\s*[,; ]\s*(-?\d+(?:[.,]\d+)?)/.exec($(co).value); if (!m2) return null; const la = Number(m2[1].replace(',', '.')), lo = Number(m2[2].replace(',', '.')); return Math.abs(la) <= 90 && Math.abs(lo) <= 180 ? [lo, la] : null; } return kmz.sites[Number(v)]?.p || null; };
   $('#nr-go').onclick = async () => {
     if (!kmz) return;
     if (built) return saveRoute();
-    const A = kmz.ends[Number($('#nr-a').value)];
-    if (!A) return ($('#nr-err').textContent = 'Elegí la punta A.');
+    $('#nr-err').textContent = '';
+    const A = siteP('#nr-as', '#nr-ac'), B = siteP('#nr-bs', '#nr-bc');
+    if (!A || !B) return ($('#nr-err').textContent = 'Indicá Sitio A y Sitio B (si elegís coordenadas, escribilas como -31.4110, -60.7460).');
+    if (!names().a || !names().b) return ($('#nr-err').textContent = 'Poné el nombre de Sitio A y Sitio B.');
+    if (havm(A, B) < 50) return ($('#nr-err').textContent = 'Sitio A y Sitio B son el mismo punto.');
+    $('#nr-go').disabled = true; $('#nr-go').textContent = 'Calculando…';
+    await new Promise(r => setTimeout(r, 30));
+    const pr = pathAtoB(kmz.lines, A, B);
+    $('#nr-go').disabled = false; $('#nr-go').textContent = 'Procesar';
+    if (!pr || pr.path.length < 2) return ($('#nr-err').textContent = 'No encontré un recorrido que una Sitio A con Sitio B en las líneas del KMZ.');
+    const cum = cumOf(pr.path), L = cum[cum.length - 1];
     const R = Number($('#nr-r').value) || 0;
-    const ch = chainLines(kmz.lines, A.p);
-    const cum = cumOf(ch.path), L = cum[cum.length - 1];
-    if (L < 50) return ($('#nr-err').textContent = 'No pude armar el recorrido desde esa punta. Probá con la otra punta.');
-    // ¿ya existe un tramo con este mismo recorrido?
-    if (!routesCache){ const { data } = await sb.from('fiber_routes').select('id,name,route_length_m,path'); routesCache = data || []; }
-    const p0 = ch.path[0], p1 = ch.path[ch.path.length - 1];
-    const dup = routesCache.find(r => { const q = r.path || []; if (q.length < 2 || !r.route_length_m) return false;
-      const q0 = q[0], q1 = q[q.length - 1];
-      const same = (havm(p0, q0) < 300 && havm(p1, q1) < 300) || (havm(p0, q1) < 300 && havm(p1, q0) < 300);
-      return same && Math.abs(r.route_length_m - L) / L < 0.01; });
-    if (dup && !confirm(`El recorrido de este KMZ es igual al del tramo "${dup.name}" que ya está cargado (${(dup.route_length_m / 1000).toFixed(2).replace('.', ',')} km, mismas puntas).\n\n¿Seguro que querés crear otro tramo con el mismo recorrido?`)) return;
-    if (exported && !confirm(`Este KMZ fue exportado por InspectApp desde el tramo "${exported}".\n\n¿Seguro que es el recorrido del tramo que estás creando?`)) return;
-    const els = kmz.pts.map(x => { const pr = projectOn(ch.path, cum, x.p); const kind = kindOf(x.name, x.folder);
-      return { id: uid(), kind, name: x.name || FE_KINDS[kind], subtype: x.name.slice(0, 120), lat: x.p[1], lng: x.p[0], chain_m: Math.round(pr.chain * 10) / 10, off: pr.off, reserve_m: RES_KINDS.includes(kind) ? R : null, status: 'kmz' }; });
-    let approx = [], match = { pairs: [], h: 0 };
-    if (sheet){
-      match = matchSplices(sheet.splices, els, R);
-      match.pairs.forEach(p => { p.e.splice_no = p.s.n; });
-      const tmpRoute = { route_length_m: L, reserve_m: R, splices: sheet.splices, optical_length_m: Number($('#nr-l').value) || null, end_a: A.name, end_b: $('#nr-b').value };
-      const model = fiberModel(tmpRoute, els, []);
-      for (const s of sheet.splices){
-        if (match.pairs.some(p => p.s.n === s.n)) continue;
-        const r = otdrToChain(model, s.a); if (!r) continue;
-        const ll = pointAt(ch.path, cum, r.chain);
-        approx.push({ id: uid(), kind: 'botella', name: `Empalme ${s.n} (a confirmar)`, subtype: 'Botella', lat: ll[1], lng: ll[0], chain_m: Math.round(r.chain * 10) / 10, reserve_m: R, splice_no: s.n, status: 'aproximado' });
-      }
+    // elementos del tramo: cerca del recorrido entre A y B
+    const els = [];
+    for (const x of kmz.pts){
+      const q = projectOn(pr.path, cum, x.p); const lim = ['botella', 'epi', 'dc'].includes(x.kind) ? 300 : 150;
+      if (q.off > lim || q.chain < -50 || q.chain > L + 50) continue;
+      if (q.chain <= 0.5 && havm(x.p, pr.path[0]) > lim) continue;
+      if (q.chain >= L - 0.5 && havm(x.p, pr.path[pr.path.length - 1]) > lim) continue;
+      els.push({ id: uid(), kind: x.kind, name: x.name || FE_KINDS[x.kind], subtype: x.name.slice(0, 120), lat: x.p[1], lng: x.p[0], chain_m: Math.round(q.chain * 10) / 10, reserve_m: RES_KINDS.includes(x.kind) ? R : null, status: 'kmz' });
     }
-    const far = els.filter(e => e.off > 150).length;
-    built = { A, R, ch, L, els: els.concat(approx), match };
-    $('#nr-info').innerHTML = `<div class="stats" style="margin-top:6px">
-      <div class="stat"><span>Recorrido encadenado</span><b>${(L / 1000).toFixed(2).replace('.', ',')} km</b><small>${ch.order.length} líneas desde ${esc(A.name)}</small></div>
-      <div class="stat"><span>Elementos</span><b>${els.length}</b><small>${far ? far + ' a más de 150 m del recorrido' : 'todos sobre el recorrido'}</small></div>
-      ${sheet ? `<div class="stat"><span>Empalmes con botella</span><b>${match.pairs.length} / ${sheet.splices.length}</b><small>${approx.length} quedan "a confirmar"</small></div>` : ''}</div>
-      ${ch.unused.length ? `<p class="sm" style="color:var(--amber)">Líneas sin encadenar (derivaciones cortas o separadas): ${esc(ch.unused.slice(0, 8).join(', '))}${ch.unused.length > 8 ? '…' : ''}</p>` : ''}
-      ${ch.order.some(o => o.gap > 50) ? `<p class="sm muted">Saltos entre líneas: ${ch.order.filter(o => o.gap > 50).map(o => esc(o.name) + ' ' + o.gap + ' m').join(' · ')}</p>` : ''}
-      ${approx.length ? `<p class="sm">Los ${approx.length} empalmes sin botella en el KMZ se ubican aproximados en el mapa con "?" para que los técnicos confirmen la posición en el lugar.</p>` : ''}`;
+    const comb = sor.combined();
+    const Lopt = Number($('#nr-l').value) || (comb && comb.Lopt) || null;
+    const tmpRoute = { route_length_m: L, reserve_m: R, splices: comb ? comb.splices : [], optical_length_m: Lopt, end_a: names().a, end_b: names().b };
+    const val = validateRoute(tmpRoute, els);
+    const model = fiberModel(tmpRoute, els, [], val);
+    const faltan = [];
+    for (const p of val.pairs) if (p.status === 'falta'){ const r = otdrToChain(model, p.s.a); if (!r) continue; const ll = pointAt(pr.path, cum, r.chain);
+      faltan.push({ id: uid(), kind: 'botella', name: `Empalme ${p.s.n} (a confirmar)`, subtype: 'Caja de empalme', lat: ll[1], lng: ll[0], chain_m: Math.round(r.chain * 10) / 10, reserve_m: R, splice_no: p.s.n, status: 'aproximado', est: r }); }
+    const cnt = st => val.pairs.filter(p => p.status === st).length;
+    const resN = els.filter(e => RES_KINDS.includes(e.kind)).length;
+    built = { A, B, pr, L, R, els: els.concat(faltan), comb, Lopt, val };
+    $('#nr-val').innerHTML = `<div class="stats">
+      <div class="stat"><span>Recorrido ${esc(names().a)} → ${esc(names().b)}</span><b>${(L / 1000).toFixed(3).replace('.', ',')} km</b><small>${els.length} elementos del KMZ en el tramo</small></div>
+      <div class="stat"><span>Fibra (.sor)</span><b>${Lopt ? (Lopt / 1000).toFixed(3).replace('.', ',') + ' km' : '—'}</b><small>${Lopt ? `recorrido + reservas = ${((L + resN * R) / 1000).toFixed(3).replace('.', ',')} km` : 'sin longitud: cargala a mano'}</small></div>
+      ${comb ? `<div class="stat"><span>Empalmes en el .sor</span><b>${comb.splices.length}</b><small>${comb.splices.filter(s => s.seen === 'AB/BA').length} vistos desde las dos puntas</small></div>
+      <div class="stat"><span>Contra el KMZ</span><b style="font-size:16px">🟢 ${cnt('coincide')} · 🟡 ${cnt('desplazada')} · 🔴 ${cnt('falta')}</b><small>${val.orphans.length} cajas del KMZ sin evento en el .sor</small></div>` : ''}</div>
+      ${pr.offA > 100 || pr.offB > 100 ? `<p style="color:var(--amber)">Sitio ${pr.offA > 100 ? 'A' : 'B'} queda a ${Math.round(Math.max(pr.offA, pr.offB))} m de la línea del recorrido: revisá que sea el punto correcto.</p>` : ''}
+      ${!comb ? '<p class="muted">Sin .sor no se puede validar el KMZ. Podés guardar el tramo igual y validarlo después desde el tramo.</p>' : ''}
+      ${faltan.length ? `<p>Los ${faltan.length} empalmes que el .sor muestra y el KMZ no tiene se crean como cajas <b>"a confirmar"</b> en su posición estimada, para que los técnicos las ubiquen en el lugar.</p>` : ''}`;
     $('#nr-go').textContent = 'Guardar tramo';
-    ['#nr-a', '#nr-r', '#nr-l'].forEach(s => $(s).onchange = () => { built = null; $('#nr-go').textContent = 'Procesar'; });
   };
   const saveRoute = async () => {
-    const name = $('#nr-n').value.trim(); if (!name) return ($('#nr-err').textContent = 'Poné el nombre del tramo.');
+    if (exported && !confirm(`Este KMZ fue exportado por InspectApp desde el tramo "${exported}".\n\n¿Seguro que corresponde a este tramo?`)) return;
+    const a = names().a, b = names().b;
+    const dup = (existing || []).find(r => norm(r.end_a) === norm(a) && norm(r.end_b) === norm(b) || norm(r.end_a) === norm(b) && norm(r.end_b) === norm(a));
+    if (dup && !confirm(`Ya existe el tramo "${dup.end_a} → ${dup.end_b}" (${dup.name}). ¿Crear otro igual?`)) return;
     $('#nr-go').disabled = true; $('#nr-go').textContent = 'Guardando…';
-    const row = { org_id: me.org_id, name, end_a: built.A.name.slice(0, 120), end_b: $('#nr-b').value.trim().slice(0, 120) || null, cable: $('#nr-c').value.trim() || null,
-      optical_length_m: Number($('#nr-l').value) || null, route_length_m: Math.round(built.L), path: built.ch.path, splices: sheet ? sheet.splices : [],
-      reserve_m: built.R, threshold_db: Number($('#nr-t').value) || 0.1, created_by: me.id };
+    const traza = $('#nr-tz').value.trim().slice(0, 120) || null;
+    const name = ($('#nr-n').value.trim() || `${traza ? traza + ' · ' : ''}${a} → ${b}`).slice(0, 200);
+    const row = { org_id: me.org_id, name, traza, end_a: a.slice(0, 120), end_b: b.slice(0, 120), site_a: { name: a, lat: built.A[1], lng: built.A[0] }, site_b: { name: b, lat: built.B[1], lng: built.B[0] },
+      cable: $('#nr-c').value.trim() || null, optical_length_m: built.Lopt ? Math.round(built.Lopt * 10) / 10 : null, route_length_m: Math.round(built.L), path: built.pr.path,
+      splices: built.comb ? built.comb.splices.map(({ vals, ...x }) => x) : [], sor_meta: sor.meta(), reserve_m: built.R, threshold_db: Number($('#nr-t').value) || 0.1, created_by: me.id };
     const { data, error } = await sb.from('fiber_routes').insert(row).select('id').single();
-    if (error){ $('#nr-go').disabled = false; $('#nr-go').textContent = 'Guardar tramo'; return ($('#nr-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe un tramo con ese nombre.' : errText(error)); }
+    if (error){ $('#nr-go').disabled = false; $('#nr-go').textContent = 'Guardar tramo'; return ($('#nr-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe un tramo con ese nombre: cambiá el nombre.' : errText(error)); }
     const rows = built.els.map(e => ({ id: e.id, org_id: me.org_id, route_id: data.id, kind: e.kind, name: e.name, subtype: e.subtype, lat: e.lat, lng: e.lng, chain_m: e.chain_m, reserve_m: e.reserve_m, splice_no: e.splice_no || null, status: e.status }));
     for (let i = 0; i < rows.length; i += 500){
       $('#nr-go').textContent = `Guardando ${Math.min(i + 500, rows.length)} de ${rows.length}…`;
       const { error: e2 } = await sb.from('fiber_elements').insert(rows.slice(i, i + 500));
       if (e2){ $('#nr-err').textContent = errText(e2); await sb.from('fiber_routes').delete().eq('id', data.id); $('#nr-go').disabled = false; $('#nr-go').textContent = 'Reintentar'; return; }
     }
-    m.close(); toast('Tramo cargado'); location.hash = '#/tools/' + data.id;
+    m.close(); toast('Tramo cargado'); try { await IDB.del('kv', CUR_UID + ':fr-list'); } catch {} location.hash = '#/tools/' + data.id;
   };
 }
 
-/* ---------- vista del tramo ---------- */
+/* ---------- validar de nuevo un tramo con otros .sor ---------- */
+function revalidateModal(ctx){
+  if (!needOnline()) return;
+  const { route } = ctx;
+  const m = modal(`<h2>Validar con .sor</h2><p class="muted sm" style="margin-top:-6px">${esc(route.end_a)} → ${esc(route.end_b)}. Los empalmes de estos .sor pasan a ser la referencia del tramo.</p>
+    <div class="row"><label class="btn sec small" style="margin:0">Agregar .sor<input type="file" id="rv-s" accept=".sor" multiple class="hidden"></label>
+      <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="rv-bob" style="width:auto"> Con bobina</label><input id="rv-bl" type="number" min="0" value="1000" style="width:100px" class="hidden"></div>
+    <div id="rv-sor"></div>
+    <label>Longitud óptica (m)</label><input id="rv-l" type="number" min="0" step="0.1" value="${route.optical_length_m ?? ''}">
+    <div id="rv-res" class="sm"></div><div class="err" id="rv-err"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="rv-x">Cancelar</button><button class="btn" id="rv-ok" disabled>Guardar validación</button></div>`, { wide: true });
+  $('#rv-x').onclick = m.close;
+  const launch = () => $('#rv-bob').checked ? Number($('#rv-bl').value) || 0 : 0;
+  const sor = sorPanel($('#rv-sor'), () => ({ a: route.end_a, b: route.end_b }), () => {
+    const c = sor.combined(); $('#rv-ok').disabled = !c;
+    if (c && c.Lopt) $('#rv-l').value = Math.round(c.Lopt * 10) / 10;
+    $('#rv-res').innerHTML = c ? `${c.splices.length} empalmes (${c.splices.filter(s => s.seen === 'AB/BA').length} vistos desde las dos puntas)${c.Lopt ? ` · fibra ${fmtM(c.Lopt)}` : ''}` : '';
+  });
+  sor.draw();
+  $('#rv-bob').onchange = () => { $('#rv-bl').classList.toggle('hidden', !$('#rv-bob').checked); sor.setLaunch(launch()); };
+  $('#rv-bl').oninput = () => sor.setLaunch(launch());
+  $('#rv-s').onchange = e => sor.add(e.target.files, launch());
+  $('#rv-ok').onclick = async () => {
+    const c = sor.combined(); if (!c) return;
+    const nl = Number($('#rv-l').value) || c.Lopt || null, ol = Number(route.optical_length_m) || null;
+    if (ol && nl && Math.abs(nl - ol) > 1 && !confirm(`La longitud óptica del tramo cambia de ${fmtM(ol)} a ${fmtM(nl)}. ¿Confirmar?`)) return;
+    $('#rv-ok').disabled = true;
+    // las cajas "a confirmar" que nunca se tocaron se recalculan con los nuevos .sor
+    const stale = ctx.elements.filter(e => e.status === 'aproximado' && !(e.history || []).length).map(e => e.id);
+    const { error } = await sb.from('fiber_routes').update({ splices: c.splices.map(({ vals, ...x }) => x), optical_length_m: nl, sor_meta: sor.meta() }).eq('id', route.id);
+    if (error){ $('#rv-ok').disabled = false; return ($('#rv-err').textContent = errText(error)); }
+    if (stale.length) await sb.from('fiber_elements').delete().in('id', stale);
+    // las cajas confirmadas en campo se vuelven a emparejar con los empalmes nuevos
+    await sb.from('fiber_elements').update({ splice_no: null }).eq('route_id', route.id).eq('status', 'actualizado').not('splice_no', 'is', null);
+    const keep = ctx.elements.filter(e => !stale.includes(e.id)).map(e => ({ ...e, splice_no: e.status === 'actualizado' ? null : e.splice_no }));
+    const r2 = { ...route, splices: c.splices, optical_length_m: nl };
+    const val = validateRoute(r2, keep), model = fiberModel(r2, keep, [], val);
+    const rows = [];
+    for (const p of val.pairs) if (p.status === 'falta'){ const r = otdrToChain(model, p.s.a); if (!r) continue; const ll = pointAt(ctx.path, ctx.cum, r.chain);
+      rows.push({ org_id: me.org_id, route_id: route.id, kind: 'botella', name: `Empalme ${p.s.n} (a confirmar)`, subtype: 'Caja de empalme', lat: ll[1], lng: ll[0], chain_m: Math.round(r.chain * 10) / 10, reserve_m: route.reserve_m, splice_no: p.s.n, status: 'aproximado' }); }
+    if (rows.length){ const { error: e3 } = await sb.from('fiber_elements').insert(rows); if (e3) return ($('#rv-err').textContent = errText(e3)); }
+    m.close(); toast('Validación guardada'); await IDB.del('kv', CUR_UID + ':fe:' + route.id).catch(() => {}); await IDB.del('kv', CUR_UID + ':fr:' + route.id).catch(() => {}); route_();
+  };
+}
+
 let FSTATE = {};
 async function viewFiberRoute(v, id){
   const route = await cached('fr:' + id, () => sb.from('fiber_routes').select('*').eq('id', id).single());
@@ -372,8 +503,10 @@ async function viewFiberRoute(v, id){
   route.route_length_m = route.route_length_m || cum[cum.length - 1];
   const Lopt = Number(route.optical_length_m) || null;
   events.forEach(ev => { ev.otdr_a = ev.from_end === 'B' && Lopt ? Lopt - (ev.otdr_m - ev.launch_m) : ev.otdr_m - ev.launch_m; if (ev.real_lat != null) ev.chain_real = projectOn(path, cum, [ev.real_lng, ev.real_lat]).chain; });
-  const model = fiberModel(route, elements, events);
-  const ctx = { route, elements, events, path, cum, model };
+  const val = validateRoute(route, elements);
+  const model = fiberModel(route, elements, events, val);
+  const pairOf = new Map(val.pairs.filter(p => p.e).map(p => [p.e.id, p]));
+  const ctx = { route, elements, events, path, cum, model, val, pairOf };
   const thr = Number(route.threshold_db || 0.1);
   const splices = route.splices || [];
   const badSp = splices.filter(s => s.worst != null && s.worst > thr);
@@ -382,19 +515,21 @@ async function viewFiberRoute(v, id){
   FSTATE = { launch: saved.launch ?? 0, launchLen: saved.launchLen ?? 1000, unit: saved.unit || 'm', from: 'A', mode: 'otdr', layers: saved.layers || { botella: true, cruz: true, poste: true, camara: true, eventos: true } };
   v.innerHTML = `
     <div class="card"><div class="row between"><div class="row"><button class="btn sec small" onclick="location.hash='#/tools'">← Herramientas</button>
-      <div><h1 style="margin:0">${esc(route.name)}</h1><div class="muted sm">${esc(route.end_a || 'A')} → ${esc(route.end_b || 'B')} · recorrido ${(route.route_length_m / 1000).toFixed(2).replace('.', ',')} km${Lopt ? ` · fibra ${(Lopt / 1000).toFixed(3).replace('.', ',')} km` : ''}${route.cable ? ' · ' + esc(route.cable) : ''}</div></div></div>
+      <div><h1 style="margin:0">${esc(route.end_a || 'A')} → ${esc(route.end_b || 'B')}</h1><div class="muted sm">${route.traza ? esc(route.traza) + ' · ' : ''}${esc(route.name)} · recorrido ${(route.route_length_m / 1000).toFixed(2).replace('.', ',')} km${Lopt ? ` · fibra ${(Lopt / 1000).toFixed(3).replace('.', ',')} km` : ''}${route.cable ? ' · ' + esc(route.cable) : ''}</div></div></div>
       <div class="row"><button class="btn sec small" id="fr-kmz">Exportar KMZ</button>${manage && online() ? '<button class="btn sec small" id="fr-edit">Editar tramo</button>' : ''}</div></div>
       <div class="stats" style="margin-top:12px">
-        <div class="stat"><span>Empalmes (planilla)</span><b>${splices.length || '—'}</b><small>${splices.length ? `${splices.filter(s => s.avg != null && s.avg > thr).length} con promedio sobre ${String(thr).replace('.', ',')} dB` : 'sin planilla'}</small></div>
+        <div class="stat"><span>Empalmes (.sor)</span><b>${splices.length || '—'}</b><small>${splices.length ? `${splices.filter(s => s.avg != null && s.avg > thr).length} sobre ${String(thr).replace('.', ',')} dB` : 'sin .sor: validalo'}</small></div>
+        <div class="stat"><span>KMZ contra .sor</span><b style="font-size:16px">${splices.length ? `🟢 ${val.pairs.filter(p => p.status === 'coincide' || p.status === 'confirmada').length} · 🟡 ${val.pairs.filter(p => p.status === 'desplazada').length} · 🔴 ${val.pairs.filter(p => p.status === 'falta' || p.status === 'a_confirmar').length}` : '—'}</b><small>${val.orphans.length} cajas sin evento</small></div>
         <div class="stat"><span>Botellas</span><b>${elements.filter(e => e.kind === 'botella').length}</b><small>${elements.filter(e => e.status === 'aproximado').length} a confirmar · ${elements.filter(e => e.status === 'actualizado').length} actualizadas</small></div>
         <div class="stat"><span>Cruces y reservas</span><b>${elements.filter(e => e.kind === 'cruz' || e.kind === 'reserva').length}</b><small>${route.reserve_m} m c/u (editable)</small></div>
         <div class="stat"><span>Eventos ubicados</span><b>${events.length}</b><small>${events.filter(e => e.real_lat != null).length} con ubicación real</small></div>
       </div></div>
+    <div class="card" id="fl-val"></div>
     <div class="card" id="fl-card"><h2>Ubicar un evento</h2>
       <div class="seg" id="fl-mode" style="max-width:520px"><button type="button" data-m="otdr" class="on">Distancia OTDR (fibra)</button><button type="button" data-m="ruta">Distancia sobre el recorrido</button></div>
       <div class="row" style="align-items:flex-end">
         <div style="width:170px"><label>Distancia</label><div class="row" style="flex-wrap:nowrap;gap:4px"><input id="fl-d" type="number" min="0" step="any" inputmode="decimal" placeholder="15696"><select id="fl-u" style="width:70px"><option value="m">m</option><option value="km">km</option></select></div></div>
-        <div style="min-width:170px"><label>Medido desde</label><select id="fl-f"><option value="A">${esc(route.end_a || 'Punta A')} (A)</option><option value="B">${esc(route.end_b || 'Punta B')} (B)</option></select></div>
+        <div style="min-width:170px"><label>Medido desde</label><select id="fl-f"><option value="A">${esc(route.end_a || 'Sitio A')} (A)</option><option value="B">${esc(route.end_b || 'Sitio B')} (B)</option></select></div>
         <div class="fl-otdr" style="min-width:150px"><label>Bobina de lanzamiento</label><select id="fl-b"><option value="0">Sin bobina</option><option value="1">Con bobina</option></select></div>
         <div class="fl-otdr ${FSTATE.launch ? '' : 'hidden'}" id="fl-bl-w" style="width:120px"><label>Largo bobina (m)</label><input id="fl-bl" type="number" min="0" value="${Number(FSTATE.launchLen)}"></div>
         <button class="btn" id="fl-go">Ubicar</button>
@@ -422,7 +557,7 @@ async function viewFiberRoute(v, id){
   L.marker([path[0][1], path[0][0]], { icon: L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], html: `<div class="fe-end">A · ${esc(route.end_a || '')}</div>` }) }).addTo(fmap);
   L.marker([path[path.length - 1][1], path[path.length - 1][0]], { icon: L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], html: `<div class="fe-end">B · ${esc(route.end_b || '')}</div>` }) }).addTo(fmap);
   let elLayer = null, evLayer = L.featureGroup().addTo(fmap), resLayer = L.featureGroup().addTo(fmap);
-  const spOf = e => e.splice_no ? splices.find(s => s.n === e.splice_no) : null;
+  const spOf = e => ctx.pairOf.get(e.id)?.s || null;
   // color de la botella: promedio de sus fibras contra el umbral (en el detalle se ve la peor fibra)
   const qual = e => { const s = spOf(e); if (!s || s.avg == null) return e.status === 'aproximado' ? 'unk' : 'none'; return s.avg > thr ? 'bad' : s.avg > thr * 0.7 ? 'warn' : 'ok'; };
   const drawElements = () => {
@@ -531,22 +666,23 @@ async function viewFiberRoute(v, id){
   $('#fr-kmz').onclick = () => exportFiberKMZ(ctx);
   $('#fr-edit')?.addEventListener('click', () => editRouteModal(route));
   renderFiberEvents(ctx);
+  renderValidation(ctx, (lat, lng) => { fmap.setView([lat, lng], 17); $('#fmap').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
 }
 const route_ = () => route();
 const fmtM = m => m >= 1000 ? (m / 1000).toFixed(3).replace('.', ',') + ' km' : Math.round(m) + ' m';
 
 function elementPopup(ctx, e){
-  const { route, model } = ctx, s = e.splice_no ? (route.splices || []).find(x => x.n === e.splice_no) : null;
+  const { route, model } = ctx, pr = ctx.pairOf?.get(e.id), s = pr ? pr.s : null;
   const oA = e.chain_m != null ? chainToOtdr(model, Number(e.chain_m)) : null, Lopt = Number(route.optical_length_m) || null;
   const last = (e.history || [])[e.history.length - 1];
   return `<div class="pp"><b style="font-size:15px">${esc(e.name || FE_KINDS[e.kind])}</b>
     <div class="muted sm">${esc(FE_KINDS[e.kind])}${e.subtype && e.subtype !== e.name ? ' · ' + esc(e.subtype) : ''} · <span class="pill ${e.status === 'aproximado' ? 'p-pend' : e.status === 'actualizado' ? 'p-ok' : 'p-info'}">${FE_STATUS[e.status]}</span></div>
     ${e.status === 'actualizado' ? `<div class="sm" style="color:var(--green-d)">Actualizado el ${fmtDate(e.updated_at)} por ${esc(e.updated_by || '')}</div>` : ''}
-    ${e.status === 'aproximado' ? '<div class="sm" style="color:var(--amber)">Ubicación estimada desde la planilla: confirmala en el lugar.</div>' : ''}
+    ${e.status === 'aproximado' ? '<div class="sm" style="color:var(--amber)">Ubicación estimada con el .sor: confirmala en el lugar.</div>' : ''}
     <div class="pp-sec sm">${e.chain_m != null ? `Recorrido: ${fmtM(Number(e.chain_m))} desde ${esc(route.end_a || 'A')}<br>` : ''}
       ${oA != null ? `OTDR esperado: <b>${fmtM(oA)}</b> desde A${Lopt ? ` · <b>${fmtM(Lopt - oA)}</b> desde B` : ''}<br>` : ''}
       ${e.reserve_m != null && e.reserve_m !== undefined ? `Reserva: ${e.reserve_m} m<br>` : ''}
-      ${s ? `Empalme ${s.n}: progresiva ${fmtM(s.a)}${s.worst != null ? ` · promedio ${s.avg.toFixed(3).replace('.', ',')} dB · peor fibra ${s.worst.toFixed(3).replace('.', ',')} dB · ${(s.vals || []).filter(x => x > Number(route.threshold_db || 0.1)).length} de ${s.fibers} fibras sobre ${String(route.threshold_db || 0.1).replace('.', ',')} dB` : ''}<br>` : ''}
+      ${pr ? `<b>${valTxt[pr.status]}</b>${pr.d != null ? ` (${pr.d > 0 ? '+' : ''}${Math.round(pr.d)} m)` : ''}<br>` : ''}${s ? `Empalme ${s.n} del .sor: ${fmtM(s.a)} desde ${esc(route.end_a || 'A')}${s.seen ? ' · visto ' + s.seen : ''}${s.worst != null ? ` · promedio ${s.avg.toFixed(3).replace('.', ',')} dB · peor fibra ${s.worst.toFixed(3).replace('.', ',')} dB · ${(s.vals || []).filter(x => x > Number(route.threshold_db || 0.1)).length} de ${s.fibers} fibras sobre ${String(route.threshold_db || 0.1).replace('.', ',')} dB` : ''}<br>` : ''}
       ${Number(e.lat).toFixed(6)}, ${Number(e.lng).toFixed(6)}${e.notes ? `<br>${esc(e.notes)}` : ''}</div>
     <div class="row" style="margin-top:8px;gap:6px">
       ${canWrite() ? `<button class="btn small" data-feupd="${e.id}">📍 Actualizar ubicación</button><button class="btn sec small" data-fedat="${e.id}">Editar datos</button>` : ''}
@@ -614,11 +750,13 @@ function editElementData(ctx, e){
   $('#ed-ok').onclick = () => saveElementUpdate(ctx, e, { p_id: e.id, p_reserve: $('#ed-r') ? Number($('#ed-r').value) : null, p_name: $('#ed-n').value.trim() || null, p_notes: $('#ed-o').value.trim() || null }, m);
 }
 async function saveElementUpdate(ctx, e, args, m){
+  // si la caja está ligada a un empalme del .sor y se ubica en el lugar, queda confirmada para ese empalme
+  const pr = ctx.pairOf?.get(e.id); if (pr && args.p_lat != null && args.p_splice == null) args.p_splice = pr.s.n;
   const local = () => { // reflejar el cambio en el teléfono
     if (args.p_lat !== undefined && args.p_lat != null){ e.lat = args.p_lat; e.lng = args.p_lng; e.chain_m = args.p_chain; }
     if (args.p_reserve != null && args.p_reserve !== undefined) e.reserve_m = args.p_reserve;
     if (args.p_name) e.name = args.p_name; if (args.p_notes) e.notes = args.p_notes;
-    e.status = 'actualizado'; e.updated_at = new Date().toISOString(); e.updated_by = me.full_name || me.email;
+    e.status = 'actualizado'; if (args.p_splice != null) e.splice_no = args.p_splice; e.updated_at = new Date().toISOString(); e.updated_by = me.full_name || me.email;
   };
   if (!online()){
     await queueFiber({ t: 'el', route: ctx.route.id, args }); local();
@@ -649,6 +787,35 @@ async function fiberFlush(){
 }
 window.addEventListener('online', () => setTimeout(() => { try { fiberFlush(); } catch {} }, 2000));
 
+function renderValidation(ctx, goTo){
+  const box = $('#fl-val'); if (!box) return;
+  const { route, val, model } = ctx, splices = route.splices || [], thr = Number(route.threshold_db || 0.1);
+  const manage = isManager() && canWrite() && online();
+  if (!splices.length){ box.innerHTML = `<h2>Validación con .sor</h2><p class="muted">Este tramo todavía no tiene .sor. Subí uno o dos (uno de cada punta) para contrastar el KMZ: el .sor es la referencia.</p>${manage ? '<button class="btn" id="fv-go">Validar con .sor</button>' : ''}`; $('#fv-go')?.addEventListener('click', () => revalidateModal(ctx)); return; }
+  const est = p => { const r = otdrToChain(model, p.s.a); if (!r) return null; const ll = pointAt(ctx.path, ctx.cum, r.chain); return { lat: ll[1], lng: ll[0], chain: r.chain, w: r.window }; };
+  box.innerHTML = `<div class="row between"><h2 style="margin:0">Validación con .sor</h2>${manage ? '<button class="btn sec small" id="fv-go">Validar con otros .sor</button>' : ''}</div>
+    <p class="muted sm" style="margin:6px 0 8px">${(route.sor_meta || []).map(f => esc(f.name) + ' (' + (f.dir === 'AB' ? 'A→B' : 'B→A') + ')').join(' · ') || 'Referencia cargada'} · fibra ${route.optical_length_m ? fmtM(route.optical_length_m) : '—'}</p>
+    <div class="tblwrap" style="max-height:340px;overflow:auto"><table class="tbl"><thead><tr><th>#</th><th class="num">Desde ${esc(route.end_a || 'A')}</th><th class="hide-sm">Visto</th><th class="num hide-sm">Pérdida</th><th>Estado</th><th class="hide-sm">Caja</th><th></th></tr></thead><tbody>
+    ${val.pairs.map((p, i) => `<tr><td>${p.s.n}</td><td class="num">${fmtM(p.s.a)}</td><td class="hide-sm sm">${esc(p.s.seen || '')}</td>
+      <td class="num hide-sm ${p.s.avg != null && p.s.avg > thr ? '' : ''}" style="${p.s.avg != null && p.s.avg > thr ? 'color:var(--red);font-weight:600' : ''}">${p.s.avg != null ? p.s.avg.toFixed(3).replace('.', ',') : '—'}</td>
+      <td class="sm">${valTxt[p.status]}${p.status === 'coincide' && p.d != null ? `<div class="muted">${Math.abs(Math.round(p.d))} m · margen ±${p.mg} m</div>` : ''}${p.status === 'desplazada' ? `<div class="muted">${Math.abs(Math.round(p.d))} m (margen ±${p.mg} m)</div>` : ''}</td><td class="hide-sm sm">${p.e ? esc(p.e.name || '') : '—'}</td>
+      <td style="white-space:nowrap"><button class="btn sec small" data-vgo="${i}">Ver</button>${p.status === 'desplazada' && canWrite() ? ` <button class="btn small" data-vmv="${i}">Mover</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    ${val.orphans.length ? `<details style="margin-top:8px"><summary class="sm" style="cursor:pointer">⚪ ${val.orphans.length} caja${val.orphans.length === 1 ? '' : 's'} del KMZ sin evento en el .sor</summary><p class="sm muted">Puede ser un empalme tan bueno que el OTDR no lo detecta, o una caja que no existe o está en otro lugar. Revisalas en campo.</p>
+      ${val.orphans.map(e => `<div class="sm" style="padding:2px 0">${esc(e.name || 'Caja')} · ${fmtM(Number(e.chain_m))} de recorrido desde ${esc(route.end_a || 'A')} <button class="link" data-vor="${e.id}">ver</button></div>`).join('')}</details>` : ''}
+    <p class="muted sm" style="margin:8px 0 0">El .sor da la distancia de fibra exacta; pasarla al mapa tiene un margen (sobrante de fibra, reservas) que crece lejos de las puntas y se achica con cada caja confirmada en campo.<br>🟢 la caja del KMZ está dentro del margen · 🟡 está más lejos de lo que da el .sor: revisala, o <b>Mover</b> la lleva a la posición del .sor y queda "a confirmar" · 🔴/❔ el KMZ no tiene esa caja: se creó "a confirmar" · en el lugar, <b>📍 Actualizar ubicación</b> la confirma y mejora todas las estimaciones.</p>`;
+  box.querySelectorAll('[data-vgo]').forEach(b => b.onclick = () => { const p = val.pairs[Number(b.dataset.vgo)]; const t = p.e && p.status !== 'desplazada' ? { lat: p.e.lat, lng: p.e.lng } : est(p); if (t) goTo(t.lat, t.lng); });
+  box.querySelectorAll('[data-vor]').forEach(b => b.onclick = () => { const e = ctx.elements.find(x => x.id === b.dataset.vor); if (e) goTo(e.lat, e.lng); });
+  $('#fv-go')?.addEventListener('click', () => revalidateModal(ctx));
+  box.querySelectorAll('[data-vmv]').forEach(b => b.onclick = async () => {
+    const p = val.pairs[Number(b.dataset.vmv)], t = est(p); if (!t || !p.e) return;
+    if (!confirm(`Mover "${p.e.name}" ${Math.abs(Math.round(p.d))} m, a la posición que indica el .sor (empalme ${p.s.n}, ${fmtM(p.s.a)} desde ${route.end_a})?\n\nQueda "a confirmar" hasta que un técnico la ubique en el lugar.`)) return;
+    const args = { p_id: p.e.id, p_lat: t.lat, p_lng: t.lng, p_chain: Math.round(t.chain * 10) / 10, p_status: 'aproximado', p_splice: p.s.n, p_notes: `Movida según .sor (empalme ${p.s.n})` };
+    if (!online()){ await queueFiber({ t: 'el', route: route.id, args }); toast('Guardado en el teléfono: se envía cuando vuelva la señal.'); return; }
+    const { error } = await sb.rpc('fiber_update_element', args); if (error) return toast(errText(error));
+    toast('Caja movida: queda a confirmar'); await IDB.del('kv', CUR_UID + ':fe:' + route.id).catch(() => {}); route_();
+  });
+}
 function renderFiberEvents(ctx){
   const box = $('#fl-events'); if (!box) return;
   const { events, route } = ctx;
@@ -673,8 +840,8 @@ function renderFiberEvents(ctx){
 function editRouteModal(r){
   if (!needOnline()) return;
   const m = modal(`<h2>Editar tramo</h2>
-    <label>Nombre</label><input id="er-n" maxlength="200" value="${esc(r.name)}">
-    <div class="row"><div class="grow"><label>Punta A</label><input id="er-a" maxlength="120" value="${esc(r.end_a || '')}"></div><div class="grow"><label>Punta B</label><input id="er-b" maxlength="120" value="${esc(r.end_b || '')}"></div></div>
+    <div class="row"><div class="grow"><label>Traza</label><input id="er-z" maxlength="120" value="${esc(r.traza || '')}"></div><div class="grow"><label>Nombre</label><input id="er-n" maxlength="200" value="${esc(r.name)}"></div></div>
+    <div class="row"><div class="grow"><label>Nombre Sitio A</label><input id="er-a" maxlength="120" value="${esc(r.end_a || '')}"></div><div class="grow"><label>Nombre Sitio B</label><input id="er-b" maxlength="120" value="${esc(r.end_b || '')}"></div></div>
     <div class="row"><div class="grow"><label>Longitud óptica (m)</label><input id="er-l" type="number" min="0" value="${r.optical_length_m ?? ''}"></div>
       <div class="grow"><label>Reserva por defecto (m)</label><input id="er-r" type="number" min="0" value="${r.reserve_m}"></div>
       <div class="grow"><label>Umbral empalme (dB)</label><input id="er-t" type="number" min="0" step="0.01" value="${r.threshold_db}"></div></div>
@@ -686,7 +853,7 @@ function editRouteModal(r){
   $('#er-ok').onclick = async () => {
     const nl = Number($('#er-l').value) || null, ol = Number(r.optical_length_m) || null;
     if (nl !== ol && !confirm(`Vas a cambiar la longitud óptica del tramo "${r.name}":\n\nAntes: ${ol ? ol + ' m (' + fmtM(ol) + ')' : 'sin cargar'}\nAhora: ${nl ? nl + ' m (' + fmtM(nl) + ')' : 'sin cargar'}\n\nOjo: el valor va en METROS. ¿Confirmar?`)) return;
-    const { error } = await sb.from('fiber_routes').update({ name: $('#er-n').value.trim() || r.name, end_a: $('#er-a').value.trim() || null, end_b: $('#er-b').value.trim() || null,
+    const { error } = await sb.from('fiber_routes').update({ traza: $('#er-z').value.trim() || null, name: $('#er-n').value.trim() || r.name, end_a: $('#er-a').value.trim() || null, end_b: $('#er-b').value.trim() || null,
       optical_length_m: Number($('#er-l').value) || null, reserve_m: Number($('#er-r').value) || 0, threshold_db: Number($('#er-t').value) || 0.1, cable: $('#er-c').value.trim() || null }).eq('id', r.id);
     if (error) return ($('#er-err').textContent = errText(error)); m.close(); toast('Tramo guardado'); route_();
   };
