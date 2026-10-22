@@ -263,6 +263,8 @@ async function viewTools(v){
   const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   v.innerHTML = `
     <div class="card"><h2 style="margin:0">🧰 Herramientas</h2><p class="muted sm" style="margin:6px 0 0">Funcionan también sin señal con lo que ya está descargado en el teléfono.</p></div>
+    <div class="card" id="tool-dc" style="cursor:pointer;background:linear-gradient(135deg,#0F2A4A,#1A3A6B);color:#fff;border:0"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">🗄️</div><div><h2 style="margin:0;color:#fff">Relevamiento DC</h2>
+      <p class="sm" style="margin:4px 0 0;opacity:.85">Data centers: plano de la sala, racks, equipos, paneles y cableado con el recorrido punta a punta. Energía, carriers, IP/VLAN y etiquetas QR. Funciona sin señal.</p></div></div><span class="btn" style="pointer-events:none">Abrir →</span></div></div>
     <div class="card"><div class="row between"><div><h2 style="margin:0">Fibra óptica: tramos, validación con .sor y ubicación de eventos</h2>
       <p class="muted sm" style="margin:4px 0 0">Cada tramo va de un Sitio A a un Sitio B. Se carga con su KMZ y se valida con el .sor, que es la referencia: la app marca qué cajas coinciden, cuáles están corridas y cuáles faltan, y los técnicos corrigen la posición en el lugar.</p></div>
       ${manage ? '<button class="btn" id="fr-new">+ Tramo</button>' : ''}</div>
@@ -271,6 +273,7 @@ async function viewTools(v){
           <td class="num sm">${r.optical_length_m ? 'Fibra ' + (r.optical_length_m / 1000).toFixed(3).replace('.', ',') + ' km' : '<span class="muted">sin .sor</span>'}<div class="muted">recorrido ${r.route_length_m ? (r.route_length_m / 1000).toFixed(2).replace('.', ',') + ' km' : '—'}</div></td><td style="width:20px">›</td></tr>`).join('')}
       </tbody></table></div>`).join('') : `<p class="muted" style="margin-top:12px">${manage ? 'Todavía no hay tramos. Cargá el primero con <b>+ Tramo</b>.' : 'Todavía no hay tramos cargados.'}</p>`}</div>`;
   v.querySelectorAll('[data-fr]').forEach(tr => tr.onclick = () => location.hash = '#/tools/' + tr.dataset.fr);
+  $('#tool-dc')?.addEventListener('click', () => { location.hash = '#/tools/dc'; });
   $('#fr-new')?.addEventListener('click', () => newRouteModal(routes));
   fiberFlush();
 }
