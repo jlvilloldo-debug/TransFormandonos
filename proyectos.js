@@ -402,7 +402,7 @@ async function viewProject(v, id){
   const manage = isManager() && canWrite();
   const sm = projSummary(p, ctx.ps);
   v.innerHTML = `
-    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" onclick="location.hash='#/proj'">← Proyectos</button>
+    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" data-go="#/proj">← Proyectos</button>
         <div><h1 style="margin:0">${esc(p.name)}</h1><div class="muted sm">${esc([PROJ_KIND[p.kind], p.client, p.contract].filter(Boolean).join(' · '))}${p.start_date || p.end_date ? ` · ${fmtD(p.start_date)} → ${fmtD(p.end_date)}` : ''}</div></div></div>
       ${manage && online() ? '<button class="btn sec" id="pj-edit">Editar proyecto</button>' : ''}</div>
       <div class="row" style="margin-top:12px;gap:12px"><b style="font-size:22px">${Math.round(sm.pct)}%</b><div class="progress grow" style="height:10px"><i style="width:${Math.round(sm.pct)}%"></i></div></div>
@@ -1039,7 +1039,7 @@ function actModal(ctx, a){
     return modal(`<h2>${esc(a.name)}</h2><p class="muted">${esc(a.phase || '')}</p>
       <div class="stats"><div class="stat"><span>Planificado</span><b style="font-size:16px">${fmtD(a.start_date)} → ${fmtD(a.end_date)}</b></div><div class="stat"><span>Real</span><b style="font-size:16px">${rr.rs ? fmtDM(rr.rs) + ' → ' + (rr.re ? fmtDM(rr.re) : 'en curso') : '—'}</b></div><div class="stat"><span>Avance</span><b style="font-size:16px">${Math.round(pct)}%</b><small>${esc(bs.n)}</small></div></div>
       ${a.responsible ? `<p class="sm">Responsable: ${esc(a.responsible)}</p>` : ''}${a.deliverable ? `<p class="sm">Entregable: ${esc(a.deliverable)}</p>` : ''}
-      <div class="row" style="justify-content:flex-end"><button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Cerrar</button></div>`);
+      <div class="row" style="justify-content:flex-end"><button class="btn" data-close-modal>Cerrar</button></div>`);
   }
   const m = modal(`<h2>${isNew ? 'Nueva actividad' : 'Actividad del Gantt'}</h2>
     ${isNew ? '' : `<div class="banner ${bs.c === 'red' ? 'off' : bs.c === 'amber' ? 'warn' : 'trial'}" style="margin:0 0 10px"><span class="dot" style="background:${SEM[bs.c].c}"></span><div><b>${esc(bs.n)}</b> · avance ${Math.round(pct)}%${rr.rs ? ` · real ${fmtDM(rr.rs)} → ${rr.re ? fmtDM(rr.re) : 'en curso'}` : ''}</div></div>`}

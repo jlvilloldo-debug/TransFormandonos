@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CNZMEvAHiCOnjXaH8QMkSFOS5VTXjVjEryIA1QeC9lI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -411,11 +411,13 @@ tr.sor-bad td{background:var(--red-bg)}
 <script src="permisos.js"></script>
 <script src="vehiculos.js"></script>
 <script>
+/* No se deja abrir la app dentro de otra página (evita que la tapen con una trampa para robar clics o claves) */
+if (window.top !== window.self){ try { window.top.location = window.self.location.href; } catch {} document.documentElement.innerHTML = ''; throw new Error('frame'); }
 /* =================== CONFIGURACIÓN =================== */
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.6';
+const APP_VERSION = '4.6.1';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -613,8 +615,8 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 window.addEventListener('appinstalled', () => { installPrompt = null; $('#b-install').classList.add('hidden'); toast('InspectApp quedó instalada'); });
 async function doInstall(){
   if (installPrompt){ installPrompt.prompt(); await installPrompt.userChoice.catch(() => {}); installPrompt = null; $('#b-install').classList.add('hidden'); }
-  else if (isIOS()) modal(`<h2>Instalar en iPhone / iPad</h2><ol><li>Abrí esta página en <b>Safari</b>.</li><li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha hacia arriba).</li><li>Elegí <b>Agregar a pantalla de inicio</b> y después <b>Agregar</b>.</li></ol><div class="row" style="justify-content:flex-end"><button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Entendido</button></div>`);
-  else modal(`<h2>Instalar la aplicación</h2><p>Abrí el menú del navegador (⋮) y elegí <b>Instalar aplicación</b> o <b>Agregar a pantalla de inicio</b>.</p><div class="row" style="justify-content:flex-end"><button class="btn" onclick="document.getElementById('modal-root').innerHTML=''">Entendido</button></div>`);
+  else if (isIOS()) modal(`<h2>Instalar en iPhone / iPad</h2><ol><li>Abrí esta página en <b>Safari</b>.</li><li>Tocá el botón <b>Compartir</b> (el cuadrado con la flecha hacia arriba).</li><li>Elegí <b>Agregar a pantalla de inicio</b> y después <b>Agregar</b>.</li></ol><div class="row" style="justify-content:flex-end"><button class="btn" data-close-modal>Entendido</button></div>`);
+  else modal(`<h2>Instalar la aplicación</h2><p>Abrí el menú del navegador (⋮) y elegí <b>Instalar aplicación</b> o <b>Agregar a pantalla de inicio</b>.</p><div class="row" style="justify-content:flex-end"><button class="btn" data-close-modal>Entendido</button></div>`);
 }
 $('#b-install').onclick = doInstall;
 if ('serviceWorker' in navigator && location.protocol !== 'file:'){
@@ -1025,6 +1027,12 @@ const banner = (cls, t, s) => `<div class="banner ${cls}"><span class="dot"></sp
    NAVEGACIÓN
    ========================================================= */
 window.addEventListener('hashchange', route);
+/* navegación sin JavaScript en línea (lo exige la política de seguridad): solo rutas internas */
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]');
+  if (g){ const v = g.dataset.go || ''; if (v.startsWith('back:')){ if (history.length > 1) history.back(); else if (/^#\/[\w\/-]*$/.test(v.slice(5))) location.hash = v.slice(5); } else if (/^#\/[\w\/-]*$/.test(v)) location.hash = v; return; }
+  if (e.target.closest('[data-close-modal]')) $('#modal-root').innerHTML = '';
+});
 $$('#tabs button').forEach(b => b.onclick = () => { location.hash = '#/' + b.dataset.tab; });
 let leaveGuard = null;
 const ONLINE_ONLY = ['org', 'admin'];
@@ -1221,7 +1229,7 @@ async function newInspection(){
   } catch (e){ return toast(errText(e)); }
   if (!tpls?.length){
     return modal(`<h2>Primero cargá una plantilla</h2><p class="muted">Para iniciar una inspección necesitás al menos una plantilla publicada.</p>
-      <div class="row" style="justify-content:flex-end"><button class="btn" onclick="location.hash='#/tpl'">Ir a Plantillas</button></div>`);
+      <div class="row" style="justify-content:flex-end"><button class="btn" data-go="#/tpl">Ir a Plantillas</button></div>`);
   }
   const m = modal(`<h2>Nueva inspección</h2>
     <label>Plantilla</label><select id="n-tpl">${tpls.map(t => `<option value="${t.id}">${esc(t.name)} · ${KIND_TXT[t.kind]}</option>`).join('')}</select>
@@ -1546,10 +1554,10 @@ async function viewReport(v, id){
   const canEdit = ins.status === 'borrador' && canWrite() && (ins.inspector_id === me.id || isManager());
   v.innerHTML = `
     <div class="report-bar">
-      <button class="btn sec" onclick="history.length > 1 ? history.back() : (location.hash='#/insp')">← Volver</button>
+      <button class="btn sec" data-go="back:#/insp">← Volver</button>
       <div class="row">${ins._dirty ? '<span class="pill p-pend">Por enviar</span>' : ''}
       ${canReopen ? '<button class="btn sec" id="b-reopen">Reabrir para editar</button>' : ''}
-      ${canEdit ? `<button class="btn sec" onclick="location.hash='#/insp/${ins.id}'">Seguir cargando</button>` : ''}
+      ${canEdit ? `<button class="btn sec" data-go="#/insp/${esc(ins.id)}">Seguir cargando</button>` : ''}
       ${canDelete(ins) ? '<button class="btn danger" id="b-delr">Borrar</button>' : ''}
       <button class="btn" id="b-pdf">Descargar PDF</button></div>
     </div>
@@ -1875,7 +1883,7 @@ async function viewTasks(v){
   const pending = tasks.filter(taskOpen), overdue = tasks.filter(isOverdue);
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">${isContractor() ? 'Mis tareas' : 'Tareas'}</h2>
-      ${manage ? `<div class="row"><button class="btn sec" onclick="location.hash='#/tasks/contratistas'">Contratistas</button><button class="btn" id="b-newtask">+ Nueva tarea</button></div>` : ''}</div>
+      ${manage ? `<div class="row"><button class="btn sec" data-go="#/tasks/contratistas">Contratistas</button><button class="btn" id="b-newtask">+ Nueva tarea</button></div>` : ''}</div>
       <div class="stats" style="margin-top:14px">
         <div class="stat"><span>Pendientes</span><b>${pending.length}</b></div>
         ${isContractor() ? '' : `<div class="stat"><span>Sin asignar</span><b style="color:${tasks.some(t => t.status === 'sin_asignar') ? 'var(--amber)' : 'var(--text)'}">${tasks.filter(t => t.status === 'sin_asignar').length}</b></div>`}
@@ -1996,7 +2004,7 @@ async function viewTask(v, id){
     .sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
   const done = (t.sites || []).filter(s => s.done).length;
   v.innerHTML = `
-    <div class="report-bar" style="max-width:none"><button class="btn sec" onclick="location.hash='#/tasks'">← Tareas</button>
+    <div class="report-bar" style="max-width:none"><button class="btn sec" data-go="#/tasks">← Tareas</button>
       <div class="row">${isManager() && canWrite() ? `
         ${['sin_asignar','asignada','vista','en_curso','rechazada'].includes(t.status) ? `<button class="btn" id="t-assign">${t.contractor_id ? 'Reasignar' : 'Asignar'}</button>` : ''}
         ${c.phone ? '<button class="btn sec" id="t-wa">WhatsApp</button>' : ''}
@@ -2103,7 +2111,7 @@ async function viewContractors(v){
   const [contrs, { data: members }] = await Promise.all([loadContractors(), sb.from('profiles').select('id,full_name,email,role,contractor_id,active').eq('role', 'contratista')]);
   const manage = canWrite() && online();
   v.innerHTML = `
-    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" onclick="location.hash='#/tasks'">← Tareas</button><h2 style="margin:0">Contratistas y cuadrillas</h2></div>
+    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" data-go="#/tasks">← Tareas</button><h2 style="margin:0">Contratistas y cuadrillas</h2></div>
       ${manage ? '<button class="btn" id="c-add">+ Contratista</button>' : ''}</div>
       <p class="muted sm" style="margin:10px 0 0">Para que una contratista entre a la app: pasale el código de la empresa (en <b>Mi empresa</b>), que cree su cuenta con “Tengo un código”, y después cambiale el rol a <b>Contratista</b> eligiendo a cuál pertenece. Cada usuario ocupa un lugar del cupo de la empresa.</p></div>
     <div class="card">${contrs.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Contacto</th><th class="hide-sm">WhatsApp</th><th class="hide-sm">Usuarios</th><th>Estado</th><th></th></tr></thead><tbody>
@@ -2363,6 +2371,7 @@ async function readKML(file){
   const zip = await JSZip.loadAsync(file);
   const kmlFile = Object.values(zip.files).find(f => /\.kml$/i.test(f.name));
   if (!kmlFile) throw new Error('El KMZ no contiene un archivo KML.');
+  if ((kmlFile._data?.uncompressedSize || 0) > 80 * 1024 * 1024 || Object.keys(zip.files).length > 2000) throw new Error('El KMZ descomprimido es demasiado grande.');
   const txt = await kmlFile.async('text');
   if (txt.length > 80 * 1024 * 1024) throw new Error('El KML descomprimido es demasiado grande.');
   return txt;
@@ -2612,7 +2621,7 @@ async function viewTemplateEditor(v, id){
   const { count: used } = await sb.from('inspections').select('id', {count:'exact', head:true}).eq('template_id', id);
   const render = () => {
     v.innerHTML = `
-      <div class="card"><div class="row between"><button class="btn sec small" onclick="location.hash='#/tpl'">← Plantillas</button>
+      <div class="card"><div class="row between"><button class="btn sec small" data-go="#/tpl">← Plantillas</button>
         <div class="row"><button class="btn sec small" id="t-xl">Descargar Excel</button><button class="btn danger small" id="t-del">Eliminar</button><button class="btn" id="t-save">Guardar</button></div></div>
         ${used ? `<div class="banner warn" style="margin:12px 0 0"><span class="dot"></span><div class="sm">Esta plantilla ya se usó en ${used} inspección${used===1?'':'es'}. Los cambios aplican solo a las inspecciones nuevas; las ya cargadas conservan su versión.</div></div>` : ''}
         <div class="row" style="margin-top:6px"><div class="grow"><label>Nombre</label><input id="t-name" value="${esc(t.name)}"></div>

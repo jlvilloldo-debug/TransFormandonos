@@ -525,7 +525,7 @@ async function viewFiberRoute(v, id){
   let saved = {}; try { saved = JSON.parse(localStorage.getItem('ia_fiber') || '{}'); } catch {}
   FSTATE = { launch: saved.launch ?? 0, launchLen: saved.launchLen ?? 1000, unit: saved.unit || 'm', from: 'A', mode: 'otdr', layers: saved.layers || { botella: true, cruz: true, poste: true, camara: true, eventos: true } };
   v.innerHTML = `
-    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" onclick="location.hash='#/tools'">← Herramientas</button>
+    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" data-go="#/tools">← Herramientas</button>
       <div><h1 style="margin:0">${esc(route.end_a || 'A')} → ${esc(route.end_b || 'B')}</h1><div class="muted sm">${route.traza ? esc(route.traza) + ' · ' : ''}${esc(route.name)} · recorrido ${(route.route_length_m / 1000).toFixed(2).replace('.', ',')} km${Lopt ? ` · fibra ${(Lopt / 1000).toFixed(3).replace('.', ',')} km` : ''}${route.cable ? ' · ' + esc(route.cable) : ''}</div></div></div>
       <div class="row"><button class="btn sec small" id="fr-kmz">Exportar KMZ</button>${manage && online() ? '<button class="btn sec small" id="fr-edit">Editar tramo</button>' : ''}</div></div>
       <div class="stats" style="margin-top:12px">
@@ -593,7 +593,7 @@ async function viewFiberRoute(v, id){
     evLayer.clearLayers(); if (!FSTATE.layers.eventos) return;
     for (const ev of ctx.events){ if (ev.lat == null) continue;
       L.marker([ev.lat, ev.lng], { icon: L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], html: `<div class="mk-pin" style="background:#7C3AED;width:20px;height:20px"><b style="font-size:11px">${ev.real_lat != null ? '✓' : '!'}</b></div>` }) })
-        .bindPopup(`<b>Evento ${fmtDate(ev.created_at)}</b><br>${(ev.otdr_m / 1000).toFixed(3).replace('.', ',')} km desde ${ev.from_end}${ev.loss_db != null ? ` · ${ev.loss_db} dB` : ''}<br>${esc(ev.note || '')}<br><span class="muted">${esc(ev.created_by_name || '')}</span>`).addTo(evLayer);
+        .bindPopup(`<b>Evento ${fmtDate(ev.created_at)}</b><br>${(ev.otdr_m / 1000).toFixed(3).replace('.', ',')} km desde ${esc(ev.from_end)}${ev.loss_db != null ? ` · ${esc(ev.loss_db)} dB` : ''}<br>${esc(ev.note || '')}<br><span class="muted">${esc(ev.created_by_name || '')}</span>`).addTo(evLayer);
       if (ev.real_lat != null) L.circleMarker([ev.real_lat, ev.real_lng], { radius: 5, color: '#7C3AED', weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('Ubicación real').addTo(evLayer);
     }
   };
