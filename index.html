@@ -407,12 +407,13 @@ tr.sor-bad td{background:var(--red-bg)}
 <script src="qrcode.js"></script>
 <script src="jsQR.js"></script>
 <script src="datacenter.js"></script>
+<script src="horas.js"></script>
 <script>
 /* =================== CONFIGURACIÓN =================== */
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.4';
+const APP_VERSION = '4.5.1';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -1043,6 +1044,7 @@ async function route(){
     else if (tab === 'proj' && id) await viewProject(v, id);
     else if (tab === 'proj') await viewProjects(v);
     else if (tab === 'tools' && id === 'dc') await viewDC(v);
+    else if (tab === 'tools' && id === 'hh') await viewHH(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
     else if (tab === 'tools') await viewTools(v);
     else if (isContractor() && ['stats','sites','tpl','org'].includes(tab)) location.hash = '#/tasks';
@@ -1155,6 +1157,7 @@ async function viewHome(v){
   $('#b-inst2')?.addEventListener('click', doInstall);
   bindInspRows(v, rows);
   homeBoard($('#home-board'));
+  if (typeof hhHomeAlert === 'function') hhHomeAlert($('#home-board'));
 }
 
 /* =========================================================

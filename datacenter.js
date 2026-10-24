@@ -693,7 +693,7 @@ async function viewDC(v){
   if (site === 'modelos') return dcViewModels(v);
   if (!DC_UUID.test(site)) return dcGo();
   await dcOpenSite(site);
-  if (!DCS.I.dc) { v.innerHTML = `<div class="card"><b>No se encontró el data center</b><p class="muted">Puede que no tengas acceso o que todavía no esté descargado en este teléfono. ${online() ? '' : 'Conectate una vez para descargarlo.'}</p><button class="btn sec" onclick="location.hash='#/tools/dc'">← Data centers</button></div>`; return; }
+  if (!DCS.I.dc) { v.innerHTML = `<div class="card"><b>No se encontró el data center</b><p class="muted">Puede que no tengas acceso o que todavía no esté descargado en este teléfono. ${online() ? '' : 'Conectate una vez para descargarlo.'}</p><button class="btn sec" data-dcback="#/tools/dc">← Data centers</button></div>`; return; }
   if (sec === 'rack' && DC_UUID.test(id || '')) return dcViewRack(v, id);
   if (sec === 'dev' && DC_UUID.test(id || '')) return dcViewDevice(v, id);
   if (sec === 'relevar' && DC_UUID.test(id || '')) return dcViewSurvey(v, id);
@@ -715,7 +715,9 @@ function dcRefresh(){
   if ($('#modal-root')?.children.length) { DCS.stale = true; return; }
   if (typeof DCS.render === 'function') DCS.render();
 }
-const dcBack = (label, hash) => `<button class="btn sec small noprint" onclick="location.hash='${esc(hash)}'">← ${esc(label)}</button>`;
+const dcBack = (label, hash) => `<button class="btn sec small noprint" data-dcback="${esc(hash)}">← ${esc(label)}</button>`;
+// "Volver" sin JavaScript en línea: el destino viaja como dato y solo se aceptan rutas internas del módulo
+document.addEventListener('click', e => { const b = e.target.closest('[data-dcback]'); if (b && /^#\/tools(\/|$)/.test(b.dataset.dcback)) location.hash = b.dataset.dcback; });
 function dcTopBar(extra = ''){
   return `<div class="row between noprint" style="margin-bottom:10px">${extra}<div class="row" style="gap:6px;margin-left:auto"><button class="dc-warnbtn hidden" id="dc-warn"></button><button class="dc-net" id="dc-net"></button></div></div>`;
 }
