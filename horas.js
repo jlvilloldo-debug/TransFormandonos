@@ -185,14 +185,16 @@ async function hhMarkSent(st, day, kind, itemId){ try { await sb.from('hh_sent')
    VISTA PRINCIPAL
    ===================================================================== */
 async function viewHH(v){
-  hhCss(); await hhLoadBase(); hhFlush();
+  hhCss(); hhQuickCss(); await hhLoadBase(); hhFlush();
   const sub = (location.hash.split('/')[3] || '').replace(/[^a-z]/g, '');
   const mgr = isManager();
   const tabs = [];
   if (HHS.mine) tabs.push(['hoy', 'Mi día']);
   if (mgr) tabs.push(['bandeja', 'Bandeja']);
   tabs.push(['guardias', 'Guardias']);
-  if (mgr) tabs.push(['recursos', 'Recursos'], ['reporte', 'Reporte RRHH'], ['ajustes', 'Ajustes']);
+  if (mgr) tabs.push(['recursos', 'Recursos']);
+  if (mgr && can('rrhh')) tabs.push(['reporte', 'Reporte RRHH']);
+  if (mgr) tabs.push(['ajustes', 'Ajustes']);
   const tab = tabs.some(t => t[0] === sub) ? sub : tabs[0][0];
   HHS.tab = tab;
   v.innerHTML = `<div class="hh-noprint"><div class="row between" style="margin-bottom:8px"><button class="btn sec small" id="hh-back">← Herramientas</button></div>
@@ -260,7 +262,8 @@ async function hhViewToday(body){
         <div class="stat"><span>Extra autorizada hoy</span><b>${hhH(auth('extra'))}</b><small>tope ${hhH(HHS.cfg.max_extra)}</small></div>
         <div class="stat"><span>Viaje autorizado hoy</span><b>${hhH(auth('viaje'))}</b><small>tope ${hhH(HHS.cfg.max_viaje)}</small></div>
       </div>
-      ${canWrite() ? `<div class="row" style="margin-top:12px"><button class="btn grow" id="hh-req">+ Pedir horas</button><button class="btn sec grow" id="hh-task">+ Cargar tarea</button></div>` : ''}
+      ${canWrite() ? `<div class="row" style="margin-top:12px"><button class="btn grow" id="hh-req">+ Pedir horas</button><button class="btn sec grow" id="hh-task">+ Cargar tarea</button></div>${hhChips()}` : ''}
+      ${hhTimeline(tod, today)}
     </div>
     <div class="card"><h2 style="margin:0 0 4px">Hoy</h2>${tod.length ? tod.map(i => hhItemHTML(i, { own: true })).join('') : '<p class="muted">Todavía no hay nada cargado para hoy.</p>'}</div>
     <div class="card"><div class="row between"><h2 style="margin:0">Mi semana</h2><span class="sm ${left < 86400000 ? '' : 'muted'}" style="${left < 86400000 ? 'color:var(--red);font-weight:600' : ''}">${left > 0 ? 'Cierra ' + HH_WD[(dl.getDay() + 6) % 7].toLowerCase() + ' ' + dl.getDate() + ' a las ' + hhT(HHS.cfg.deadline_time) + ' · faltan ' + Math.floor(left / 86400000) + ' d ' + Math.floor(left % 86400000 / 3600000) + ' h' : 'Semana cerrada'}</span></div>
@@ -269,6 +272,7 @@ async function hhViewToday(body){
     <div class="card"><h2 style="margin:0 0 4px">Anteriores</h2>${items.filter(i => i.day < today).slice(0, 30).map(i => hhItemHTML(i, { own: true, showDay: true })).join('') || '<p class="muted">Sin registros.</p>'}</div>`;
   $('#hh-req')?.addEventListener('click', () => hhItemModal({ staff: st, kind: 'extra' }));
   $('#hh-task')?.addEventListener('click', () => hhItemModal({ staff: st, kind: 'tarea' }));
+  hhBindChips(body, st);
   hhBindItems(body, items.concat(tod.filter(i => i._local)));
 }
 
@@ -301,7 +305,7 @@ function hhBindItems(box, items, after){
     const st = HHS.staff.find(s => s.id === it.staff_id) || HHS.mine;
     const act = b.dataset.hha, reload = after || (() => viewHH($('#view')));
     if (act === 'edit') return hhItemModal({ staff: st, item: it, kind: it.kind, after: reload });
-    if (act === 'del'){ if (!needOnline() || !confirm('¿Borrar este registro?')) return; const { error } = await sb.from('hh_items').delete().eq('id', id); if (error) return toast(errText(error)); await hhDrop('hh-mine'); toast('Borrado'); return reload(); }
+    if (act === 'del'){ if (!needOnline() || !confirm('¿Borrar este registro?')) return; const { error } = await sb.from('hh_items').delete().eq('id', id); if (error) return toast(errText(error)); await hhDrop('hh-mine', 'hh-today'); toast('Borrado'); return reload(); }
     if (act === 'avisar') return hhWa(HHS.cfg.coord_phone, hhMsgRequest(st, it));
     if (act === 'foto'){ const { data } = await sb.storage.from('fotos').createSignedUrl(it.photo_path, 600); if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener'); return; }
     if (act === 'fin') return hhFinish(it, reload);
@@ -327,28 +331,28 @@ function hhFinish(it, after){
     if (f){ try { const blob = await compressImage(f, 1600, 0.8); const p = `${me.org_id}/hh/${it.id}/${uid()}.jpg`; const { error } = await sb.storage.from('fotos').upload(p, blob, { contentType: 'image/jpeg', upsert: false }); if (error) throw error; patch.photo_path = p; } catch (x){ $('#hf-ok').disabled = false; return ($('#hf-err').textContent = 'Foto: ' + errText(x)); } }
     const { error } = await sb.from('hh_items').update(patch).eq('id', it.id);
     if (error){ $('#hf-ok').disabled = false; return ($('#hf-err').textContent = errText(error)); }
-    m.close(); await hhDrop('hh-mine'); toast(patch.end_t ? 'Registrado. Cambió el horario: vuelve a quedar para validar.' : 'Registrado'); after && after();
+    m.close(); await hhDrop('hh-mine', 'hh-today'); toast(patch.end_t ? 'Registrado. Cambió el horario: vuelve a quedar para validar.' : 'Registrado'); after && after();
   };
 }
 
 /* =====================================================================
    ALTA / EDICIÓN DE TAREA U HORAS
    ===================================================================== */
-async function hhItemModal({ staff, item, kind = 'extra', after, day }){
-  const mgr = isManager(), it = item || {}, today = todayStr();
+async function hhItemModal({ staff, item, kind = 'extra', after, day, preset }){
+  const mgr = isManager(), it = item || {}, today = todayStr(), pr = preset || {};
   let k = it.kind || kind;
   const staffOpts = mgr ? HHS.staff.filter(s => s.active).map(s => `<option value="${esc(s.id)}" ${s.id === (it.staff_id || staff?.id) ? 'selected' : ''}>${esc(s.name)}${s.kind !== 'tecnico' ? ' · ' + HH_SK[s.kind] : ''}</option>`).join('') : '';
   const m = modal(`<h2>${item ? 'Editar' : k === 'tarea' ? 'Cargar tarea' : 'Pedir horas'}</h2>
     ${mgr ? `<label>Técnico / recurso</label><select id="hm-s">${staffOpts}</select>` : `<p class="muted sm" style="margin:-4px 0 6px">${esc(staff.name)}</p>`}
     <div class="hh-kseg">${['extra', 'viaje', 'tarea'].map(x => `<button type="button" data-k="${x}" class="${x === k ? 'on' : ''}">${HH_KIND[x]}</button>`).join('')}</div>
     <label>Fecha</label><input id="hm-d" type="date" value="${esc(it.day || day || today)}">
-    <div id="hm-hours"><div class="row"><div class="grow"><label>Desde</label><input id="hm-a" type="time" value="${esc(hhT(it.start_t) || '18:00')}"></div><div class="grow"><label>Hasta</label><input id="hm-b" type="time" value="${esc(hhT(it.end_t) || '20:00')}"></div></div>
+    <div id="hm-hours"><div class="row"><div class="grow"><label>Desde</label><input id="hm-a" type="time" value="${esc(hhT(it.start_t) || pr.start || hhT(HHS.cfg.work_end) || '18:00')}"></div><div class="grow"><label>Hasta</label><input id="hm-b" type="time" value="${esc(hhT(it.end_t) || pr.end || '20:00')}"></div></div>
       <div class="card" style="background:var(--bg);text-align:center;margin:10px 0;padding:10px"><div class="hh-big" id="hm-t">—</div><div class="sm muted" id="hm-tt"></div></div>
       <div id="hm-w"></div>
       <label>Causal</label><select id="hm-c"><option value="">— Elegí —</option>${Object.entries(HH_CAUSE).map(([kk, n]) => `<option value="${kk}" ${it.cause === kk ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <label id="hm-tl">¿Qué tarea?</label><input id="hm-n" maxlength="300" value="${esc(it.title || '')}" placeholder="Ej.: Corte en Traza 15, empalme 8 · San Javier">
     <label>N° de ticket u OT</label><input id="hm-k" maxlength="60" value="${esc(it.ticket || '')}" placeholder="INC-48213">
-    ${!mgr && !item ? `<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:10px" id="hm-ul"><input type="checkbox" id="hm-u" style="width:auto"> ⚡ Arranco ya: ticket con SLA corto (se valida en el día)</label>` : ''}
+    ${!mgr && !item ? `<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:10px" id="hm-ul"><input type="checkbox" id="hm-u" style="width:auto" ${pr.urgent ? 'checked' : ''}> ⚡ Arranco ya: ticket con SLA corto (se valida en el día)</label>` : ''}
     <p class="muted sm" id="hm-info"></p>
     <div class="err" id="hm-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="hm-x">Cancelar</button><button class="btn" id="hm-ok">${item ? 'Guardar' : mgr ? 'Cargar autorizado' : 'Enviar pedido'}</button></div>`);
@@ -401,7 +405,7 @@ async function hhItemModal({ staff, item, kind = 'extra', after, day }){
     const { error } = item ? await sb.from('hh_items').update(row).eq('id', item.id) : await sb.from('hh_items').insert(row);
     $('#hm-ok').disabled = false;
     if (error) return ($('#hm-err').textContent = errText(error));
-    await hhDrop('hh-mine');
+    await hhDrop('hh-mine', 'hh-today');
     m.close();
     const done = after || (() => viewHH($('#view')));
     if (!item && !mgr && HHS.cfg.coord_phone){
@@ -492,6 +496,23 @@ async function hhViewInbox(body){
   $('#hh-vod')?.addEventListener('click', () => { const ids = [...body.querySelectorAll('.banner [data-hhc]:checked')].map(x => x.dataset.hhc); if (!ids.length) return toast('Marcá los que querés validar.'); hhReview(overdue.filter(i => ids.includes(i.id)), 'validar', () => hhViewInbox(body)); });
   body.querySelectorAll('[data-rem]').forEach(b => b.onclick = () => { const s = HHS.staff.find(x => x.id === b.dataset.rem);
     hhWa(s.phone, hhMsgReminder(s, day, gOf(s.id), items.filter(i => i.staff_id === s.id))); hhMarkSent(s, day, 'recordatorio').then(() => setTimeout(() => hhViewInbox(body), 800)); });
+  const sig = items.map(i => i.id + i.status).join();
+  hhPoll(async () => {
+    if (HHS.tab !== 'bandeja' || HHS.day !== day || !body.isConnected) return false;
+    const { data } = await sb.from('hh_items').select('id,status').eq('day', day).order('created_at');
+    if ((data || []).map(i => i.id + i.status).join() !== sig){ toast('Bandeja actualizada'); hhViewInbox(body); }
+    return true;
+  }, body);
+}
+/* Actualización en vivo (cada 45 s) mientras la pantalla esté abierta. Se corta sola al salir. */
+let HH_POLL = null;
+function hhPoll(fn, el){
+  clearInterval(HH_POLL); const hash = location.hash;
+  HH_POLL = setInterval(async () => {
+    if (location.hash !== hash || !el.isConnected){ clearInterval(HH_POLL); return; }
+    if (document.hidden || !online() || $('#modal-root').children.length || el.querySelector('[data-hhc]:checked')) return;
+    try { if (await fn() === false) clearInterval(HH_POLL); } catch {}
+  }, 45000);
 }
 
 /* =====================================================================
@@ -1012,4 +1033,126 @@ async function hhViewSettings(body){
     await hhDrop('hh-cfg'); await hhLoadBase(); HHS.gper = HHS.rper = null; toast('Ajustes guardados');
   });
   $('#hu-ok')?.addEventListener('click', async () => { const w = $('#hu-w').value; if (!w) return; const { error } = await sb.rpc('hh_unlock', { p_week: w, p_staff: $('#hu-s').value || null, p_hours: 48 }); if (error) return toast(errText(error)); toast(`Semana del ${fmtD(hhWeekStart(w))} destrabada por 48 h`); });
+}
+
+/* =====================================================================
+   v4.6 · INICIO DIRECTO: pedir horas, tarea de hoy, jornada del vehículo
+   ===================================================================== */
+const hhHM = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
+const hhNowM = () => { const d = new Date(); return Math.floor((d.getHours() * 60 + d.getMinutes()) / 5) * 5; };
+/* punto de partida de un pedido: ahora si ya terminó el horario (o no es hábil); si no, el fin del horario */
+function hhBaseStart(day){
+  const now = hhNowM(), ws = hhMin(HHS.cfg.work_start), we = hhMin(HHS.cfg.work_end);
+  if (hhIsOff(day) || now >= we || now < ws) return now; return we;
+}
+function hhChips(){
+  return `<div class="hq-chips"><button data-hq="now" class="urg">⚡ Empiezo ahora</button><button data-hq="1">+1 h</button><button data-hq="2">+2 h</button><button data-hq="22">Hasta las 22</button><button data-hq="x">Otro horario…</button></div>`;
+}
+function hhBindChips(box, st, after){
+  box.querySelectorAll('[data-hq]').forEach(b => b.onclick = () => {
+    const day = todayStr(), q = b.dataset.hq, base = q === 'now' ? hhNowM() : hhBaseStart(day);
+    const preset = q === 'x' ? {} : { start: hhHM(base), end: q === '22' ? '22:00' : hhHM(base + (q === '2' ? 120 : 60)), urgent: q === 'now' };
+    if (q === '22' && base >= 22 * 60) preset.end = hhHM(base + 60);
+    hhItemModal({ staff: st, kind: 'extra', day, preset, after });
+  });
+}
+/* barra del día 0–24 h: horario laboral, lo cargado y la hora actual */
+function hhTimeline(items, day){
+  const pc = m => (m / 1440 * 100).toFixed(2) + '%';
+  const ws = hhMin(HHS.cfg.work_start), we = hhMin(HHS.cfg.work_end), off = hhIsOff(day);
+  const col = { pendiente: '#F59E0B', autorizada: '#2A78D6', validada: '#16A34A', rechazada: '#DC2626' };
+  const seg = (a, b, c, t) => `<i style="left:${pc(a)};width:${pc(Math.max(b - a, 8))};background:${c}" title="${esc(t)}"></i>`;
+  const bars = items.filter(i => i.kind !== 'tarea' && i.start_t && i.end_t).map(i => {
+    const a = hhMin(i.start_t), b = hhMin(i.end_t), c = col[i.status] || '#94A3B8', t = `${HH_KIND_S[i.kind]} ${hhT(i.start_t)}–${hhT(i.end_t)} · ${(HH_ST[i.status] || [''])[0]}`;
+    return b > a ? seg(a, b, c, t) : seg(a, 1440, c, t) + seg(0, b, c, t);
+  }).join('');
+  const now = day === todayStr() ? `<b style="left:${pc(new Date().getHours() * 60 + new Date().getMinutes())}"></b>` : '';
+  return `<div class="hq-tl">${off ? '' : `<u style="left:${pc(ws)};width:${pc(we - ws)}"></u>`}${bars}${now}</div>
+    <div class="hq-tlx"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+    <div class="sm muted" style="margin-top:2px">${off ? HH_DT[hhDayType(day)] + ': todo el día cuenta como fuera de horario' : 'Gris: horario laboral ' + hhT(HHS.cfg.work_start) + '–' + hhT(HHS.cfg.work_end)} · <span style="color:#F59E0B">■</span> pendiente <span style="color:#2A78D6">■</span> autorizada <span style="color:#16A34A">■</span> validada</div>`;
+}
+function hhQuickCss(){
+  if (document.getElementById('hq-css')) return;
+  const st = document.createElement('style'); st.id = 'hq-css';
+  st.textContent = `
+.hq{background:linear-gradient(135deg,#0F2A4A,#1D4E89);color:#fff;border:0}
+.hq h2{color:#fff;margin:0}.hq .sm{opacity:.85}.hq .muted{color:#CBD5E1}
+.hq-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.hq-b{border:0;border-radius:14px;padding:14px 12px;text-align:left;cursor:pointer;background:#fff;color:var(--navy);box-shadow:0 2px 6px rgba(0,0,0,.15);min-height:86px;display:flex;flex-direction:column;justify-content:space-between}
+.hq-b .i{font-size:26px;line-height:1}.hq-b .l{font-weight:700;font-size:16px;margin-top:6px}.hq-b .s{font-size:12px;color:var(--muted);margin-top:2px}
+.hq-b.go{background:#16A34A;color:#fff}.hq-b.go .s{color:#E7F7F0}
+.hq-b.stop{background:#DC2626;color:#fff}.hq-b.stop .s{color:#FEE2E2}
+.hq-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.hq-chips button{border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;border-radius:99px;padding:8px 14px;font-weight:600;cursor:pointer}
+.card:not(.hq) .hq-chips button{border-color:var(--line);background:#fff;color:var(--navy)}
+.hq-chips button.urg{background:#F59E0B;border-color:#F59E0B;color:#fff}
+.hq-tl{position:relative;height:18px;border-radius:9px;background:#E2E8F0;overflow:hidden;margin-top:10px}
+.hq-tl u{position:absolute;top:0;bottom:0;background:#CBD5E1}
+.hq-tl i{position:absolute;top:3px;bottom:3px;border-radius:4px}
+.hq-tl b{position:absolute;top:0;bottom:0;width:2px;background:#0F2A4A}
+.hq-tlx{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px}
+.hq .hq-tl{background:rgba(255,255,255,.18)}.hq .hq-tl u{background:rgba(255,255,255,.3)}.hq .hq-tl b{background:#fff}.hq .hq-tlx{color:#CBD5E1}
+.hq-red{background:#DC2626;color:#fff;border-radius:12px;padding:12px 14px;margin:0 0 12px;display:flex;gap:10px;align-items:center;font-weight:600}
+.hq-red button{margin-left:auto;background:#fff;color:#DC2626;border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;white-space:nowrap}`;
+  document.head.appendChild(st);
+}
+async function hhHomeQuick(box){
+  if (!box || !me) return;
+  hhQuickCss();
+  const wantH = can('horas');
+  if (!wantH && !can('veh')) return;
+  try { await hhLoadBase(); } catch { HHS.cfg = HHS.cfg || { ...HH_DEF }; }
+  const wantV = typeof vehHomeSlot === 'function' && can('veh') && !!HHS.mine;
+  const st = wantH ? HHS.mine : null, mgr = isManager(), today = todayStr();
+  let items = [], guard = null, nTasks = 0;
+  if (st){
+    try {
+      const [its, g] = await Promise.all([
+        cached('hh-today', () => sb.from('hh_items').select(HH_COLS).eq('staff_id', st.id).eq('day', today).order('start_t')),
+        cached('hh-myguard', () => sb.from('hh_guard').select('day,code,note').eq('staff_id', st.id).gte('day', addDays(today, -1)).lte('day', addDays(today, 7))),
+      ]);
+      const q = (await IDB.get('kv', CUR_UID + ':hhq').catch(() => null)) || [];
+      items = its.concat(q.filter(r => r.day === today && r.staff_id === st.id).map(r => ({ ...r, status: 'pendiente', _local: true, hours: hhCalc(r.start_t, r.end_t) })));
+      guard = (g || []).find(x => x.day === today) || null;
+    } catch {}
+  }
+  try { const ts = await IDB.get('kv', CUR_UID + ':tasks').catch(() => null); nTasks = (ts || []).filter(t => taskOpen(t) && (!t.due_date || t.due_date <= addDays(today, 1))).length; } catch {}
+  const tareas = items.filter(i => i.kind === 'tarea');
+  const extra = items.filter(i => i.kind !== 'tarea' && i.status !== 'rechazada');
+  const gp = guard && HH_CODES[guard.code] ? `<span class="pill" style="background:${HH_CODES[guard.code].bg};color:${HH_CODES[guard.code].c}">${HH_CODES[guard.code].n}</span>` : '';
+  const btns = [];
+  if (st && canWrite()) btns.push(`<button class="hq-b" id="hq-req"><span class="i">⏱️</span><div><div class="l">Pedir horas extra</div><div class="s">${extra.length ? extra.length + ' pedido(s) hoy · ' + hhH(extra.reduce((a, i) => a + Number(i.hours || 0), 0)) : 'Tope ' + hhH(HHS.cfg.max_extra) + ' extra · ' + hhH(HHS.cfg.max_viaje) + ' viaje'}</div></div></button>`);
+  if (st) btns.push(`<button class="hq-b" id="hq-task"><span class="i">📋</span><div><div class="l">Mi tarea de hoy</div><div class="s">${tareas.length ? esc(tareas[0].title).slice(0, 60) + (tareas.length > 1 ? ' · +' + (tareas.length - 1) : '') : 'Sin tarea cargada · tocá para cargarla'}</div></div></button>`);
+  if (nTasks) btns.push(`<button class="hq-b" id="hq-asg"><span class="i">🗂️</span><div><div class="l">Tareas asignadas</div><div class="s">${nTasks} abierta(s) para hoy o vencidas</div></div></button>`);
+  if (wantV) btns.push(`<div id="hq-veh" style="display:contents"></div>`);
+  box.innerHTML = `<div id="hq-redslot"></div>
+    ${st || btns.length ? `<div class="card hq"><div class="row between"><div><h2>${st ? '¡Buen día, ' + esc(hhFirst(st.name) || hhFirst(me.full_name)) + '!' : 'Accesos rápidos'}</h2><div class="sm">${esc(hhFmtDay(today))} · ${HH_DT[hhDayType(today)]}${HHS.hol?.get?.(today) ? ' · ' + esc(HHS.hol.get(today).name || '') : ''}</div></div>${gp}</div>
+      <div class="hq-btns">${btns.join('')}</div>
+      ${st && canWrite() ? hhChips() : ''}
+      ${st ? hhTimeline(items, today) : ''}</div>` : ''}
+    <div id="hq-mgr"></div>`;
+  const redraw = () => hhHomeQuick(box);
+  $('#hq-req')?.addEventListener('click', () => hhItemModal({ staff: st, kind: 'extra', day: today, after: redraw }));
+  $('#hq-task')?.addEventListener('click', () => tareas.length ? (location.hash = '#/tools/hh/hoy') : hhItemModal({ staff: st, kind: 'tarea', day: today, after: redraw }));
+  $('#hq-asg')?.addEventListener('click', () => { location.hash = '#/tasks'; });
+  if (st && canWrite()) hhBindChips(box, st, redraw);
+  if (wantV) vehHomeSlot($('#hq-veh'), $('#hq-redslot'), redraw);
+  if (wantH && mgr) hhHomeInbox($('#hq-mgr'));
+}
+/* Tarjeta de bandeja en Inicio para coordinador / supervisor / admin, con actualización en vivo */
+async function hhHomeInbox(box){
+  if (!box || !online()) return;
+  let items = [], od = [];
+  try { [items, od] = await Promise.all([hhItems(sb.from('hh_items').select(HH_COLS).eq('day', todayStr()).in('status', ['pendiente', 'autorizada']).order('created_at')), hhOverdue()]); } catch { return; }
+  const pend = items.filter(i => i.status === 'pendiente');
+  box.innerHTML = `<div class="card"><div class="row between"><h2 style="margin:0">📥 Bandeja de horas</h2><a href="#/tools/hh/bandeja" class="sm">Abrir bandeja</a></div>
+    <div class="row" style="gap:6px;margin:6px 0">${pend.length ? `<span class="pill p-pend">${pend.length} para autorizar</span>` : '<span class="pill p-ok">Nada para autorizar</span>'}${items.length - pend.length ? `<span class="pill p-info">${items.length - pend.length} autorizada(s) a validar</span>` : ''}${od.length ? `<span class="pill p-bad">⏰ ${od.length} de días anteriores</span>` : ''}</div>
+    ${pend.slice(0, 4).map(i => hhItemHTML(i, { who: true, actions: hhMgrActions })).join('')}
+    ${pend.length > 4 ? `<a href="#/tools/hh/bandeja" class="sm">Ver ${pend.length - 4} más…</a>` : ''}</div>`;
+  hhBindItems(box, items, () => hhHomeInbox(box));
+  const sig = items.map(i => i.id + i.status).join();
+  hhPoll(async () => {
+    const { data } = await sb.from('hh_items').select('id,status').eq('day', todayStr()).in('status', ['pendiente', 'autorizada']).order('created_at');
+    if ((data || []).map(i => i.id + i.status).join() !== sig){ toast('Llegó un pedido nuevo de horas'); hhHomeInbox(box); }
+  }, box);
 }

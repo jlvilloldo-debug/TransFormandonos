@@ -127,6 +127,8 @@ const dcHeat = p => p >= 90 ? '#DC2626' : p >= 75 ? '#F59E0B' : p >= 40 ? '#22B0
 const dcCanW = () => typeof canWrite === 'function' ? canWrite() : false;
 const dcMgr = () => typeof isManager === 'function' && isManager();
 const dcContr = () => typeof isContractor === 'function' && isContractor();
+/* IP / VLAN / redes: por defecto solo el administrador (permiso dc_net). El servidor tampoco las entrega sin permiso. */
+const dcNet = () => typeof can === 'function' ? can('dc_net') : !dcContr();
 const dcWho = () => (me && (me.full_name || me.email)) || 'Técnico';
 const dcHash = (...p) => '#/tools/dc' + p.filter(x => x !== undefined && x !== null && x !== '').map(x => '/' + encodeURIComponent(x)).join('');
 const dcGo = (...p) => { location.hash = dcHash(...p); };
@@ -833,7 +835,7 @@ function dcViewSite(v){
     const pend = dcPendList();
     const realDevs = I.devices.filter(d => !['ciego', 'ordenador', 'bandeja'].includes(dcDevRole(d)) && d.data.status !== 'retirado');
     const counts = { racks: I.racks.length, cables: I.cables.length, carriers: I.circuits.length, red: I.prefixes.length + I.vlans.length, pend: pend.length };
-    const tabs = DC_TABS.filter(([k]) => k !== 'red' || !dcContr());
+    const tabs = DC_TABS.filter(([k]) => k !== 'red' || dcNet());
     v.innerHTML = `
       ${dcTopBar(dcBack('Data centers', '#/tools/dc'))}
       <div class="card"><div class="dc-head"><div class="dc-ico">🏢</div><div class="grow" style="min-width:200px"><h1>${esc(dc.data.name)}</h1>
@@ -1142,7 +1144,7 @@ function dcBindDrag(el, rack, render){
 function dcDevicePanelHTML(d){
   const I = DCS.I, role = dcDevRole(d), R = DC_ROLE[role], m = dcDevModel(d), rack = dcRackOf(d), w = dcCanW();
   const u = dcNum(d.data.u, 0), h = dcDevU(d);
-  const ips = dcContr() ? [] : (I.ipByDev.get(d.id) || []);
+  const ips = !dcNet() ? [] : (I.ipByDev.get(d.id) || []);
   const pdus = [d.data.pdu_a, d.data.pdu_b].map(x => x && I.by.get(x)).filter(Boolean);
   const photos = (d.data.photos || []).filter(p => p && typeof p.path === 'string');
   const kv = [
@@ -1370,7 +1372,7 @@ function dcPortSheet(ep, after){
   const w = dcCanW(), at = I.cableAt.get(dcEK(ep)), c = at?.cable, circ = I.circAt.get(dcEK(ep));
   const r = dcRackOf(d), t = dcTraceHTML(ep);
   const pm = (d.data.pm || {})[ep.port + (ep.side ? '|' + ep.side : '')] || {};
-  const vl = !dcContr() && I.vlans.length;
+  const vl = dcNet() && I.vlans.length;
   const m = modal(`<div class="row between" style="align-items:flex-start"><div><div class="muted sm">${esc(r ? r.data.name : 'Fuera de rack')} · U${esc(d.data.u ?? '–')} · ${esc(dcDevName(d))}</div>
       <h2 style="margin:2px 0 0">Puerto ${esc(ep.port)}${ep.side ? ` <span class="muted" style="font-weight:400">· ${ep.side === 'F' ? 'frente' : 'trasera'}</span>` : ''}</h2></div>
       <span class="pill ${c ? (c.data.status === 'falla' ? 'p-bad' : c.data.status === 'planificado' ? 'p-pend' : 'p-ok') : 'p-info'}">${c ? esc(DC_CABLE_ST[c.data.status] || 'Conectado') : 'Libre'}</span></div>
@@ -1676,7 +1678,7 @@ const dcIp2n = s => { const m = String(s || '').trim().match(/^(\d{1,3})\.(\d{1,
 const dcN2ip = n => [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
 const dcCidr = s => { const m = String(s || '').trim().match(/^([\d.]+)\/(\d{1,2})$/); if (!m) return null; const ip = dcIp2n(m[1]), len = Number(m[2]); if (ip === null || len > 32) return null; const mask = len ? (~0 << (32 - len)) >>> 0 : 0; const net = (ip & mask) >>> 0; return { net, len, size: 2 ** (32 - len), txt: dcN2ip(net) + '/' + len }; };
 function dcTabNet(box){
-  if (dcContr()){ box.innerHTML = '<div class="card dc-empty">Esta sección no está disponible para contratistas.</div>'; return; }
+  if (!dcNet()){ box.innerHTML = '<div class="card dc-empty">IP, VLAN y redes: solo con permiso del administrador.</div>'; return; }
   const I = DCS.I, w = dcCanW();
   const vcol = vid => `hsl(${(dcNum(vid) * 47) % 360} 60% 45%)`;
   const ipsIn = p => { const c = dcCidr(p.data.cidr); if (!c) return []; return I.ips.filter(x => { const n = dcIp2n(x.data.address); return n !== null && n >= c.net && n < c.net + c.size; }); };
@@ -1874,7 +1876,7 @@ function dcViewSurvey(v, rackId){
    BÚSQUEDA
    ===================================================================== */
 function dcSearch(){
-  const m = modal(`<h2>Buscar en ${esc(DCS.I.dc.data.name)}</h2><input id="sr-q" placeholder="Hostname, serie, modelo, etiqueta de cable, carrier${dcContr() ? '' : ', IP'}…" autocomplete="off"><div id="sr-r" style="margin-top:10px;max-height:60vh;overflow:auto"></div>
+  const m = modal(`<h2>Buscar en ${esc(DCS.I.dc.data.name)}</h2><input id="sr-q" placeholder="Hostname, serie, modelo, etiqueta de cable, carrier${dcNet() ? ', IP' : ''}…" autocomplete="off"><div id="sr-r" style="margin-top:10px;max-height:60vh;overflow:auto"></div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="sr-x">Cerrar</button></div>`, { wide: true });
   $('#sr-x').onclick = m.close;
   const run = () => {
@@ -1884,7 +1886,7 @@ function dcSearch(){
     I.devices.forEach(d => { if (dcNorm(dcDevName(d) + ' ' + (d.data.serial || '') + ' ' + (d.data.asset || '') + ' ' + dcModelLabel(dcDevModel(d))).includes(q)) res.push({ i: '🖥️', t: dcDevName(d), s: `${dcRackOf(d)?.data?.name || 'Fuera de rack'}${d.data.u ? ' · U' + d.data.u : ''}${d.data.serial ? ' · S/N ' + d.data.serial : ''}`, go: () => { m.close(); if (dcNum(d.data.u) && d.data.rack){ DCS.view.sel = d.id; dcGo(DCS.site, 'rack', d.data.rack); } else dcDeviceSheet(d, dcRefresh); } }); });
     I.cables.forEach(c => { if (c.data.label && dcNorm(c.data.label).includes(q)) res.push({ i: '🔌', t: c.data.label, s: `${dcEndTxt(c.data.a, true)} ↔ ${dcEndTxt(c.data.b, true)}`, go: () => { m.close(); dcPortSheet(c.data.a, dcRefresh); } }); });
     I.circuits.forEach(c => { if (dcNorm(`${c.data.provider} ${c.data.cid}`).includes(q)) res.push({ i: '📡', t: `${c.data.provider || ''} ${c.data.cid || ''}`, s: c.data.a?.dev ? dcEndTxt(c.data.a, true) : 'Circuito', go: () => { m.close(); c.data.a?.dev ? dcPortSheet(c.data.a, dcRefresh) : (DCS.view.tab = 'carriers', dcRefresh()); } }); });
-    if (!dcContr()) I.ips.forEach(x => { if (dcNorm(x.data.address + ' ' + (x.data.desc || '')).includes(q)) res.push({ i: '🌐', t: x.data.address, s: I.by.get(x.data.dev) ? dcDevName(I.by.get(x.data.dev)) : 'IP', go: () => { m.close(); DCS.view.tab = 'red'; dcGo(DCS.site); } }); });
+    if (dcNet()) I.ips.forEach(x => { if (dcNorm(x.data.address + ' ' + (x.data.desc || '')).includes(q)) res.push({ i: '🌐', t: x.data.address, s: I.by.get(x.data.dev) ? dcDevName(I.by.get(x.data.dev)) : 'IP', go: () => { m.close(); DCS.view.tab = 'red'; dcGo(DCS.site); } }); });
     $('#sr-r').innerHTML = res.length ? `<div class="dc-list">${res.slice(0, 80).map((x, k) => `<div class="dc-li" data-k="${k}"><span style="font-size:18px">${x.i}</span><div class="grow" style="min-width:0"><b style="font-size:13px">${esc(x.t)}</b><div class="muted" style="font-size:12px">${esc(x.s)}</div></div></div>`).join('')}</div>` : '<p class="muted">Sin resultados.</p>';
     $('#sr-r').querySelectorAll('[data-k]').forEach(b => b.onclick = () => res[Number(b.dataset.k)].go());
   };
@@ -2017,7 +2019,7 @@ function dcExportExcel(){
   add('Carriers', [['Proveedor', 'Servicio', 'Tipo', 'Ancho de banda', 'Estado', 'Termina en', 'NOC', 'Notas']].concat(I.circuits.map(c => [c.data.provider || '', c.data.cid || '', c.data.type || '', c.data.bw || '', c.data.status || '', c.data.a?.dev ? dcEndTxt(c.data.a, true) : '', c.data.noc || '', c.data.notes || ''])), [16, 16, 12, 12, 10, 50, 26, 30]);
   const { L } = dcPduLoads();
   add('Energía', [['Rack', 'Carga W', 'Capacidad útil W', '%', 'PDU']].concat(I.racks.map(r => { const p = dcRackPower(r); return [r.data.name, Math.round(p.load), Math.round(p.cap), p.cap ? p.pct : '', p.pdus.map(x => dcDevName(x)).join(', ')]; })).concat([[], ['PDU', 'Rack', 'Normal W', 'Si cae el otro lado W', 'Equipos']]).concat([...L.values()].map(l => [dcDevName(l.pdu), rk(l.pdu), Math.round(l.normal), Math.round(l.worst), l.devs])), [24, 12, 16, 22, 40]);
-  if (!dcContr()){
+  if (dcNet()){
     add('IP', [['IP', 'Equipo', 'Interfaz', 'Uso', 'Descripción']].concat(I.ips.slice().sort((a, b) => dcIp2n(a.data.address) - dcIp2n(b.data.address)).map(x => [x.data.address, dcDevName(I.by.get(x.data.dev)) === '—' ? '' : dcDevName(I.by.get(x.data.dev)), x.data.port || '', x.data.role || '', x.data.desc || ''])), [16, 32, 12, 10, 30]);
     add('Redes y VLAN', [['Red', 'Gateway', 'VLAN', 'Descripción']].concat(I.prefixes.map(p => [p.data.cidr, p.data.gateway || '', I.by.get(p.data.vlan)?.data?.vid ?? '', p.data.desc || ''])).concat([[], ['VLAN', 'Nombre', 'Descripción']]).concat(I.vlans.map(v => [v.data.vid, v.data.name || '', v.data.desc || ''])), [18, 16, 8, 40]);
   }

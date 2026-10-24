@@ -408,12 +408,14 @@ tr.sor-bad td{background:var(--red-bg)}
 <script src="jsQR.js"></script>
 <script src="datacenter.js"></script>
 <script src="horas.js"></script>
+<script src="permisos.js"></script>
+<script src="vehiculos.js"></script>
 <script>
 /* =================== CONFIGURACIÓN =================== */
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.5.1';
+const APP_VERSION = '4.6';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -969,6 +971,7 @@ async function boot(){
   $('#tab-admin').classList.toggle('hidden', !me.is_superadmin);
   const contr = isContractor();
   ['stats','sites','tpl','org'].forEach(t => $(`#tabs [data-tab="${t}"]`).classList.toggle('hidden', contr));
+  await permLoad(); permApplyTabs();
   $('#tab-tasks').textContent = contr ? 'Mis tareas' : 'Tareas';
   if (installPrompt) $('#b-install').classList.remove('hidden');
   updateNet(); syncNow(); warmCache();
@@ -1036,6 +1039,7 @@ async function route(){
   const v = $('#view'); v.innerHTML = '<div class="card muted">Cargando…</div>';
   try {
     if ((ONLINE_ONLY.includes(tab) || (tab === 'tpl' && id)) && !online()) throw new Error('NEEDS_ONLINE');
+    if (!permOk(tab, id)){ v.innerHTML = '<div class="card"><b>No tenés acceso a esta sección.</b><p class="muted">Si la necesitás, pedile al administrador que te habilite el permiso.</p><a href="#/home">Ir al inicio</a></div>'; return; }
     if (tab === 'home') await viewHome(v);
     else if (tab === 'insp' && id) await viewExecute(v, id);
     else if (tab === 'insp') await viewInspections(v);
@@ -1045,6 +1049,8 @@ async function route(){
     else if (tab === 'proj') await viewProjects(v);
     else if (tab === 'tools' && id === 'dc') await viewDC(v);
     else if (tab === 'tools' && id === 'hh') await viewHH(v);
+    else if (tab === 'tools' && id === 'veh') await viewVeh(v);
+    else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
     else if (tab === 'tools') await viewTools(v);
     else if (isContractor() && ['stats','sites','tpl','org'].includes(tab)) location.hash = '#/tasks';
@@ -1120,7 +1126,7 @@ async function deleteInspection(r){
    INICIO
    ========================================================= */
 async function viewHome(v){
-  if (isContractor()) return viewTasks(v);
+  if (isContractor()){ await viewTasks(v); const q = document.createElement('div'); q.id = 'hh-quick'; v.prepend(q); return hhHomeQuick(q); }
   let recent = [], kpi = {cMonth: 0, cDraft: 0, flagged: 0};
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
   try {
@@ -1140,6 +1146,7 @@ async function viewHome(v){
   const st = licState(org);
   const showInstall = !isStandalone();
   v.innerHTML = `
+    <div id="hh-quick"></div>
     <div class="card row between">
       <div><h1>Hola${me.full_name ? ', ' + esc(me.full_name.split(' ')[0]) : ''}</h1>
       <p class="muted" style="margin:0">${esc(org?.name || '')} · ${org?.is_trial && st!=='vencida' ? 'Prueba gratis' : STATE_TXT[st]} hasta el ${fmtDate(org?.license_expires_at)}</p></div>
@@ -1156,6 +1163,7 @@ async function viewHome(v){
   $('#b-new')?.addEventListener('click', newInspection);
   $('#b-inst2')?.addEventListener('click', doInstall);
   bindInspRows(v, rows);
+  hhHomeQuick($('#hh-quick'));
   homeBoard($('#home-board'));
   if (typeof hhHomeAlert === 'function') hhHomeAlert($('#home-board'));
 }
@@ -2686,6 +2694,7 @@ async function viewOrg(v){
   const active = (members || []).filter(m => m.active).length;
   const adm = isAdmin();
   v.innerHTML = `
+    ${permCanManage() ? `<div class="card row between"><div><h2 style="margin:0">🔐 Permisos por módulo</h2><div class="muted sm">Qué ve y qué puede cargar cada perfil o persona${adm ? ', y qué coordinador te ayuda a manejarlos' : ''}.</div></div><a class="btn sec" href="#/perms">Abrir</a></div>` : ''}
     ${adm ? `<div class="card"><h2>Datos de la empresa</h2><div class="row"><input id="o-name" class="grow" value="${esc(org?.name || '')}"><button class="btn sec" id="o-save">Guardar nombre</button></div></div>
     <div class="card"><h2>Sumar usuarios</h2>
       <p class="muted" style="margin-top:0">Pasale este código a cada persona de tu equipo. Al crear su cuenta elige “Tengo un código” y lo ingresa.</p>
