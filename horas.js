@@ -1098,7 +1098,7 @@ function hhQuickCss(){
 }
 async function hhHomeQuick(box){
   if (!box || !me) return;
-  hhQuickCss();
+  hhCss(); hhQuickCss();
   const wantH = can('horas');
   if (!wantH && !can('veh')) return;
   try { await hhLoadBase(); } catch { HHS.cfg = HHS.cfg || { ...HH_DEF }; }

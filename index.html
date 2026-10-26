@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-L6NziYyzivq0S8gFMuyw4lYBeLzEvzC3ZDH4Xy9mosE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-YH7/8gs6QcVGoW/TNCJujT31xYhtPQv64m+vjYkma4U='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -417,7 +417,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.6.3';
+const APP_VERSION = '4.7';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -460,7 +460,9 @@ function errText(e){
   if (/already registered/i.test(m)) return 'Ese email ya tiene una cuenta. Probá ingresar o recuperar la contraseña.';
   if (/Database error saving new user/i.test(m)) return 'No se pudo crear la cuenta: revisá el código de empresa o pedile al administrador que amplíe el cupo.';
   if (/Password should be/i.test(m)) return 'La contraseña tiene que tener al menos 8 caracteres.';
-  if (/rate limit/i.test(m)) return 'Demasiados intentos seguidos. Esperá unos minutos.';
+  if (/email rate limit/i.test(m)) return 'Se alcanzó el límite de mails por hora del servidor. Esperá un rato e intentá de nuevo; si pasa seguido, avisale al administrador.';
+  if (/rate limit|only request this after/i.test(m)) return 'Demasiados intentos seguidos. Esperá unos minutos.';
+  if (/Error sending|sending (confirmation|recovery) email/i.test(m)) return 'El servidor no pudo enviar el mail. Avisale al administrador (configuración de correo de la app).';
   if (/row-level security/i.test(m)) return 'No tenés permiso para esta acción, o la licencia está vencida.';
   if (isNetErr(e)) return 'Sin conexión. Revisá internet e intentá de nuevo.';
   return m;
@@ -871,8 +873,23 @@ $('#f-login').onsubmit = async ev => {
   ev.preventDefault(); const f = ev.target; $('#e-login').textContent = '';
   if (!online()) { $('#e-login').textContent = 'Para ingresar por primera vez en este dispositivo necesitás conexión.'; return; }
   const { error } = await sb.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
-  if (error) $('#e-login').textContent = errText(error);
+  if (error){
+    $('#e-login').textContent = errText(error);
+    if (/Email not confirmed/i.test(error.message || '')) offerResend($('#e-login'), f.email.value.trim());
+  }
 };
+/* Reenviar el mail de confirmación (no necesita sesión). Supabase limita los envíos por hora. */
+function offerResend(box, email){
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = 'Reenviar el mail de confirmación';
+  b.style.display = 'block'; b.style.marginTop = '6px';
+  b.onclick = async () => {
+    b.disabled = true;
+    const { error } = await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: location.origin + location.pathname } });
+    box.className = error ? 'err' : 'okmsg';
+    box.textContent = error ? errText(error) : `Listo: reenviamos el mail a ${email}. Revisá también la carpeta de spam o correo no deseado.`;
+  };
+  box.appendChild(b);
+}
 $('#f-signup').onsubmit = async ev => {
   ev.preventDefault(); const f = ev.target; const e = $('#e-signup'); e.textContent = ''; e.className = 'err';
   if (!strongPass(f.password.value)) { e.textContent = 'La contraseña tiene que tener al menos 8 caracteres y combinar letras y números.'; return; }
@@ -895,12 +912,12 @@ $('#f-signup').onsubmit = async ev => {
     setTimeout(() => { showForm('f-login'); const l = $('#f-login'); if (l?.email) l.email.value = em; $('#e-login').className = 'err'; $('#e-login').textContent = 'Ese email ya tiene una cuenta: ingresá con tu contraseña o recuperala con “Olvidé mi contraseña”.'; }, 1800);
     return;
   }
-  if (!data.session) { e.className = 'okmsg'; e.textContent = 'Listo. Te mandamos un mail para confirmar tu cuenta; después ingresá con tu email y contraseña.'; f.reset(); }
+  if (!data.session) { const em = f.email.value.trim(); e.className = 'okmsg'; e.textContent = `Listo. Te mandamos un mail a ${em} para confirmar tu cuenta (revisá también spam); después ingresá con tu email y contraseña.`; f.reset(); offerResend(e, em); }
 };
 $('#f-forgot').onsubmit = async ev => {
   ev.preventDefault(); const e = $('#e-forgot'); e.className='err'; e.textContent='';
   const { error } = await sb.auth.resetPasswordForEmail(ev.target.email.value.trim(), { redirectTo: location.origin + location.pathname });
-  if (error) e.textContent = errText(error); else { e.className='okmsg'; e.textContent='Si el email está registrado, te llega el enlace en unos minutos.'; }
+  if (error) e.textContent = errText(error); else { e.className='okmsg'; e.textContent='Si el email está registrado, te llega el enlace en unos minutos. Revisá también spam o correo no deseado. Si no llega, avisale al administrador de tu empresa.'; }
 };
 $('#f-newpass').onsubmit = async ev => {
   ev.preventDefault();
@@ -2720,7 +2737,7 @@ async function viewOrg(v){
       <thead><tr><th>Nombre</th><th class="hide-sm">Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead><tbody>
       ${(members||[]).map(m => `<tr><td>${esc(m.full_name || '—')}${m.id === me.id ? ' <span class="muted">(vos)</span>' : ''}</td><td class="hide-sm">${esc(m.email)}</td>
         <td>${adm && m.id !== me.id ? `<select data-role="${m.id}" style="padding:6px;width:auto">${Object.entries(ROLE_TXT).map(([r, x]) => `<option ${m.role===r?'selected':''} value="${r}">${x}</option>`).join('')}</select>${m.role === 'contratista' ? `<div class="muted sm">${esc(cName(m.contractor_id))}</div>` : ''}` : esc(ROLE_TXT[m.role] || m.role) + (m.role === 'contratista' ? ` · ${esc(cName(m.contractor_id))}` : '')}</td>
-        <td><span class="pill ${m.active ? 'p-activa' : 'p-vencida'}">${m.active ? 'Activo' : 'Inactivo'}</span></td>
+        <td><span class="pill ${m.active ? 'p-activa' : 'p-vencida'}">${m.active ? 'Activo' : 'Inactivo'}</span><span class="pill p-pend hidden" data-unconf="${esc(m.id)}" title="Todavía no abrió el mail de confirmación" style="margin-left:4px">✉ Sin confirmar</span></td>
         <td style="white-space:nowrap">${adm && m.id !== me.id ? `<button class="btn small ${m.active ? 'danger' : 'sec'}" data-toggle="${esc(m.id)}" data-active="${m.active}">${m.active ? 'Desactivar' : 'Activar'}</button>${m.role !== 'admin' ? ` <button class="btn small sec" data-delusr="${esc(m.id)}" title="Borrar la cuenta">🗑 Borrar</button>` : ''}` : ''}</td></tr>`).join('')}
       </tbody></table></div>
       <p class="muted sm">Roles: <b>Admin</b> administra usuarios, sitios y plantillas y puede borrar cualquier inspección · <b>Supervisor</b> y <b>PM</b> gestionan proyectos, tareas y sitios, programan fechas y validan las que proponen las contratistas · <b>Coordinador</b> gestiona proyectos y tareas y programa fechas (no valida propuestas) · <b>Inspector</b> carga inspecciones y avance · <b>Contratista</b> ve solo sus tareas y sitios, propone fechas y carga avance y actas.</p></div>
@@ -2758,6 +2775,8 @@ async function viewOrg(v){
     const { error } = await sb.rpc('org_update_member', { p_user: b.dataset.toggle, p_active: act });
     toast(error ? errText(error) : (act ? 'Usuario activado' : 'Usuario desactivado')); route();
   });
+  if (adm) sb.rpc('org_members_status').then(({ data }) => { for (const r of data || []) if (!r.confirmed) v.querySelector(`[data-unconf="${CSS.escape(r.id)}"]`)?.classList.remove('hidden');
+    if ((data || []).some(r => !r.confirmed)) v.querySelector('[data-unconf]')?.closest('.card')?.insertAdjacentHTML('beforeend', '<p class="muted sm">✉ <b>Sin confirmar</b>: todavía no abrió el mail de confirmación. Si cargó mal su email o no le llega, borralo (🗑) y que se registre de nuevo con el código.</p>'); }).catch(() => {});
   v.querySelectorAll('[data-delusr]').forEach(b => b.onclick = async () => {
     const m = (members || []).find(x => x.id === b.dataset.delusr); if (!m || !needOnline()) return;
     const ok = prompt(`Vas a borrar la cuenta de ${m.full_name || m.email} (${m.email}).\n\nSi todavía no cargó nada, se borra y el email queda libre para crearla de nuevo.\nSi ya tiene inspecciones, tareas, horas o jornadas, no se borra (se perdería el historial): queda desactivado.\n\nEscribí BORRAR para confirmar.`);
@@ -2832,11 +2851,11 @@ async function viewAdmin(v){
       <td>${o.kind === 'individual' ? 'Individual' : 'Empresa'}</td><td>${o.seats_used} / ${o.seat_limit}</td><td>${fmtDate(o.license_expires_at)}</td>
       <td><span class="pill p-${o.is_trial && o.state !== 'vencida' ? 'prueba' : o.state}">${o.is_trial && o.state !== 'vencida' ? 'Prueba' : STATE_TXT[o.state]}</span></td>
       <td><button class="btn sec small" data-edit="${o.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">Sin resultados</td></tr>';
-    v.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editLic(orgs.find(o => o.id === b.dataset.edit)));
+    v.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editLic(orgs.find(o => o.id === b.dataset.edit), orgs));
   };
   $('#q-org').oninput = render; render();
 }
-function editLic(o){
+function editLic(o, orgs = []){
   const m = modal(`<h2>${esc(o.name)}</h2><p class="muted sm" style="margin-top:-6px">${esc(o.admin_email || '')} · usuarios activos: ${o.seats_used}</p>
     <label>Tipo</label><select id="l-kind"><option value="empresa" ${o.kind==='empresa'?'selected':''}>Empresa</option><option value="individual" ${o.kind==='individual'?'selected':''}>Individual</option></select>
     <label>Cupo de usuarios</label><input id="l-seats" type="number" min="1" value="${o.seat_limit}">
@@ -2845,7 +2864,52 @@ function editLic(o){
     <label>Notas (pago, contacto, etc.)</label><input id="l-notes" value="${esc(o.notes || '')}">
     <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="l-susp" style="width:auto" ${o.suspended ? 'checked' : ''}> Suspendida (pasa a solo lectura ya mismo)</label>
     <div class="err" id="l-err"></div>
-    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="l-cancel">Cancelar</button><button class="btn" id="l-save">Guardar</button></div>`);
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="l-cancel">Cancelar</button><button class="btn" id="l-save">Guardar</button></div>
+    <h3 style="margin:18px 0 4px">Usuarios de esta empresa</h3><div id="l-users" class="muted sm">Cargando…</div>
+    ${o.id !== me.org_id ? `<h3 style="margin:18px 0 4px">Borrar empresa</h3><p class="muted sm" style="margin:0 0 6px">Solo si quedó sin usuarios (pasalos a otra empresa primero). Si tiene datos cargados, se pide confirmación aparte.</p><button class="btn small danger" id="l-del">🗑 Borrar empresa</button>` : ''}`, {wide: true});
+  const others = orgs.filter(x => x.id !== o.id);
+  const loadUsers = async () => {
+    const { data, error } = await sb.rpc('admin_org_members', { p_org: o.id });
+    if (error) return ($('#l-users').textContent = errText(error));
+    if (!data?.length) return ($('#l-users').innerHTML = '<p class="muted">No tiene usuarios.</p>');
+    $('#l-users').innerHTML = `<div class="tblwrap"><table class="tbl"><tbody>${data.map(u => `<tr><td><b>${esc(u.full_name || '—')}</b><div class="muted sm">${esc(u.email)} · ${esc(ROLE_TXT[u.role] || u.role)}${u.active ? '' : ' · inactivo'}</div>
+        ${u.confirmed ? '' : `<span class="pill p-pend">✉ Sin confirmar el mail</span> <button class="btn sec small" data-conf="${esc(u.id)}" title="Solo si sabés que el email es correcto">Confirmar a mano</button>`}</td>
+      <td style="white-space:nowrap">${others.length && u.id !== me.id ? `<select data-mvorg="${esc(u.id)}" style="width:auto;padding:4px 6px;font-size:12px">${others.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>
+        <select data-mvrole="${esc(u.id)}" style="width:auto;padding:4px 6px;font-size:12px">${['inspector','coordinador','pm','supervisor','admin'].map(r => `<option value="${r}">${esc(ROLE_TXT[r] || r)}</option>`).join('')}</select>
+        <button class="btn small" data-mv="${esc(u.id)}">Pasar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+    m.el.querySelectorAll('[data-conf]').forEach(b => b.onclick = async () => {
+      const u = data.find(x => x.id === b.dataset.conf);
+      if (!confirm(`¿Confirmar a mano el email ${u.email}?\n\nHacelo solo si sabés que la dirección es correcta y es de esa persona (por ejemplo, cuando el mail no llega). Después puede ingresar con su contraseña.`)) return;
+      const { error } = await sb.rpc('admin_confirm_email', { p_user: u.id });
+      if (error) return toast(errText(error));
+      toast('Email confirmado: ya puede ingresar'); loadUsers();
+    });
+    m.el.querySelectorAll('[data-mv]').forEach(b => b.onclick = async () => {
+      const id = b.dataset.mv, dest = m.el.querySelector(`[data-mvorg="${CSS.escape(id)}"]`).value, role = m.el.querySelector(`[data-mvrole="${CSS.escape(id)}"]`).value;
+      const u = data.find(x => x.id === id), dn = others.find(x => x.id === dest)?.name;
+      if (!confirm(`¿Pasar a ${u.full_name || u.email} a "${dn}" como ${ROLE_TXT[role] || role}?\n\nDeja de ver los datos de "${o.name}" y pasa a ver los de "${dn}".`)) return;
+      const { error } = await sb.rpc('admin_move_member', { p_user: id, p_org: dest, p_role: role });
+      if (error) return toast(errText(error));
+      toast(`Listo: ${u.email} ahora está en ${dn}`); loadUsers();
+    });
+  };
+  loadUsers();
+  $('#l-del')?.addEventListener('click', async () => {
+    const { data: usage, error: ue } = await sb.rpc('admin_org_usage', { p_org: o.id });
+    if (ue) return toast(errText(ue));
+    if (usage?.profiles) return toast('Todavía tiene usuarios: pasalos a otra empresa o borralos primero.');
+    const NAMES = { sites: 'sitios', inspections: 'inspecciones', tasks: 'tareas', projects: 'proyectos', templates: 'plantillas', contractors: 'contratistas', fiber_routes: 'tramos de fibra', dc_objects: 'objetos de data center', hh_items: 'registros de horas', hh_staff: 'recursos', veh_vehicles: 'vehículos', veh_days: 'jornadas' };
+    const list = Object.entries(usage || {}).map(([k, n]) => `${n} ${NAMES[k] || k}`).join(', ');
+    let force = false;
+    if (list){
+      const t = prompt(`"${o.name}" tiene datos cargados: ${list}.\nSi la borrás, se pierden para siempre.\n\nPara confirmar, escribí el nombre exacto de la empresa:`);
+      if ((t || '').trim() !== o.name) return toast('No se borró: el nombre no coincide.');
+      force = true;
+    } else if ((prompt(`Se borra la empresa "${o.name}" (no tiene usuarios ni datos).\n\nEscribí BORRAR para confirmar.`) || '').trim().toUpperCase() !== 'BORRAR') return;
+    const { error } = await sb.rpc('admin_delete_org', { p_org: o.id, p_force: force });
+    if (error) return toast(errText(error));
+    m.close(); toast('Empresa borrada'); route();
+  });
   m.el.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
     const base = new Date(Math.max(new Date($('#l-exp').value || Date.now()), Date.now()));
     base.setDate(base.getDate() + Number(b.dataset.add)); $('#l-exp').value = base.toISOString().slice(0, 10);

@@ -59,8 +59,8 @@ function vehBindPhoto(id){
 }
 function vehDueChips(v){
   const c = [];
-  const due = (d, n) => { const k = vehDaysTo(d); if (k == null) return; if (k < 0) c.push(`<span class="pill p-bad">${n} vencida</span>`); else if (k <= 30) c.push(`<span class="pill p-pend">${n} vence en ${k} d</span>`); };
-  due(v.vtv_due, 'VTV'); due(v.insurance_due, 'Seguro');
+  const due = (d, n, fem) => { const k = vehDaysTo(d); if (k == null) return; if (k < 0) c.push(`<span class="pill p-bad">${n} ${fem ? 'vencida' : 'vencido'}</span>`); else if (k <= 30) c.push(`<span class="pill p-pend">${n} vence en ${k} d</span>`); };
+  due(v.vtv_due, 'VTV', true); due(v.insurance_due, 'Seguro', false);
   if (v.service_km && v.km_last != null && Number(v.km_last) >= Number(v.service_km) - 500) c.push(`<span class="pill ${Number(v.km_last) >= Number(v.service_km) ? 'p-bad' : 'p-pend'}">Service a los ${vehKm(v.service_km)}</span>`);
   return c.join(' ');
 }
@@ -271,7 +271,7 @@ async function vehViewMine(body){
     html += `<div class="card"><div class="row between"><div><h2 style="margin:0">Jornada abierta</h2><div class="sm muted">desde ${esc(vehDT(o.start_at))}</div></div><span class="veh-plate">${esc(o.plate || '')}</span></div>
       ${o.km_gap ? `<div class="sm" style="color:var(--amber);margin-top:4px">⚠ ${vehKm(Math.abs(o.km_gap))} de diferencia con el último cierre del vehículo</div>` : ''}
       ${vehDrivesHTML(drives.filter(d => d.day_id === o.id))}
-      ${canWrite() ? `<div class="row" style="margin-top:10px"><button class="btn sec grow" id="vm-take">🔄 Cambio de conductor</button><button class="btn grow" id="vm-close" style="background:var(--red);border-color:var(--red)">🏁 Terminar jornada</button></div>` : ''}</div>`;
+      ${canWrite() ? `<div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sec" id="vm-take" style="flex:1 1 220px">🔄 Cambio de conductor</button><button class="btn" id="vm-close" style="flex:1 1 220px;background:var(--red);border-color:var(--red)">🏁 Terminar jornada</button></div>` : ''}</div>`;
   } else if (s.drv){
     const dd = drives.filter(d => d.day_id === s.drv.day_id);
     html += `<div class="card"><h2 style="margin:0">Estás manejando <span class="veh-plate">${esc(plate(s.drv.vehicle_id))}</span></h2><p class="sm muted">Desde las ${esc(fmtTime(s.drv.from_at))} con ${vehKm(s.drv.from_km)}. El responsable del día cierra la jornada; si se lo devolvés, que registre el cambio de conductor.</p>${vehDrivesHTML(dd)}</div>`;
