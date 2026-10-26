@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-CNZMEvAHiCOnjXaH8QMkSFOS5VTXjVjEryIA1QeC9lI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-L6NziYyzivq0S8gFMuyw4lYBeLzEvzC3ZDH4Xy9mosE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -417,7 +417,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.6.1';
+const APP_VERSION = '4.6.3';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -888,6 +888,13 @@ $('#f-signup').onsubmit = async ev => {
   const { data, error } = await sb.auth.signUp({ email: f.email.value.trim(), password: f.password.value,
     options: { data: meta, emailRedirectTo: location.origin + location.pathname } });
   if (error) { e.textContent = errText(error); return; }
+  // Supabase no da error si el email ya existe (para no revelar cuentas): devuelve un usuario sin identidades
+  if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0){
+    const em = f.email.value.trim();
+    e.innerHTML = 'Ese email ya tiene una cuenta activa. <b>Ingresá con tu contraseña</b> o usá <b>Olvidé mi contraseña</b>.';
+    setTimeout(() => { showForm('f-login'); const l = $('#f-login'); if (l?.email) l.email.value = em; $('#e-login').className = 'err'; $('#e-login').textContent = 'Ese email ya tiene una cuenta: ingresá con tu contraseña o recuperala con “Olvidé mi contraseña”.'; }, 1800);
+    return;
+  }
   if (!data.session) { e.className = 'okmsg'; e.textContent = 'Listo. Te mandamos un mail para confirmar tu cuenta; después ingresá con tu email y contraseña.'; f.reset(); }
 };
 $('#f-forgot').onsubmit = async ev => {
@@ -2714,7 +2721,7 @@ async function viewOrg(v){
       ${(members||[]).map(m => `<tr><td>${esc(m.full_name || '—')}${m.id === me.id ? ' <span class="muted">(vos)</span>' : ''}</td><td class="hide-sm">${esc(m.email)}</td>
         <td>${adm && m.id !== me.id ? `<select data-role="${m.id}" style="padding:6px;width:auto">${Object.entries(ROLE_TXT).map(([r, x]) => `<option ${m.role===r?'selected':''} value="${r}">${x}</option>`).join('')}</select>${m.role === 'contratista' ? `<div class="muted sm">${esc(cName(m.contractor_id))}</div>` : ''}` : esc(ROLE_TXT[m.role] || m.role) + (m.role === 'contratista' ? ` · ${esc(cName(m.contractor_id))}` : '')}</td>
         <td><span class="pill ${m.active ? 'p-activa' : 'p-vencida'}">${m.active ? 'Activo' : 'Inactivo'}</span></td>
-        <td>${adm && m.id !== me.id ? `<button class="btn small ${m.active ? 'danger' : 'sec'}" data-toggle="${m.id}" data-active="${m.active}">${m.active ? 'Desactivar' : 'Activar'}</button>` : ''}</td></tr>`).join('')}
+        <td style="white-space:nowrap">${adm && m.id !== me.id ? `<button class="btn small ${m.active ? 'danger' : 'sec'}" data-toggle="${esc(m.id)}" data-active="${m.active}">${m.active ? 'Desactivar' : 'Activar'}</button>${m.role !== 'admin' ? ` <button class="btn small sec" data-delusr="${esc(m.id)}" title="Borrar la cuenta">🗑 Borrar</button>` : ''}` : ''}</td></tr>`).join('')}
       </tbody></table></div>
       <p class="muted sm">Roles: <b>Admin</b> administra usuarios, sitios y plantillas y puede borrar cualquier inspección · <b>Supervisor</b> y <b>PM</b> gestionan proyectos, tareas y sitios, programan fechas y validan las que proponen las contratistas · <b>Coordinador</b> gestiona proyectos y tareas y programa fechas (no valida propuestas) · <b>Inspector</b> carga inspecciones y avance · <b>Contratista</b> ve solo sus tareas y sitios, propone fechas y carga avance y actas.</p></div>
     <div class="card"><h2>Verificación en dos pasos</h2>
@@ -2750,6 +2757,15 @@ async function viewOrg(v){
     const act = b.dataset.active !== 'true';
     const { error } = await sb.rpc('org_update_member', { p_user: b.dataset.toggle, p_active: act });
     toast(error ? errText(error) : (act ? 'Usuario activado' : 'Usuario desactivado')); route();
+  });
+  v.querySelectorAll('[data-delusr]').forEach(b => b.onclick = async () => {
+    const m = (members || []).find(x => x.id === b.dataset.delusr); if (!m || !needOnline()) return;
+    const ok = prompt(`Vas a borrar la cuenta de ${m.full_name || m.email} (${m.email}).\n\nSi todavía no cargó nada, se borra y el email queda libre para crearla de nuevo.\nSi ya tiene inspecciones, tareas, horas o jornadas, no se borra (se perdería el historial): queda desactivado.\n\nEscribí BORRAR para confirmar.`);
+    if ((ok || '').trim().toUpperCase() !== 'BORRAR') return;
+    const { data, error } = await sb.rpc('org_delete_member', { p_user: m.id });
+    if (error) return toast(errText(error));
+    toast(data === 'borrado' ? 'Usuario borrado: el email quedó libre.' : 'Tiene registros cargados: no se borró para no perder el historial. Quedó desactivado.');
+    route();
   });
 }
 
