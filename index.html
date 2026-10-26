@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-YH7/8gs6QcVGoW/TNCJujT31xYhtPQv64m+vjYkma4U='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-pdG6IAOQ0OTMPz/tZv4DYVRkmeNNCMn01RYSU0fynls='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -41,6 +41,12 @@ a{color:var(--navy-2)}
 .netpill{font-size:12px;padding:4px 10px;border-radius:99px;cursor:pointer;white-space:nowrap}
 .netpill.off{background:#C8102E;color:#fff}
 .netpill.busy{background:#F2A93B;color:#3a2600}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:60;display:none;background:#0F2A4A;padding:6px 4px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -2px 10px rgba(0,0,0,.2)}
+.bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;color:#CBD5E1;text-decoration:none;font-size:11px;font-weight:600;padding:4px 0;border-radius:10px;position:relative;min-height:48px;justify-content:center}
+.bnav a .i{font-size:22px;line-height:1}
+.bnav a.on{color:#fff;background:rgba(255,255,255,.12)}
+.bnav a .n{position:absolute;top:2px;right:calc(50% - 22px);background:#DC2626;color:#fff;border-radius:99px;font-size:10px;padding:0 5px;line-height:16px}
+@media (max-width:760px){.bnav.on{display:flex}body.has-bnav{padding-bottom:76px}body.has-bnav .toast{bottom:86px}}
 .tabs{display:flex;gap:2px;padding:0 8px;background:var(--navy-2);overflow-x:auto;position:sticky;top:56px;z-index:49;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
 .tabs button{background:none;border:0;color:rgba(255,255,255,.7);padding:12px 14px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
@@ -303,7 +309,7 @@ tr.sor-bad td{background:var(--red-bg)}
 @media (max-width:640px){ .hide-sm{display:none} main{padding:10px} .card{padding:14px} .sec-title{margin:0 -14px} #report{padding:18px} .ed-item{grid-template-columns:1fr} .vbars{height:170px} }
 @media print{
   body{background:#fff}
-  .top,.tabs,.report-bar,#lic-banner,.toast{display:none!important}
+  .top,.tabs,.bnav,.report-bar,#lic-banner,.toast{display:none!important}
   main{max-width:none;padding:0}
   #report{padding:0;max-width:none}
   @page{size:A4;margin:16mm 14mm}
@@ -399,6 +405,7 @@ tr.sor-bad td{background:var(--red-bg)}
   </main>
 </section>
 
+<nav class="bnav" id="bnav" aria-label="Accesos rápidos"></nav>
 <div id="modal-root"></div>
 <div id="tip" class="tip hidden"></div>
 
@@ -417,7 +424,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.7';
+const APP_VERSION = '4.8';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -963,7 +970,7 @@ sb.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_OUT' && online()){ booted = false; me = null; }
   if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') setTimeout(boot, 0);
 });
-function showLogin(msg){
+function showLogin(msg){ $('#bnav')?.classList.remove('on'); document.body.classList.remove('has-bnav');
   $('#v-app').classList.add('hidden'); $('#v-auth').classList.remove('hidden'); showForm('f-login');
   if (msg) $('#e-login').textContent = msg;
 }
@@ -998,6 +1005,12 @@ async function boot(){
   const contr = isContractor();
   ['stats','sites','tpl','org'].forEach(t => $(`#tabs [data-tab="${t}"]`).classList.toggle('hidden', contr));
   await permLoad(); permApplyTabs();
+  // horas para todos: vincula al usuario con su Recurso (por email o nombre; si no hay, lo crea). Una vez por sesión.
+  if (online() && me.hh_enabled !== false && typeof can === 'function' && can('horas', 2)){
+    const k = 'hhlink:' + CUR_UID;
+    try { if (!sessionStorage.getItem(k)){ const { data } = await sb.rpc('hh_auto_link'); if (data){ sessionStorage.setItem(k, '1'); await IDB.del('kv', CUR_UID + ':hh-staff').catch(() => {}); } } } catch {}
+  }
+  if (typeof navBuild === 'function') navBuild();
   $('#tab-tasks').textContent = contr ? 'Mis tareas' : 'Tareas';
   if (installPrompt) $('#b-install').classList.remove('hidden');
   updateNet(); syncNow(); warmCache();
@@ -1058,6 +1071,30 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-close-modal]')) $('#modal-root').innerHTML = '';
 });
 $$('#tabs button').forEach(b => b.onclick = () => { location.hash = '#/' + b.dataset.tab; });
+/* Barra de accesos fija abajo (solo en el teléfono): lo que más usa cada perfil, a un toque */
+function navBuild(){
+  const nav = $('#bnav'); if (!nav || !me) return;
+  const c = (m, l) => typeof can !== 'function' || can(m, l);
+  const it = [['home', '🏠', 'Inicio', '#/home']];
+  if (isManager()){
+    if (c('horas')) it.push(['hhb', '📥', 'Bandeja', '#/tools/hh/bandeja']);
+    if (c('tasks')) it.push(['tasks', '📋', 'Tareas', '#/tasks']);
+    if (c('map')) it.push(['map', '🗺️', 'Mapa', '#/map']);
+  } else {
+    if (c('horas', 2) && me.hh_enabled !== false) it.push(['hh', '⏱️', 'Horas', '#/tools/hh/hoy']);
+    if (c('tasks')) it.push(['tasks', '📋', 'Tareas', '#/tasks']);
+    if (c('veh', 2)) it.push(['veh', '🚗', 'Vehículo', '#/tools/veh']);
+  }
+  it.push(['more', '☰', 'Más', '#/tools']);
+  nav.innerHTML = it.slice(0, 5).map(([k, i, l, h]) => `<a href="${h}" data-bn="${k}"><span class="i">${i}</span>${l}${k === 'hhb' ? '<span class="n hidden" id="bn-n"></span>' : ''}</a>`).join('');
+  nav.classList.add('on'); document.body.classList.add('has-bnav'); navMark();
+}
+function navMark(){
+  const h = location.hash || '#/home', nav = $('#bnav'); if (!nav) return;
+  const k = h.startsWith('#/tools/hh/bandeja') ? 'hhb' : h.startsWith('#/tools/hh') ? 'hh' : h.startsWith('#/tools/veh') ? 'veh' : h.startsWith('#/tasks') ? 'tasks' : h.startsWith('#/map') ? 'map' : h.startsWith('#/home') || h === '#/' ? 'home' : 'more';
+  nav.querySelectorAll('[data-bn]').forEach(a => a.classList.toggle('on', a.dataset.bn === k));
+}
+window.addEventListener('hashchange', navMark);
 let leaveGuard = null;
 const ONLINE_ONLY = ['org', 'admin'];
 async function route(){
@@ -1179,18 +1216,18 @@ async function viewHome(v){
   const showInstall = !isStandalone();
   v.innerHTML = `
     <div id="hh-quick"></div>
-    <div class="card row between">
+    <div class="card row between" id="home-hello">
       <div><h1>Hola${me.full_name ? ', ' + esc(me.full_name.split(' ')[0]) : ''}</h1>
       <p class="muted" style="margin:0">${esc(org?.name || '')} · ${org?.is_trial && st!=='vencida' ? 'Prueba gratis' : STATE_TXT[st]} hasta el ${fmtDate(org?.license_expires_at)}</p></div>
       ${canWrite() ? '<button class="btn" id="b-new">+ Nueva inspección</button>' : ''}
     </div>
     ${showInstall ? `<div class="card row between" style="background:#0F2A4A;color:#fff;border:0"><div class="row" style="flex-wrap:nowrap">${LOGO(44)}<div><b>Instalá InspectApp en tu ${isIOS() ? 'iPhone' : 'celular o PC'}</b><div class="sm" style="opacity:.8">Abre como aplicación y funciona sin señal en el campo.</div></div></div><button class="btn" id="b-inst2">Instalar</button></div>` : ''}
     <div id="home-board"></div>
-    <div class="stats" style="margin-bottom:14px">
+    ${isManager() ? `<div class="stats" style="margin-bottom:14px">
       <div class="stat"><span>Completadas este mes</span><b>${kpi.cMonth}</b></div>
       <div class="stat"><span>Borradores abiertos</span><b>${kpi.cDraft}</b></div>
       <div class="stat"><span>Ítems señalados este mes</span><b>${kpi.flagged}</b></div>
-    </div>
+    </div>` : ''}
     <div class="card"><div class="row between"><h2 style="margin:0">Últimas inspecciones</h2><a href="#/insp" class="sm">Ver todas</a></div>${inspTable(rows)}</div>`;
   $('#b-new')?.addEventListener('click', newInspection);
   $('#b-inst2')?.addEventListener('click', doInstall);
@@ -2734,13 +2771,14 @@ async function viewOrg(v){
       <div class="row"><span class="code">${esc(joinCode || '—')}</span><button class="btn sec small" id="b-copy">Copiar</button><button class="btn sec small" id="b-rotate">Generar otro</button></div>
       <p class="muted sm" style="margin-bottom:0">Usuarios activos: ${active} de ${org?.seat_limit ?? '—'}.${active >= (org?.seat_limit ?? 0) ? ' El cupo está completo: para sumar a alguien, pedí más usuarios o desactivá uno.' : ''}</p></div>` : ''}
     <div class="card"><h2>Usuarios</h2><div class="tblwrap"><table class="tbl">
-      <thead><tr><th>Nombre</th><th class="hide-sm">Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead><tbody>
+      <thead><tr><th>Nombre</th><th class="hide-sm">Email</th><th>Rol</th><th>Estado</th>${isManager() ? '<th>Horas</th>' : ''}<th></th></tr></thead><tbody>
       ${(members||[]).map(m => `<tr><td>${esc(m.full_name || '—')}${m.id === me.id ? ' <span class="muted">(vos)</span>' : ''}</td><td class="hide-sm">${esc(m.email)}</td>
         <td>${adm && m.id !== me.id ? `<select data-role="${m.id}" style="padding:6px;width:auto">${Object.entries(ROLE_TXT).map(([r, x]) => `<option ${m.role===r?'selected':''} value="${r}">${x}</option>`).join('')}</select>${m.role === 'contratista' ? `<div class="muted sm">${esc(cName(m.contractor_id))}</div>` : ''}` : esc(ROLE_TXT[m.role] || m.role) + (m.role === 'contratista' ? ` · ${esc(cName(m.contractor_id))}` : '')}</td>
         <td><span class="pill ${m.active ? 'p-activa' : 'p-vencida'}">${m.active ? 'Activo' : 'Inactivo'}</span><span class="pill p-pend hidden" data-unconf="${esc(m.id)}" title="Todavía no abrió el mail de confirmación" style="margin-left:4px">✉ Sin confirmar</span></td>
+        ${isManager() ? `<td data-hhcell="${esc(m.id)}" class="sm muted">…</td>` : ''}
         <td style="white-space:nowrap">${adm && m.id !== me.id ? `<button class="btn small ${m.active ? 'danger' : 'sec'}" data-toggle="${esc(m.id)}" data-active="${m.active}">${m.active ? 'Desactivar' : 'Activar'}</button>${m.role !== 'admin' ? ` <button class="btn small sec" data-delusr="${esc(m.id)}" title="Borrar la cuenta">🗑 Borrar</button>` : ''}` : ''}</td></tr>`).join('')}
       </tbody></table></div>
-      <p class="muted sm">Roles: <b>Admin</b> administra usuarios, sitios y plantillas y puede borrar cualquier inspección · <b>Supervisor</b> y <b>PM</b> gestionan proyectos, tareas y sitios, programan fechas y validan las que proponen las contratistas · <b>Coordinador</b> gestiona proyectos y tareas y programa fechas (no valida propuestas) · <b>Inspector</b> carga inspecciones y avance · <b>Contratista</b> ve solo sus tareas y sitios, propone fechas y carga avance y actas.</p></div>
+      <p class="muted sm">Roles: <b>Admin</b> administra usuarios, sitios y plantillas y puede borrar cualquier inspección · <b>Supervisor</b> y <b>PM</b> gestionan proyectos, tareas y sitios, programan fechas y validan las que proponen las contratistas · <b>Coordinador</b> gestiona proyectos y tareas y programa fechas (no valida propuestas) · <b>Técnico</b> carga inspecciones, avance, horas y su jornada de vehículo · <b>Contratista</b> ve solo sus tareas y sitios, propone fechas y carga avance y actas.</p></div>
     <div class="card"><h2>Verificación en dos pasos</h2>
       <p class="muted" style="margin-top:0">Además de la contraseña, al ingresar se pide un código que genera tu celular. Si alguien roba tu contraseña, igual no puede entrar.${['admin','supervisor','pm'].includes(me.role) ? ' <b>Recomendado para tu rol.</b>' : ''}</p>
       <div id="mfa-body" class="muted sm">Cargando…</div></div>`;
@@ -2777,6 +2815,7 @@ async function viewOrg(v){
   });
   if (adm) sb.rpc('org_members_status').then(({ data }) => { for (const r of data || []) if (!r.confirmed) v.querySelector(`[data-unconf="${CSS.escape(r.id)}"]`)?.classList.remove('hidden');
     if ((data || []).some(r => !r.confirmed)) v.querySelector('[data-unconf]')?.closest('.card')?.insertAdjacentHTML('beforeend', '<p class="muted sm">✉ <b>Sin confirmar</b>: todavía no abrió el mail de confirmación. Si cargó mal su email o no le llega, borralo (🗑) y que se registre de nuevo con el código.</p>'); }).catch(() => {});
+  if (isManager()) orgHHCells(v);
   v.querySelectorAll('[data-delusr]').forEach(b => b.onclick = async () => {
     const m = (members || []).find(x => x.id === b.dataset.delusr); if (!m || !needOnline()) return;
     const ok = prompt(`Vas a borrar la cuenta de ${m.full_name || m.email} (${m.email}).\n\nSi todavía no cargó nada, se borra y el email queda libre para crearla de nuevo.\nSi ya tiene inspecciones, tareas, horas o jornadas, no se borra (se perdería el historial): queda desactivado.\n\nEscribí BORRAR para confirmar.`);
@@ -2831,6 +2870,30 @@ async function mfaCard(box){
 /* =========================================================
    PANEL DE LICENCIAS (superadmin)
    ========================================================= */
+/* Mi empresa → columna Horas: interruptor "Pide horas" y a qué Recurso está vinculado (coordinación y administración) */
+async function orgHHCells(v){
+  let links = [], staff = [];
+  try { [links, staff] = await Promise.all([sb.rpc('org_hh_links').then(r => r.data || []), sb.from('hh_staff').select('id,name,user_id,kind,active').order('name').limit(2000).then(r => r.data || [])]); } catch { return; }
+  const w = canWrite();
+  for (const l of links){
+    const td = v.querySelector(`[data-hhcell="${CSS.escape(l.id)}"]`); if (!td) continue;
+    const opts = staff.filter(s => s.active && (!s.user_id || s.user_id === l.id));
+    td.innerHTML = `<label style="display:flex;gap:6px;align-items:center;font-weight:400;margin:0"><input type="checkbox" data-hhon="${esc(l.id)}" style="width:auto" ${l.hh_enabled ? 'checked' : ''} ${w ? '' : 'disabled'}> Pide horas</label>
+      ${l.hh_enabled ? `<select data-hhst="${esc(l.id)}" style="width:auto;max-width:190px;padding:4px 6px;font-size:12px;margin-top:4px" ${w ? '' : 'disabled'}><option value="">— Sin vincular —</option>${opts.map(s => `<option value="${esc(s.id)}" ${s.id === l.staff_id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : ''}`;
+  }
+  v.querySelectorAll('[data-hhon]').forEach(c => c.onchange = async () => {
+    const { error } = await sb.rpc('org_set_hh', { p_user: c.dataset.hhon, p_on: c.checked });
+    if (error){ toast(errText(error)); c.checked = !c.checked; return; }
+    toast(c.checked ? 'Puede pedir horas' : 'Ya no ve el pedido de horas'); orgHHCells(v);
+  });
+  v.querySelectorAll('[data-hhst]').forEach(sel => sel.onchange = async () => {
+    const uid2 = sel.dataset.hhst, sid = sel.value;
+    let r = await sb.from('hh_staff').update({ user_id: null }).eq('user_id', uid2);
+    if (!r.error && sid) r = await sb.from('hh_staff').update({ user_id: uid2 }).eq('id', sid);
+    if (r.error){ toast(errText(r.error)); return orgHHCells(v); }
+    await IDB.del('kv', CUR_UID + ':hh-staff').catch(() => {}); toast(sid ? 'Vinculado' : 'Desvinculado'); orgHHCells(v);
+  });
+}
 async function viewAdmin(v){
   const { data, error } = await sb.rpc('admin_list_orgs');
   if (error) throw error;

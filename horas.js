@@ -137,6 +137,8 @@ async function hhLoadBase(){
   HHS.cfg = { ...HH_DEF, ...(cfg || {}) };
   HHS.staff = staff || [];
   HHS.mine = HHS.staff.find(s => s.user_id === me.id) || null;
+  HHS.roles = new Map();
+  if (isManager()){ try { const pr = await cached('hh-roles', () => sb.from('profiles').select('id,role').limit(2000)); HHS.roles = new Map((pr || []).map(p => [p.id, p.role])); } catch {} }
   HHS.hol = new Map((hol || []).map(h => [h.day, h]));
 }
 const hhDrop = (...keys) => Promise.all(keys.map(k => IDB.del('kv', CUR_UID + ':' + k).catch(() => {})));
@@ -339,7 +341,9 @@ function hhFinish(it, after){
    ALTA / EDICIÓN DE TAREA U HORAS
    ===================================================================== */
 async function hhItemModal({ staff, item, kind = 'extra', after, day, preset }){
-  const mgr = isManager(), it = item || {}, today = todayStr(), pr = preset || {};
+  // pedido propio (también para jefes): sale a su nombre y lo valida un superior
+  const own = !!HHS.mine && ((item && item.staff_id === HHS.mine.id) || (!item && staff && staff.id === HHS.mine.id));
+  const mgr = isManager() && !own, it = item || {}, today = todayStr(), pr = preset || {};
   let k = it.kind || kind;
   const staffOpts = mgr ? HHS.staff.filter(s => s.active).map(s => `<option value="${esc(s.id)}" ${s.id === (it.staff_id || staff?.id) ? 'selected' : ''}>${esc(s.name)}${s.kind !== 'tecnico' ? ' · ' + HH_SK[s.kind] : ''}</option>`).join('') : '';
   const m = modal(`<h2>${item ? 'Editar' : k === 'tarea' ? 'Cargar tarea' : 'Pedir horas'}</h2>
@@ -402,16 +406,27 @@ async function hhItemModal({ staff, item, kind = 'extra', after, day, preset }){
       if (item || mgr){ $('#hm-ok').disabled = false; return ($('#hm-err').textContent = 'Necesitás señal para esto.'); }
       await hhQueue(row); m.close(); toast('Guardado en el teléfono: se envía cuando vuelva la señal.'); return (after || (() => viewHH($('#view'))))();
     }
-    const { error } = item ? await sb.from('hh_items').update(row).eq('id', item.id) : await sb.from('hh_items').insert(row);
+    const { data: saved, error } = item ? await sb.from('hh_items').update(row).eq('id', item.id).select('status').maybeSingle() : await sb.from('hh_items').insert(row).select('status').maybeSingle();
     $('#hm-ok').disabled = false;
     if (error) return ($('#hm-err').textContent = errText(error));
+    const stNow = saved?.status || (mgr ? 'autorizada' : 'pendiente');
     await hhDrop('hh-mine', 'hh-today');
     m.close();
     const done = after || (() => viewHH($('#view')));
-    if (!item && !mgr && HHS.cfg.coord_phone){
-      const m2 = modal(`<h2>Pedido enviado</h2><p>Queda <b>pendiente</b> hasta que el coordinador lo autorice.</p>${row.urgent ? '<p class="sm" style="color:var(--red)">Arrancaste por SLA: el coordinador tiene que validarlo hoy.</p>' : ''}
+    if (!item && own && stNow === 'autorizada' && k !== 'tarea'){
+      // el administrador se autoaprueba: aviso a RRHH
+      const txt = `${HHS.cfg.greeting || 'Buena jornada laboral'}.\nInformo ${HH_KIND[k].toLowerCase()} autoaprobada (administrador): ${s.name} · ${hhFmtDay(row.day)} de ${hhT(row.start_t)} a ${hhT(row.end_t)} (${hhH(hhCalc(row.start_t, row.end_t))}) · "${row.title}"${row.ticket ? ' · ticket ' + row.ticket : ''}.\n${hhSig()}`;
+      const m2 = modal(`<h2>Autoaprobada</h2><p>Como administrador, tus horas quedan aprobadas. ¿Avisar a RRHH?</p><div class="card" style="background:var(--bg);font-size:13px;white-space:pre-wrap">${esc(txt)}</div>
+        <div class="row" style="justify-content:flex-end"><button class="btn sec" id="m2x">No</button><button class="btn" id="m2w">✉ Avisar a RRHH</button></div>`);
+      $('#m2x').onclick = () => { m2.close(); done(); };
+      $('#m2w').onclick = () => { const to = String(HHS.cfg.rrhh_email || '').trim();
+        if (!/^[^@\s<>"']+@[^@\s<>"']+\.[a-z]{2,}$/i.test(to)){ toast('Cargá el mail de RRHH en Validación de horas → Ajustes.'); return; }
+        location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent('Horas autoaprobadas · ' + s.name + ' · ' + fmtD(row.day))}&body=${encodeURIComponent(txt)}`; m2.close(); done(); };
+    } else if (!item && !mgr && HHS.cfg.coord_phone){
+      const m2 = modal(`<h2>Pedido enviado</h2><p>Queda <b>pendiente</b> hasta que ${isManager() ? 'un superior lo valide' : 'el coordinador lo autorice'}.</p>${row.urgent ? '<p class="sm" style="color:var(--red)">Arrancaste por SLA: el coordinador tiene que validarlo hoy.</p>' : ''}
         <div class="row" style="justify-content:flex-end"><button class="btn sec" id="m2x">Listo</button><button class="btn" id="m2w">💬 Avisar al coordinador</button></div>`);
       $('#m2x').onclick = () => { m2.close(); done(); }; $('#m2w').onclick = () => { hhWa(HHS.cfg.coord_phone, hhMsgRequest(s, row)); m2.close(); done(); };
+    } else if (!item && mgr && stNow !== 'autorizada'){ toast('Cargado. Queda pendiente: lo tiene que validar un superior de esa persona.'); done();
     } else if (!item && mgr && s.phone){
       const m2 = modal(`<h2>Cargado y autorizado</h2><p>¿Avisarle a ${esc(hhFirst(s.name))} por WhatsApp?</p><div class="row" style="justify-content:flex-end"><button class="btn sec" id="m2x">No</button><button class="btn" id="m2w">💬 Avisar</button></div>`);
       $('#m2x').onclick = () => { m2.close(); done(); }; $('#m2w').onclick = () => { hhWa(s.phone, hhMsgAuth(s, { ...row, hours: hhCalc(row.start_t, row.end_t) })); hhMarkSent(s, row.day, 'autorizacion', row.id); m2.close(); done(); };
@@ -444,8 +459,18 @@ async function hhReview(items, act, after){
   }
   toast(`${items.length} actualizado(s)`); done();
 }
+/* espejo de hh_can_review (la base es la que decide): nadie aprueba lo propio salvo el admin; coordinador < supervisor = PM < admin */
+const HH_RANK = r => ({ admin: 4, supervisor: 3, pm: 3, coordinador: 2 }[r] || 1);
+function hhCanReview(staffId){
+  if (!isManager()) return false;
+  const st = HHS.staff.find(s => s.id === staffId); if (!st) return false;
+  const my = HH_RANK(me.role), their = st.user_id ? HH_RANK(HHS.roles?.get(st.user_id)) : 1;
+  if (st.user_id === me.id) return my === 4;
+  if (my === 4) return true; if (my === 3) return their <= 3; return my > their;
+}
 const hhMgrActions = i => {
   if (!canWrite()) return '';
+  if (!hhCanReview(i.staff_id)) return `<span class="sm muted">${i.staff_id === HHS.mine?.id ? 'Tus horas las valida un superior' : 'Lo valida un superior'}</span>`;
   const a = [];
   if (i.status === 'pendiente' && i.kind !== 'tarea') a.push(`<button class="btn small" data-hha="autorizar">Autorizar</button>`);
   if (['pendiente', 'autorizada'].includes(i.status)) a.push(`<button class="btn small" style="background:var(--green);border-color:var(--green)" data-hha="validar">Validar</button>`, `<button class="btn sec small" data-hha="rechazar">Rechazar</button>`);
@@ -468,7 +493,7 @@ async function hhViewInbox(body){
   const techs = HHS.staff.filter(s => s.active && s.kind === 'tecnico');
   const withItems = HHS.staff.filter(s => items.some(i => i.staff_id === s.id));
   const show = [...new Set([...withItems, ...techs])];
-  const pend = items.filter(i => ['pendiente', 'autorizada'].includes(i.status));
+  const pend = items.filter(i => ['pendiente', 'autorizada'].includes(i.status) && hhCanReview(i.staff_id));
   const nowAfter = day === todayStr() && hhMin(new Date().toTimeString().slice(0, 5)) >= hhMin(HHS.cfg.work_end);
   body.innerHTML = `
     ${overdue.length ? `<div class="banner off"><span class="dot"></span><div class="grow"><b>⏰ ${overdue.length} sin validar de días anteriores</b><div class="sm">La validación tiene que ser en el día.</div>
@@ -1092,6 +1117,13 @@ function hhQuickCss(){
 .hq-tl b{position:absolute;top:0;bottom:0;width:2px;background:#0F2A4A}
 .hq-tlx{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px}
 .hq .hq-tl{background:rgba(255,255,255,.18)}.hq .hq-tl u{background:rgba(255,255,255,.3)}.hq .hq-tl b{background:#fff}.hq .hq-tlx{color:#CBD5E1}
+.hq-tasks{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.hq-task{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px;text-decoration:none;color:inherit;background:#fff;min-height:56px}
+.hq-task.late{border-color:#F3C1CB;background:#FFF7F8}
+.hq-task .dot{width:12px;height:12px;border-radius:50%;flex:none;background:#2A78D6}
+.hq-task .dot.p-alta{background:#F59E0B}.hq-task .dot.p-critica{background:#DC2626}
+.hq-task .go{margin-left:auto;font-size:22px;color:var(--muted)}
+@media (max-width:640px){.hq-btns{grid-template-columns:1fr 1fr}.hq-btns>:last-child:nth-child(odd){grid-column:1/-1;min-height:76px}.hq-b{min-height:104px;padding:14px 12px}.hq-b .l{font-size:15px}.hq-chips button{padding:10px 14px;font-size:15px}}
 .hq-red{background:#DC2626;color:#fff;border-radius:12px;padding:12px 14px;margin:0 0 12px;display:flex;gap:10px;align-items:center;font-weight:600}
 .hq-red button{margin-left:auto;background:#fff;color:#DC2626;border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;white-space:nowrap}`;
   document.head.appendChild(st);
@@ -1103,7 +1135,7 @@ async function hhHomeQuick(box){
   if (!wantH && !can('veh')) return;
   try { await hhLoadBase(); } catch { HHS.cfg = HHS.cfg || { ...HH_DEF }; }
   const wantV = typeof vehHomeSlot === 'function' && can('veh') && !!HHS.mine;
-  const st = wantH ? HHS.mine : null, mgr = isManager(), today = todayStr();
+  const st = wantH && me.hh_enabled !== false ? HHS.mine : null, mgr = isManager(), today = todayStr();
   let items = [], guard = null, nTasks = 0;
   if (st){
     try {
@@ -1116,26 +1148,41 @@ async function hhHomeQuick(box){
       guard = (g || []).find(x => x.day === today) || null;
     } catch {}
   }
-  try { const ts = await IDB.get('kv', CUR_UID + ':tasks').catch(() => null); nTasks = (ts || []).filter(t => taskOpen(t) && (!t.due_date || t.due_date <= addDays(today, 1))).length; } catch {}
+  let tlist = [];
+  try {
+    const ts = typeof TASK_COLS !== 'undefined' && online() ? await cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', { ascending: true }).limit(500)).catch(() => null)
+      : await IDB.get('kv', CUR_UID + ':tasks').catch(() => null);
+    tlist = (ts || []).filter(t => taskOpen(t)).sort((a, b) => String(a.due_date || '9').localeCompare(String(b.due_date || '9')));
+    nTasks = tlist.filter(t => !t.due_date || t.due_date <= addDays(today, 1)).length;
+  } catch {}
   const tareas = items.filter(i => i.kind === 'tarea');
   const extra = items.filter(i => i.kind !== 'tarea' && i.status !== 'rechazada');
   const gp = guard && HH_CODES[guard.code] ? `<span class="pill" style="background:${HH_CODES[guard.code].bg};color:${HH_CODES[guard.code].c}">${HH_CODES[guard.code].n}</span>` : '';
   const btns = [];
   if (st && canWrite()) btns.push(`<button class="hq-b" id="hq-req"><span class="i">⏱️</span><div><div class="l">Pedir horas extra</div><div class="s">${extra.length ? extra.length + ' pedido(s) hoy · ' + hhH(extra.reduce((a, i) => a + Number(i.hours || 0), 0)) : 'Tope ' + hhH(HHS.cfg.max_extra) + ' extra · ' + hhH(HHS.cfg.max_viaje) + ' viaje'}</div></div></button>`);
   if (st) btns.push(`<button class="hq-b" id="hq-task"><span class="i">📋</span><div><div class="l">Mi tarea de hoy</div><div class="s">${tareas.length ? esc(tareas[0].title).slice(0, 60) + (tareas.length > 1 ? ' · +' + (tareas.length - 1) : '') : 'Sin tarea cargada · tocá para cargarla'}</div></div></button>`);
-  if (nTasks) btns.push(`<button class="hq-b" id="hq-asg"><span class="i">🗂️</span><div><div class="l">Tareas asignadas</div><div class="s">${nTasks} abierta(s) para hoy o vencidas</div></div></button>`);
+  if (tlist.length) btns.push(`<button class="hq-b" id="hq-asg"><span class="i">🗂️</span><div><div class="l">${isContractor() ? 'Tareas asignadas' : 'Tareas'}</div><div class="s">${nTasks ? nTasks + ' para hoy o vencidas' : tlist.length + ' abierta(s)'}</div></div></button>`);
   if (wantV) btns.push(`<div id="hq-veh" style="display:contents"></div>`);
+  if (st && !mgr && can('insp', 2) && canWrite() && typeof newInspection === 'function') btns.push(`<button class="hq-b" id="hq-insp"><span class="i">📝</span><div><div class="l">Nueva inspección</div><div class="s">Checklist, fotos y pendientes</div></div></button>`);
   box.innerHTML = `<div id="hq-redslot"></div>
-    ${st || btns.length ? `<div class="card hq"><div class="row between"><div><h2>${st ? '¡Buen día, ' + esc(hhFirst(st.name) || hhFirst(me.full_name)) + '!' : 'Accesos rápidos'}</h2><div class="sm">${esc(hhFmtDay(today))} · ${HH_DT[hhDayType(today)]}${HHS.hol?.get?.(today) ? ' · ' + esc(HHS.hol.get(today).name || '') : ''}</div></div>${gp}</div>
+    ${st || btns.length ? `<div class="card hq"><div class="row between"><div><h2>${st ? '¡Buen día, ' + esc(hhFirst(me.full_name) || hhFirst(st.name)) + '!' : 'Accesos rápidos'}</h2><div class="sm">${esc(hhFmtDay(today))} · ${HH_DT[hhDayType(today)]}${HHS.hol?.get?.(today) ? ' · ' + esc(HHS.hol.get(today).name || '') : ''}</div></div>${gp}</div>
       <div class="hq-btns">${btns.join('')}</div>
       ${st && canWrite() ? hhChips() : ''}
       ${st ? hhTimeline(items, today) : ''}</div>` : ''}
+    ${st && items.length ? `<div class="card"><div class="row between"><h2 style="margin:0">Lo de hoy</h2><a href="#/tools/hh/hoy" class="sm">Mi día</a></div>${items.slice(0, 4).map(i => hhItemHTML(i, { own: true })).join('')}</div>` : ''}
+    ${tlist.length ? `<div class="card"><div class="row between"><h2 style="margin:0">${isContractor() ? 'Tus tareas asignadas' : 'Tareas abiertas'}</h2><a href="#/tasks" class="sm">Ver todas</a></div>
+      <div class="hq-tasks">${tlist.slice(0, 4).map(t => { const d = t.due_date, late = d && d < today, lbl = !d ? '' : late ? 'Vencida ' + fmtD(d) : d === today ? 'Vence hoy' : d === addDays(today, 1) ? 'Vence mañana' : 'Vence ' + fmtD(d);
+        const sites = (t.sites || []).map(x => x.site_name).filter(Boolean);
+        return `<a class="hq-task ${late ? 'late' : ''}" href="#/tasks/${encodeURIComponent(t.id)}"><span class="dot p-${esc(t.priority || 'normal')}"></span><div style="min-width:0"><b>${esc(t.title)}</b><div class="sm muted">${esc(lbl)}${sites.length ? ' · ' + esc(sites.slice(0, 2).join(', ')) + (sites.length > 2 ? ' +' + (sites.length - 2) : '') : ''}</div></div><span class="go">›</span></a>`; }).join('')}</div></div>` : ''}
     <div id="hq-mgr"></div>`;
   const redraw = () => hhHomeQuick(box);
   $('#hq-req')?.addEventListener('click', () => hhItemModal({ staff: st, kind: 'extra', day: today, after: redraw }));
   $('#hq-task')?.addEventListener('click', () => tareas.length ? (location.hash = '#/tools/hh/hoy') : hhItemModal({ staff: st, kind: 'tarea', day: today, after: redraw }));
   $('#hq-asg')?.addEventListener('click', () => { location.hash = '#/tasks'; });
+  $('#hq-insp')?.addEventListener('click', () => newInspection());
+  if (st && !mgr) document.getElementById('home-hello')?.classList.add('hidden');
   if (st && canWrite()) hhBindChips(box, st, redraw);
+  if (st && items.length) hhBindItems(box, items, redraw);
   if (wantV) vehHomeSlot($('#hq-veh'), $('#hq-redslot'), redraw);
   if (wantH && mgr) hhHomeInbox($('#hq-mgr'));
 }
@@ -1144,8 +1191,11 @@ async function hhHomeInbox(box){
   if (!box || !online()) return;
   let items = [], od = [];
   try { [items, od] = await Promise.all([hhItems(sb.from('hh_items').select(HH_COLS).eq('day', todayStr()).in('status', ['pendiente', 'autorizada']).order('created_at')), hhOverdue()]); } catch { return; }
-  const pend = items.filter(i => i.status === 'pendiente');
+  const pend = items.filter(i => i.status === 'pendiente' && hhCanReview(i.staff_id));
+  const bn = document.getElementById('bn-n'); if (bn){ const n = pend.length + od.length; bn.textContent = n; bn.classList.toggle('hidden', !n); }
+  let unl = 0; try { const { data: L } = await sb.rpc('org_hh_links'); unl = (L || []).filter(x => x.hh_enabled && !x.staff_id).length; } catch {}
   box.innerHTML = `<div class="card"><div class="row between"><h2 style="margin:0">📥 Bandeja de horas</h2><a href="#/tools/hh/bandeja" class="sm">Abrir bandeja</a></div>
+    ${unl ? `<a href="#/org" class="pill p-pend" style="display:inline-block;margin-top:6px;text-decoration:none">👤 ${unl} usuario(s) sin vincular a un Recurso: vincular en Mi empresa</a>` : ''}
     <div class="row" style="gap:6px;margin:6px 0">${pend.length ? `<span class="pill p-pend">${pend.length} para autorizar</span>` : '<span class="pill p-ok">Nada para autorizar</span>'}${items.length - pend.length ? `<span class="pill p-info">${items.length - pend.length} autorizada(s) a validar</span>` : ''}${od.length ? `<span class="pill p-bad">⏰ ${od.length} de días anteriores</span>` : ''}</div>
     ${pend.slice(0, 4).map(i => hhItemHTML(i, { who: true, actions: hhMgrActions })).join('')}
     ${pend.length > 4 ? `<a href="#/tools/hh/bandeja" class="sm">Ver ${pend.length - 4} más…</a>` : ''}</div>`;

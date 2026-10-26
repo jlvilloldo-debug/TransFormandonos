@@ -39,7 +39,7 @@ const DEFAULT_STAGES = {
 };
 const UNITS = { u: 'unidades', m: 'metros', km: 'km', puestos: 'puestos', bocas: 'bocas', otro: 'otra' };
 const isValidator = () => me && ['admin', 'supervisor', 'pm'].includes(me.role);
-const ROLE_TXT = { admin: 'Admin', supervisor: 'Supervisor', pm: 'PM', coordinador: 'Coordinador', inspector: 'Inspector', contratista: 'Contratista' };
+const ROLE_TXT = { admin: 'Admin', supervisor: 'Supervisor', pm: 'PM', coordinador: 'Coordinador', inspector: 'Técnico', contratista: 'Contratista' };
 
 /* ---------- datos (con paginado: Supabase entrega de a 1000 filas) ---------- */
 async function pageAll(mk, max = 20000){
