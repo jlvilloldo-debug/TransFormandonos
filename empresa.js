@@ -41,6 +41,7 @@ async function empPushDisable(){
 /* aviso en Inicio para activar (una vez; se puede cerrar) */
 async function empPushBanner(box){
   if (!box || !online()) return;
+  try { const c = await stxLoadCfg(); if (c.push_mode === 'off') return; } catch {}     // "Solo WhatsApp": no se ofrecen avisos
   let ask = null; try { ask = localStorage.getItem('ia_push_ask'); } catch {}
   if (ask === 'no' || ask === 'ok') return;
   const st = await empPushState(); if (st !== 'apagado') return;
@@ -63,14 +64,15 @@ async function empOrgSection(box){
     <p class="muted sm" style="margin:0 0 8px">Tarea asignada a un técnico o contratista, horas autorizadas o rechazadas, y pedidos de horas para validar.</p>
     <div class="veh-seg" style="display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:6px 0 8px">
       <button type="button" class="emp-pm ${c.push_mode === 'auto' ? 'on' : ''}" data-pm="auto" ${w ? '' : 'disabled'}>⚡ Automáticos</button>
-      <button type="button" class="emp-pm ${c.push_mode !== 'auto' ? 'on' : ''}" data-pm="manual" ${w ? '' : 'disabled'}>✋ Manuales</button></div>
-    <p class="sm" id="emp-pm-t">${c.push_mode === 'auto' ? 'Se mandan solos cada vez que pasa algo.' : 'No se manda nada solo: coordinación los manda con "Enviar un aviso".'}</p>
-    <div class="row" style="gap:6px;flex-wrap:wrap">
+      <button type="button" class="emp-pm ${c.push_mode === 'manual' ? 'on' : ''}" data-pm="manual" ${w ? '' : 'disabled'}>✋ Manuales</button>
+      <button type="button" class="emp-pm ${c.push_mode === 'off' ? 'on' : ''}" data-pm="off" ${w ? '' : 'disabled'}>💬 Solo WhatsApp</button></div>
+    <p class="sm" id="emp-pm-t">${c.push_mode === 'auto' ? 'Se mandan solos cada vez que pasa algo.' : c.push_mode === 'off' ? 'No se usan los avisos al teléfono: al asignar un ticket se avisa por WhatsApp (el celular de cada técnico se carga en Recursos). No hace falta la función del servidor.' : 'No se manda nada solo: coordinación los manda con "Enviar un aviso".'}</p>
+    ${c.push_mode === 'off' ? '' : `<div class="row" style="gap:6px;flex-wrap:wrap">
       <button class="btn sec small" id="emp-dev">${pst === 'activo' ? '🔕 Apagar en este teléfono' : '🔔 Activar en este teléfono'}</button>
       ${pst === 'activo' ? '<button class="btn sec small" id="emp-test">Probar</button>' : ''}
       ${w ? '<button class="btn small" id="emp-send">📣 Enviar un aviso</button>' : ''}<button class="btn sec small" id="emp-diag">🩺 ¿Por qué no llega un aviso?</button></div>
     ${pst === 'bloqueado' ? '<p class="sm" style="color:var(--amber)">Este navegador tiene los avisos bloqueados: habilitalos en los ajustes del sitio → Notificaciones.</p>' : ''}
-    ${pst === 'no' ? `<p class="sm muted">${isIOS() ? 'En iPhone los avisos funcionan con la app agregada a la pantalla de inicio (iOS 16.4 o más).' : 'Este navegador no admite avisos.'}</p>` : ''}
+    ${pst === 'no' ? `<p class="sm muted">${isIOS() ? 'En iPhone los avisos funcionan con la app agregada a la pantalla de inicio (iOS 16.4 o más).' : 'Este navegador no admite avisos.'}</p>` : ''}`}
   </div>
   <div class="card"><h2 style="margin:0 0 6px">📧 Resumen automático</h2>
     <p class="muted sm" style="margin:0 0 8px">Mail a coordinación y RRHH con visitas, pendientes atrasados, horas, km e infracciones del período.</p>
@@ -97,8 +99,8 @@ async function empOrgSection(box){
     await IDB.del('kv', CUR_UID + ':org-cfg').catch(() => {}); Object.assign(STX.cfg, patch); if (msg !== null) toast(msg || 'Guardado'); return true;
   };
   box.querySelectorAll('.emp-pm').forEach(b => { b.style.cssText = 'flex:1;border:0;padding:10px 6px;cursor:pointer;font-weight:600;' + (b.classList.contains('on') ? 'background:var(--navy);color:#fff' : 'background:#fff;color:var(--muted)');
-    b.onclick = async () => { if (await save({ push_mode: b.dataset.pm }, b.dataset.pm === 'auto' ? 'Avisos automáticos activados' : 'Avisos en modo manual')) empOrgSection(box); }; });
-  $('#emp-dev').onclick = async () => { if (pst === 'activo') await empPushDisable(); else await empPushEnable(); empOrgSection(box); };
+    b.onclick = async () => { if (await save({ push_mode: b.dataset.pm }, { auto: 'Avisos automáticos activados', manual: 'Avisos en modo manual', off: 'Solo WhatsApp: los avisos al teléfono quedan apagados' }[b.dataset.pm])) empOrgSection(box); }; });
+  $('#emp-dev')?.addEventListener('click', async () => { if (pst === 'activo') await empPushDisable(); else await empPushEnable(); empOrgSection(box); });
   $('#emp-test')?.addEventListener('click', async () => { const { error } = await sb.rpc('push_test'); toast(error ? errText(error) : 'Aviso de prueba en camino (llega en menos de un minuto).'); });
   $('#emp-send')?.addEventListener('click', empSendModal);
   $('#emp-diag')?.addEventListener('click', empDiagModal);

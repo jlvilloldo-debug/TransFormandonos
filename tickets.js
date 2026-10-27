@@ -339,7 +339,9 @@ function tkDate(s){
   const d = new Date(y, Number(m[2]) - 1, Number(m[1]), Number(m[4]), Number(m[5])); return isNaN(d) ? null : d.toISOString();
 }
 function tkParseDetail(lines, all, tkr){
-  const num = all.match(/(?:^|\n)\s*[#*=+»>]?\s*(\d{5,7})\b/)?.[1] || all.match(/(?:ticket|#)\s*:?\s*(\d{4,7})/i)?.[1];
+  let num = all.match(/(?:^|\n)\s*[#*=+»>]?\s*(\d{5,7})\b/)?.[1] || all.match(/(?:ticket|#)\s*:?\s*(\d{4,7})/i)?.[1];
+  // los tickets del portal tienen 5 dígitos: si vienen 6 y el primero es un "#" mal leído (4, 2, 5, 7, 9), quedan los últimos 5
+  if (num && num.length === 6 && /^[24579]/.test(num) && (!tkr || /\{5\}/.test(tkr.num_re || '') || /santa\s*fe/i.test(tkr.name || ''))) num = num.slice(1);
   const titleRe = tkRe(tkr?.title_re || TK_PRESETS.sf.title_re);
   const title = lines.find(l => titleRe.test(l) && !/^(created|due|chient|client)/i.test(l)) || '';
   const tm = title.match(titleRe) || [];
@@ -550,11 +552,13 @@ async function tkReachModal(t, autoWa, justAssigned){
   const { data: reach, error } = await sb.rpc('ticket_reach', { p_ticket: t.id });
   if (error){ toast(justAssigned ? 'Asignado' : errText(error)); return; }
   const list = reach || [];
-  const why = r => r.devices > 0 ? ['✔ le llega el aviso al teléfono', 'var(--green-d,#15803D)'] : r.has_user ? ['✖ no activó los avisos en su teléfono', 'var(--red)'] : [r.kind === 'contratista' ? '✖ la contratista no tiene usuario en la app' : '✖ no está vinculado a un usuario de la app', 'var(--red)'];
+  let waOnly = false; try { waOnly = (await stxLoadCfg()).push_mode === 'off'; } catch {}
+  const why0 = r => r.devices > 0 ? ['✔ le llega el aviso al teléfono', 'var(--green-d,#15803D)'] : r.has_user ? ['✖ no activó los avisos en su teléfono', 'var(--red)'] : [r.kind === 'contratista' ? '✖ la contratista no tiene usuario en la app' : '✖ no está vinculado a un usuario de la app', 'var(--red)'];
+  const why = r => waOnly ? (waPhone(r.phone) ? ['avisale por WhatsApp', 'var(--muted)'] : ['✖ sin celular cargado (Recursos)', 'var(--red)']) : why0(r);
   const m = modal(`<h2>${justAssigned ? 'Asignado' : 'Avisar'} · #${esc(t.ext_no)} ${esc(t.site_name)}</h2>
     ${list.map((r, i) => { const w = why(r); return `<div class="item row between" style="gap:10px"><div><b>${esc(r.kind === 'contratista' ? 'Contratista ' + r.name : r.name)}</b><div class="sm" style="color:${w[1]}">${esc(w[0])}</div></div>
       ${waPhone(r.phone) ? `<button class="btn small" data-wa="${i}" style="background:#16A34A;border-color:#16A34A">WhatsApp</button>` : '<span class="sm muted">sin teléfono cargado</span>'}</div>`; }).join('') || '<p class="muted">No hay nadie asignado.</p>'}
-    ${list.some(r => !r.has_user) ? '<p class="sm muted">Para que le lleguen los avisos al teléfono, vinculalo a su usuario en Mi empresa → columna Horas (o Validación de horas → Recursos) y que toque "Activar avisos" en su teléfono.</p>' : ''}
+    ${!waOnly && list.some(r => !r.has_user) ? '<p class="sm muted">Para que le lleguen los avisos al teléfono, vinculalo a su usuario en Mi empresa → columna Horas (o Validación de horas → Recursos) y que toque "Activar avisos" en su teléfono.</p>' : ''}
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="rc-x">Listo</button></div>`);
   $('#rc-x').onclick = m.close;
   const send = i => { const r = list[i]; window.open(`https://wa.me/${waPhone(r.phone)}?text=${encodeURIComponent(tkWaText(t, r.kind === 'contratista' ? '' : r.name))}`, '_blank', 'noopener'); };
