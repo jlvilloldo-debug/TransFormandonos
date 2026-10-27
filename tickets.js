@@ -255,8 +255,8 @@ function tkBindPaste(v, after){
 let tkOcrWorker = null;
 async function tkOcr(file, onProg){
   if (file.size > 12 * 1024 * 1024) throw new Error('La imagen supera 12 MB.');
-  if (typeof Tesseract === 'undefined') await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'ocr/tesseract.min.js'; s.onload = res; s.onerror = () => rej(new Error('No se pudo cargar el lector de capturas.')); document.head.appendChild(s); });
-  if (!tkOcrWorker) tkOcrWorker = await Tesseract.createWorker('spa', 1, { workerPath: new URL('ocr/worker.min.js', location.href).href, corePath: new URL('ocr', location.href).href, langPath: new URL('ocr', location.href).href, gzip: true, workerBlobURL: false,
+  if (typeof Tesseract === 'undefined') await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'tesseract.min.js'; s.onload = res; s.onerror = () => rej(new Error('No se pudo cargar el lector de capturas (falta tesseract.min.js en el sitio).')); document.head.appendChild(s); });
+  if (!tkOcrWorker) tkOcrWorker = await Tesseract.createWorker('spa', 1, { workerPath: new URL('worker.min.js', location.href).href, corePath: new URL('.', location.href).href, langPath: new URL('.', location.href).href, gzip: true, workerBlobURL: false,
     logger: m => { if (m.status === 'recognizing text' && onProg) onProg(m.progress); } });
   // agrandar y pasar a grises mejora la lectura de capturas de pantalla
   const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('La imagen no se puede leer.')); i.src = URL.createObjectURL(file); });
@@ -836,8 +836,8 @@ function tkRuleModal(p, r, after){
 }
 /* lector del pliego: el PDF se lee en el navegador (pdf.js incluido en la app) */
 async function tkPdfText(file){
-  const pdfjs = await import(new URL('pdf/pdf.min.mjs', location.href).href);
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdf/pdf.worker.min.mjs', location.href).href;
+  const pdfjs = await import(new URL('pdf.min.mjs', location.href).href);
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.mjs', location.href).href;
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, disableFontFace: true, enableXfa: false }).promise;
   let out = '';
   for (let i = 1; i <= Math.min(doc.numPages, 120); i++){ const pg = await doc.getPage(i); const tc = await pg.getTextContent(); out += tc.items.map(x => x.str).join(' ') + '\n'; }
