@@ -323,7 +323,8 @@ function editProject(p){
   p = p || { kind: 'instalacion', stages: DEFAULT_STAGES.instalacion, elements: [], active: true };
   let elements = (p.elements || []).map(e => ({ ...e }));
   const m = modal(`<h2>${isNew ? 'Nuevo proyecto' : 'Editar proyecto'}</h2>
-    <label>Nombre</label><input id="pe-n" maxlength="160" value="${esc(p.name || '')}" placeholder="Ej.: AP Escuelas Nación · Reemplazo CCTV · Red MPLS Bs As">
+    <div class="row"><div class="grow" style="flex:3"><label>Nombre</label><input id="pe-n" maxlength="160" value="${esc(p.name || '')}" placeholder="Ej.: AP Escuelas Nación · Reemplazo CCTV · Red MPLS Bs As"></div>
+      <div class="grow"><label>Nombre corto <span class="muted sm">(Mesa)</span></label><input id="pe-sn" maxlength="30" value="${esc(p.short_name || '')}" placeholder="Ej.: SF R3"></div></div>
     <div class="row"><div class="grow"><label>Cliente</label><input id="pe-c" maxlength="160" value="${esc(p.client || '')}"></div>
       <div class="grow"><label>Contrato / OC</label><input id="pe-k" maxlength="200" value="${esc(p.contract || '')}"></div></div>
     <div class="row"><div class="grow"><label>Tipo</label><select id="pe-t">${Object.entries(PROJ_KIND).map(([k, x]) => `<option value="${k}" ${p.kind === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
@@ -369,7 +370,7 @@ function editProject(p){
       let id = e.id || slug(e.name); while (used.has(id)) id += '_2'; used.add(id);
       return { id, name: e.name.trim().slice(0, 120), unit: e.unit || 'u', serial: !!e.serial };
     });
-    const row = { name: $('#pe-n').value.trim(), client: $('#pe-c').value.trim() || null, contract: $('#pe-k').value.trim() || null, kind: $('#pe-t').value,
+    const row = { name: $('#pe-n').value.trim(), short_name: $('#pe-sn').value.trim() || null, client: $('#pe-c').value.trim() || null, contract: $('#pe-k').value.trim() || null, kind: $('#pe-t').value,
       start_date: $('#pe-s').value || null, end_date: $('#pe-e').value || null, description: $('#pe-d').value.trim() || null,
       stages: st, done_stage: $('#pe-ds').value || null, elements: els, active: isNew ? true : $('#pe-a').checked };
     if (row.start_date && row.end_date && row.end_date < row.start_date) return ($('#pe-err').textContent = 'El fin no puede ser antes del inicio.');

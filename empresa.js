@@ -68,7 +68,7 @@ async function empOrgSection(box){
     <div class="row" style="gap:6px;flex-wrap:wrap">
       <button class="btn sec small" id="emp-dev">${pst === 'activo' ? '🔕 Apagar en este teléfono' : '🔔 Activar en este teléfono'}</button>
       ${pst === 'activo' ? '<button class="btn sec small" id="emp-test">Probar</button>' : ''}
-      ${w ? '<button class="btn small" id="emp-send">📣 Enviar un aviso</button>' : ''}</div>
+      ${w ? '<button class="btn small" id="emp-send">📣 Enviar un aviso</button>' : ''}<button class="btn sec small" id="emp-diag">🩺 ¿Por qué no llega un aviso?</button></div>
     ${pst === 'bloqueado' ? '<p class="sm" style="color:var(--amber)">Este navegador tiene los avisos bloqueados: habilitalos en los ajustes del sitio → Notificaciones.</p>' : ''}
     ${pst === 'no' ? `<p class="sm muted">${isIOS() ? 'En iPhone los avisos funcionan con la app agregada a la pantalla de inicio (iOS 16.4 o más).' : 'Este navegador no admite avisos.'}</p>` : ''}
   </div>
@@ -101,6 +101,7 @@ async function empOrgSection(box){
   $('#emp-dev').onclick = async () => { if (pst === 'activo') await empPushDisable(); else await empPushEnable(); empOrgSection(box); };
   $('#emp-test')?.addEventListener('click', async () => { const { error } = await sb.rpc('push_test'); toast(error ? errText(error) : 'Aviso de prueba en camino (llega en menos de un minuto).'); });
   $('#emp-send')?.addEventListener('click', empSendModal);
+  $('#emp-diag')?.addEventListener('click', empDiagModal);
   const showDow = () => { $('#emp-sdw').style.display = $('#emp-sf').value === 'mensual' ? 'none' : ''; }; $('#emp-sf').onchange = showDow; showDow();
   const sumPatch = () => ({ summary_on: $('#emp-son').checked, summary_freq: $('#emp-sf').value, summary_dow: Number($('#emp-sd').value), summary_to: $('#emp-sto').value.trim() || null });
   $('#emp-ssave')?.addEventListener('click', async () => { const p = sumPatch(); if (p.summary_on && !p.summary_to) return toast('Cargá a quién se manda el resumen.'); if (await save(p, p.summary_on ? 'Resumen automático activado' : 'Guardado')) empOrgSection(box); });
@@ -181,4 +182,25 @@ async function empBackup(btn){
     toast('Copia descargada. Las fotos no van en el Excel: quedan guardadas en el servidor.');
   } catch (e){ toast(errText(e)); }
   finally { btn.disabled = false; btn.textContent = t0; }
+}
+
+/* ---------- diagnóstico de avisos: qué paso de la cadena falla ---------- */
+async function empDiagModal(){
+  if (!needOnline()) return;
+  const { data: d, error } = await sb.rpc('push_diag');
+  if (error) return toast(errText(error));
+  const ok = (b, t, f) => `<div class="item row" style="gap:10px;flex-wrap:nowrap"><span style="font-size:20px">${b ? '✅' : '❌'}</span><div><b>${t}</b>${f ? `<div class="sm muted">${f}</div>` : ''}</div></div>`;
+  const cron = Array.isArray(d.tarea_programada) ? d.tarea_programada : null, fn = Array.isArray(d.funcion) ? d.funcion : null;
+  const cronOk = !!cron && cron.length > 0 && cron.every(x => /succeed/i.test(x.estado || ''));
+  const fnLast = fn && fn[0], fnOk = !!fnLast && Number(fnLast.codigo) === 200;
+  const m = modal(`<h2>🩺 Diagnóstico de avisos</h2><p class="muted sm" style="margin-top:-4px">Un aviso pasa por estos pasos. El primero en rojo es lo que hay que arreglar.</p>
+    ${ok((d.tecnicos_sin_usuario || []).length === 0, 'Técnicos vinculados a su usuario', (d.tecnicos_sin_usuario || []).length ? 'Sin usuario (no les puede llegar nada): <b>' + esc(d.tecnicos_sin_usuario.join(', ')) + '</b>. Vinculalos en la columna Horas de Mi empresa.' : 'Todos tienen usuario.')}
+    ${ok((d.telefonos || []).length > 0, 'Teléfonos con los avisos activados', (d.telefonos || []).length ? esc(d.telefonos.map(x => x.nombre + (x.n > 1 ? ' (' + x.n + ')' : '')).join(', ')) + '. Los demás tienen que tocar "Activar avisos" en Inicio.' : 'Nadie activó los avisos todavía: cada uno toca "Activar avisos" en Inicio, en su teléfono.')}
+    ${ok(d.claves_avisos, 'Claves de los avisos creadas', d.claves_avisos ? '' : 'Se crean la primera vez que alguien activa los avisos con la función inspectapp-jobs desplegada.')}
+    ${ok(cronOk, 'Tarea programada (cada minuto)', cron ? (cron.length ? esc(cron.map(x => fmtTime(x.hora) + ' ' + x.estado + (x.detalle && !/^\d+ row/.test(x.detalle) ? ': ' + x.detalle : '')).join(' · ')) : 'Todavía no corrió. Corré de nuevo 17_avisos_resumen.sql.') : esc(String(d.tarea_programada)) + ' · Activá pg_cron en Database → Extensions y corré 17_avisos_resumen.sql.')}
+    ${ok(fnOk, 'La función inspectapp-jobs responde', fn ? (fnLast ? `Última respuesta ${esc(fmtTime(fnLast.hora))}: código ${esc(fnLast.codigo ?? '—')} ${esc(fnLast.error || fnLast.respuesta || '')}` + (Number(fnLast.codigo) === 401 ? ' · la clave no coincide: corré de nuevo el SQL 17.' : Number(fnLast.codigo) === 404 ? ' · la función no está desplegada con el nombre inspectapp-jobs.' : Number(fnLast.codigo) >= 500 ? ' · error de la función: revisá los secretos y los registros (Logs) en Supabase.' : '') : 'Todavía no la llamó nadie (no hubo avisos para mandar).') : esc(String(d.funcion)) + ' · Activá pg_net en Database → Extensions.')}
+    <div class="stats" style="margin-top:10px"><div class="stat"><span>En espera</span><b>${d.pendientes}</b></div><div class="stat"><span>Enviados (24 h)</span><b>${d.enviados_24h}</b></div><div class="stat"><span>Con error (24 h)</span><b style="color:${d.con_error_24h ? 'var(--red)' : 'inherit'}">${d.con_error_24h}</b></div></div>
+    <details class="sm" style="margin-top:8px"><summary style="cursor:pointer">Últimos avisos</summary>${(d.ultimos || []).map(x => `<div style="padding:4px 0;border-bottom:1px solid var(--line)">${esc(fmtDT(x.creado))} · ${esc(x.para || '')} · ${esc(x.titulo || '')} · ${x.enviado ? (x.error ? '<span style="color:var(--red)">' + esc(x.error) + '</span>' : 'enviado') : '<b>en espera</b>'}</div>`).join('') || 'Ninguno.'}</details>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="dg-x">Cerrar</button></div>`, { wide: true });
+  $('#dg-x').onclick = m.close;
 }

@@ -89,7 +89,7 @@ function tkCss(){
 /* ---------- carga de datos ---------- */
 async function tkLoadBase(){
   const [pr, tk] = await Promise.all([
-    cached('tk-proj', () => sb.from('projects').select('id,name,client,contract,kind,active,ticketera_id,corr_template_id,node_priority,end_date').in('kind', ['mantenimiento', 'mixto']).order('name')),
+    cached('tk-proj', () => sb.from('projects').select('id,name,client,contract,kind,active,ticketera_id,corr_template_id,node_priority,end_date,short_name').in('kind', ['mantenimiento', 'mixto']).order('name')),
     cached('tk-tkr', () => sb.from('ticketeras').select('*').order('name')).catch(() => []),
   ]);
   TK.projects = (pr || []).filter(p => p.active !== false); TK.tkr = (tk || []).filter(x => x.active !== false);
@@ -114,6 +114,7 @@ async function tkLoadList(){
 // enlace a la ticketera del cliente: solo https (nunca javascript:, data:, etc.)
 const tkUrl = (k, t) => { const u = k?.url_tpl ? k.url_tpl.replace('{n}', encodeURIComponent(t.ext_no)) : ''; return /^https:\/\/[^\s"'<>]+$/i.test(u) ? u : null; };
 const tkProj = id => TK.projects.find(p => p.id === id);
+const tkPName = id => { const p = tkProj(id); return p ? (p.short_name || p.name) : ''; };
 const tkTkr = id => TK.tkr.find(x => x.id === id);
 const tkStaffName = id => (typeof HHS !== 'undefined' && HHS.staff || []).find(s => s.id === id)?.name || 'Técnico';
 function tkWho(t){
@@ -139,8 +140,8 @@ async function viewMesa(v){
   const cnt = { nuevo: by('nuevo').length, corre: vis.filter(t => ['corre'].includes(tkMood(t))).length, vencido: vis.filter(t => tkMood(t) === 'vencido').length };
   const card = t => { const pr = TK_PRIO[t.priority] || TK_PRIO.normal, m = tkMood(t);
     return `<button class="tk-card" data-tk="${esc(t.id)}" style="border-left-color:${TK_MOOD[m][1]}">${tkFigure(t, 40)}<div class="t">
-      <div class="s">#${esc(t.ext_no)} · ${esc(tkProj(t.project_id)?.name || '')}</div><b>${esc(t.site_name)}${t.site2_name ? ' – ' + esc(t.site2_name) : ''}</b>
-      <div class="s">${esc([t.category, t.problem].filter(Boolean).join(' · '))}</div>
+      <div class="s">#${esc(t.ext_no)} · ${esc(tkPName(t.project_id))}</div><b>${esc(t.site_name)}${t.site2_name ? ' – ' + esc(t.site2_name) : ''}</b>
+      <div class="s">${esc([t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '))}</div>
       ${t.staff_ids?.length || t.contractor_id ? `<div class="s" style="color:var(--navy)">${esc(tkWho(t))}</div>` : ''}
       <span class="p" style="background:${pr[2]};color:${pr[1]}">${pr[0]}</span>
       <div class="l" style="color:${TK_MOOD[m][1]}" data-left="${esc(t.id)}">${esc(tkLeftTxt(t))}</div></div></button>`; };
@@ -311,6 +312,9 @@ function tkParse(text){
       priority: prio ? ({ alta: 'alta', media: 'normal', baja: 'baja', 'crítica': 'critica', critica: 'critica' })[norm(prio)] : null, _tkr: tkr?.id || null, _preset: 'trans' });
     return out;
   }
+  if (/TICKET\s*DETAILS|^\s*Created\b|^\s*Due\b/im.test(all)){        // detalle de un ticket del portal
+    const d = tkParseDetail(lines, all, tkr); if (d) return [d];
+  }
   const numRe = tkRe(tkr?.num_re || preset?.num_re || TK_PRESETS.sf.num_re);
   const titleRe = tkRe(tkr?.title_re || preset?.title_re || TK_PRESETS.sf.title_re);
   for (let i = 0; i < lines.length; i++){
@@ -327,6 +331,30 @@ function tkParse(text){
       node_type: node && Number(node) >= 1 && Number(node) <= 4 ? Number(node) : null, _ago: ago ? ago[0] : null, _tkr: tkr?.id || null, _preset: kind });
   }
   const seen = new Set(); return out.filter(x => x.ext_no && !seen.has(x.ext_no) && seen.add(x.ext_no));
+}
+/* fecha del portal: 26/10/26 15:26 (o 26/10/2026 15:26) → ISO */
+function tkDate(s){
+  const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\D{1,4}(\d{1,2})[:.](\d{2})/); if (!m) return null;
+  const y = Number(m[3]) < 100 ? 2000 + Number(m[3]) : Number(m[3]);
+  const d = new Date(y, Number(m[2]) - 1, Number(m[1]), Number(m[4]), Number(m[5])); return isNaN(d) ? null : d.toISOString();
+}
+function tkParseDetail(lines, all, tkr){
+  const num = all.match(/(?:^|\n)\s*[#*=+»>]?\s*(\d{5,7})\b/)?.[1] || all.match(/(?:ticket|#)\s*:?\s*(\d{4,7})/i)?.[1];
+  const titleRe = tkRe(tkr?.title_re || TK_PRESETS.sf.title_re);
+  const title = lines.find(l => titleRe.test(l) && !/^(created|due|chient|client)/i.test(l)) || '';
+  const tm = title.match(titleRe) || [];
+  const cr = lines.find(l => /^\s*created\b(?!\s*by)/i.test(l)), du = lines.find(l => /^\s*due\b/i.test(l));
+  const by = (lines.find(l => /^\s*created\s*by/i.test(l)) || '').replace(/^\s*created\s*by[.:]?\s*/i, '');
+  const di = lines.findIndex(l => /^\s*details\s*$/i.test(l));
+  const desc = di >= 0 ? lines.slice(di + 1).filter(l => !/^(notes|ticket notes|attachments?|history)\b/i.test(l)).join('\n').slice(0, 4000) : '';
+  const af = all.match(/\b(sin afectaci[oó]n|afectado|afectaci[oó]n total|afectaci[oó]n parcial)\b/i)?.[1];
+  const node = all.match(/nodo\s*tipo\s*(\d)/i)?.[1];
+  if (!num && !title) return null;
+  const clean = v => String(v || '').replace(/["“”»«'`~^*_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return { ext_no: num || '', site_name: clean(tm[1]).slice(0, 200), category: tm[2] ? stxCat(tm[2]) : null, problem: clean(tm[3]).slice(0, 300),
+    reported_at: tkDate(cr), client_due_at: tkDate(du), created_by_client: clean(by).slice(0, 120) || null, description: desc || null,
+    afect: af ? (/sin|parcial/i.test(af) ? 'parcial' : 'total') : null, node_type: node && Number(node) <= 4 ? Number(node) : null,
+    _tkr: tkr?.id || null, _preset: 'sf', _detail: true };
 }
 async function tkFromText(text, file, after){
   await tkLoadBase();
@@ -345,6 +373,8 @@ function tkMatchSite(sites, name){
   for (let n = Math.min(5, w.length - 1); n >= 1; n--){ hit = exact(w.slice(-n).join(' ')); if (hit) return hit; }
   return sites.find(s => k.length > 4 && stxK(s.name).length > 4 && (k.endsWith(stxK(s.name)) || stxK(s.name).startsWith(k))) || null;
 }
+// el problema sin la categoría repetida adelante ("Energía / Falla en rectificador" → "Falla en rectificador")
+function tkProblem(pr, cat){ let v = String(pr || '').trim(); for (const c of [cat, ...STX_CATS, 'Energia', 'Fibra Optica', 'Seguridad Fisica', 'FO']) if (c) v = v.replace(new RegExp('^' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[/·:-]\\s*', 'i'), ''); return v.slice(0, 300); }
 const tkFallaOf = cat => cat === 'Fibra óptica' ? 'fo' : ['Energía', 'Seguridad física'].includes(cat) ? 'infra' : 'otro';
 const tkLocal = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 async function tkPreview(items, file, raw, after){
@@ -364,7 +394,7 @@ async function tkPreview(items, file, raw, after){
       $('#tl-ok').disabled = true; let nw = 0, up = 0;
       try { for (const c of m.el.querySelectorAll('.tl-c:checked')){ const x = items[Number(c.dataset.i)]; const s = tkMatchSite(sites, x.site_name);
           const { data, error } = await sb.rpc('ticket_upsert', { p: { project_id: $('#tl-p').value, ext_no: x.ext_no, ext_status: x.ext_status, site_id: s?.id || null, site_name: s?.name || x.site_name || 'Sin sitio',
-            category: x.category, problem: x.problem, falla: tkFallaOf(x.category), node_type: x.node_type || s?.node_type || null } });
+            category: x.category, problem: tkProblem(x.problem, x.category), falla: tkFallaOf(x.category), node_type: x.node_type || s?.node_type || null } });
           if (error) throw error; data.created ? nw++ : up++; }
         m.close(); toast(`${nw} nuevo(s) · ${up} actualizado(s)`); after && after();
       } catch (e){ $('#tl-ok').disabled = false; $('#tl-err').textContent = errText(e); }
@@ -376,7 +406,7 @@ async function tkPreview(items, file, raw, after){
   if (tm.length === 1 && !tkMatchSite(sites, tm[0]) && /\S[-–]\S/.test(tm[0])){ const z = tm[0].split(/[-–]/); if (tkMatchSite(sites, z[0]) || tkMatchSite(sites, z[1])) tm = z; }
   let s1 = tkMatchSite(sites, tm[0]), s2 = tm[1] ? tkMatchSite(sites, tm[1]) : null;
   const proj0 = projFor(x);
-  let afect = 'total', falla = tkFallaOf(x.category);
+  let afect = x.afect || null, falla = tkFallaOf(x.category);
   const m = modal(`<h2>${x.ext_no ? 'Nuevo ticket' : 'Cargar ticket a mano'}${x._preset ? ` <span class="pill p-ok" style="font-size:12px;vertical-align:middle">${x._preset === 'sf' ? 'Portal Santa Fe' : 'Ticketera Trans'}</span>` : ''}</h2>
     <div class="grid2" style="gap:14px">
       ${raw ? `<div><div class="sm muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.05em">Lo que leyó la app</div><div class="tk-ocr" style="background:#111;color:#eee;border-radius:12px;padding:12px;font-size:13px;line-height:1.5;max-height:330px;overflow:auto;white-space:pre-wrap">${tkMarkRaw(raw, x)}</div>
@@ -384,8 +414,9 @@ async function tkPreview(items, file, raw, after){
       <div style="display:flex;flex-direction:column;gap:2px">
         <label>Proyecto</label><select id="tn-p">${TK.projects.map(p => `<option value="${esc(p.id)}" ${p.id === proj0 ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
         <div class="row" style="gap:10px"><div class="grow"><label>Nro. de ticket</label><input id="tn-n" maxlength="60" value="${esc(x.ext_no || '')}"></div>
-          <div class="grow"><label>Fecha y hora del reporte</label><input id="tn-r" type="datetime-local" value="${esc(tkLocal(x.reported_at))}" style="${x.reported_at ? '' : 'border:2px solid var(--amber)'}"></div></div>
-        ${!x.reported_at ? `<p class="sm" style="color:#92400E;background:#FFFBEB;border-radius:8px;padding:6px 10px;margin:4px 0">${x._ago ? `La captura dice "${esc(x._ago)}": ` : ''}cargá la hora en que el cliente cargó el ticket (desde ahí corre el SLA).</p>` : ''}
+          <div class="grow"><label>Creado (Created)</label><input id="tn-r" type="datetime-local" value="${esc(tkLocal(x.reported_at))}" style="${x.reported_at ? 'border-color:var(--green)' : 'border:2px solid var(--amber)'}"></div>
+          <div class="grow"><label>Vence (Due)</label><input id="tn-d" type="datetime-local" value="${esc(tkLocal(x.client_due_at))}" style="${x.client_due_at ? 'border-color:var(--green)' : ''}"></div></div>
+        ${!x.reported_at ? `<p class="sm" style="color:#92400E;background:#FFFBEB;border-radius:8px;padding:6px 10px;margin:4px 0">${x._ago ? `La captura dice "${esc(x._ago)}": ` : ''}cargá cuándo el cliente creó el ticket (desde ahí corre el SLA). El vencimiento lo fija el ticket (Due); si no lo trae, sale del pliego.</p>` : ''}
         <label>Sitio</label><input id="tn-s" list="tn-sl" maxlength="200" value="${esc(s1?.name || tm[0] || '')}" autocomplete="off" style="${s1 ? 'border-color:var(--green)' : ''}">
         <label>Tramo: hasta el nodo <span class="muted sm">(si afecta a dos)</span></label><input id="tn-s2" list="tn-sl" maxlength="200" value="${esc(s2?.name || tm[1] || '')}" autocomplete="off">
         <datalist id="tn-sl">${sites.map(s => `<option value="${esc(s.name)}">`).join('')}</datalist>
@@ -393,7 +424,8 @@ async function tkPreview(items, file, raw, after){
           <div class="grow"><label>Tipo de nodo</label><select id="tn-nt"><option value="">—</option>${[1, 2, 3, 4].map(n => `<option ${n === (x.node_type || s1?.node_type) ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>
         <label>Problema</label><input id="tn-pr" maxlength="300" value="${esc(x.problem || '')}">
         <label>Tipo de falla (para el pliego)</label><select id="tn-f">${Object.entries(TK_FALLA).map(([k, l]) => `<option value="${k}" ${k === falla ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
-        <div class="row" style="gap:10px;align-items:center;margin-top:8px"><span class="sm">Afectación</span><div class="tk-seg"><button type="button" data-a="total" class="on">Total</button><button type="button" data-a="parcial">Parcial</button></div></div>
+        <div class="row" style="gap:10px;align-items:center;margin-top:8px"><span class="sm">Afectación</span><div class="tk-seg"><button type="button" data-a="" class="${!afect ? 'on' : ''}">Sin dato</button><button type="button" data-a="total" class="${afect === 'total' ? 'on' : ''}">Total</button><button type="button" data-a="parcial" class="${afect === 'parcial' ? 'on' : ''}">Parcial</button></div></div>
+        ${x.description ? `<label>Descripción del cliente</label><textarea id="tn-de" rows="3" maxlength="4000">${esc(x.description)}</textarea>` : ''}
         <div class="tk-sla" id="tn-sla" style="margin-top:10px"></div>
       </div></div>
     <div class="err" id="tn-err"></div>
@@ -401,12 +433,18 @@ async function tkPreview(items, file, raw, after){
   const calc = async () => {
     const p = tkProj($('#tn-p').value), rules = await tkRules(p?.id), node = Number($('#tn-nt').value) || null;
     const r = tkPickRule(rules, $('#tn-f').value, afect, node), pr = x.priority || (p?.node_priority || {})[String(node)] || 'normal', P = TK_PRIO[pr];
-    const rep = $('#tn-r').value ? new Date($('#tn-r').value) : null, due = rep && r ? new Date(rep.getTime() + r.ttr_h * 3600000) : null;
-    $('#tn-sla').innerHTML = `<div><div class="sm" style="opacity:.8">${r ? `Según el pliego: ${esc(TK_FALLA_S[$('#tn-f').value])} · ${afect} · nodo ${node || '¿?'}` : rules.length ? 'No hay una regla del pliego para esta combinación' : 'El proyecto todavía no tiene la tabla del pliego'}</div>
-      <b style="font-size:18px">${r ? `TTR ${tkH(Number(r.ttr_h))}${due ? ' · vence ' + esc(fmtDT(due)) : ''}` : 'Sin TTR'}</b></div><span style="background:${P[2]};color:${P[1]};font-weight:700;padding:5px 10px;border-radius:8px">Prioridad ${P[0]}</span>`;
+    const rep = $('#tn-r').value ? new Date($('#tn-r').value) : null, cd = $('#tn-d').value ? new Date($('#tn-d').value) : null;
+    let head, big;
+    if (cd){ const h = rep ? (cd - rep) / 3600000 : null;
+      head = 'Vencimiento del ticket (manda lo que dice el cliente)' + (r && h != null && Math.abs(h - r.ttr_h) >= 1 ? ` · el pliego da ${tkH(Number(r.ttr_h))} para ${esc(TK_FALLA_S[$('#tn-f').value])}${afect ? ' ' + afect : ''}` : '');
+      big = `Vence ${esc(fmtDT(cd))}${h != null && h > 0 ? ' · plazo ' + tkH(h) : ''}`; }
+    else { const due = rep && r ? new Date(rep.getTime() + r.ttr_h * 3600000) : null;
+      head = r ? `El ticket no trae Due: según el pliego (${esc(TK_FALLA_S[$('#tn-f').value])}${afect ? ' · ' + afect : ''} · nodo ${node || '¿?'})` : rules.length ? 'Sin Due y sin una regla del pliego para esta combinación' : 'Sin Due: el proyecto todavía no tiene la tabla del pliego';
+      big = r ? `TTR ${tkH(Number(r.ttr_h))}${due ? ' · vence ' + esc(fmtDT(due)) : ''}` : 'Sin vencimiento'; }
+    $('#tn-sla').innerHTML = `<div><div class="sm" style="opacity:.8">${head}</div><b style="font-size:18px">${big}</b></div><span style="background:${P[2]};color:${P[1]};font-weight:700;padding:5px 10px;border-radius:8px">Prioridad ${P[0]}</span>`;
   };
-  m.el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { afect = b.dataset.a; m.el.querySelectorAll('[data-a]').forEach(z => z.classList.toggle('on', z === b)); calc(); });
-  ['#tn-p', '#tn-nt', '#tn-f', '#tn-r'].forEach(id => $(id).addEventListener('change', calc));
+  m.el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { afect = b.dataset.a || null; m.el.querySelectorAll('[data-a]').forEach(z => z.classList.toggle('on', z === b)); calc(); });
+  ['#tn-p', '#tn-nt', '#tn-f', '#tn-r', '#tn-d'].forEach(id => $(id).addEventListener('change', calc));
   $('#tn-c').onchange = () => { $('#tn-f').value = tkFallaOf($('#tn-c').value); calc(); };
   $('#tn-s').onchange = () => { const s = tkMatchSite(sites, $('#tn-s').value); $('#tn-s').style.borderColor = s ? 'var(--green)' : ''; if (s?.node_type) $('#tn-nt').value = s.node_type; calc(); };
   calc();
@@ -422,9 +460,10 @@ async function tkPreview(items, file, raw, after){
       if (file){ const blob = await compressImage(file, 2000, 0.85); cap = `${me.org_id}/tickets/${uid()}.jpg`;
         const { error } = await sb.storage.from('fotos').upload(cap, blob, { contentType: 'image/jpeg', upsert: false }); if (error) cap = null; }
       const { data, error } = await sb.rpc('ticket_upsert', { p: { project_id: $('#tn-p').value, ext_no: n, ext_status: x.ext_status || null,
-        reported_at: $('#tn-r').value ? new Date($('#tn-r').value).toISOString() : null, site_id: s?.id || null, site_name: s?.name || $('#tn-s').value.trim() || 'Sin sitio',
-        site2_id: sb2?.id || null, site2_name: sb2?.name || $('#tn-s2').value.trim() || null, category: $('#tn-c').value || null, problem: $('#tn-pr').value.trim() || null,
-        description: x.description || null, falla: $('#tn-f').value, afect, node_type: Number($('#tn-nt').value) || null,
+        reported_at: $('#tn-r').value ? new Date($('#tn-r').value).toISOString() : null, client_due_at: $('#tn-d').value ? new Date($('#tn-d').value).toISOString() : null,
+        created_by_client: x.created_by_client || null, site_id: s?.id || null, site_name: s?.name || $('#tn-s').value.trim() || 'Sin sitio',
+        site2_id: sb2?.id || null, site2_name: sb2?.name || $('#tn-s2').value.trim() || null, category: $('#tn-c').value || null, problem: tkProblem($('#tn-pr').value, $('#tn-c').value) || null,
+        description: ($('#tn-de')?.value ?? x.description) || null, falla: $('#tn-f').value, afect, node_type: Number($('#tn-nt').value) || null,
         priority: x.priority || null, priority_manual: !!x.priority, capture_path: cap } });
       if (error) throw error;
       m.close(); toast(data.created ? 'Ticket cargado' : 'El ticket ya estaba: se actualizó');
@@ -478,6 +517,7 @@ async function tkAssignModal(id, after){
     </div>
     <div class="row" style="gap:10px"><div class="grow"><label>Planilla que se completa</label><input value="${esc(tplName)}" disabled></div>
       <div class="grow"><label>Indicaciones (opcional)</label><input id="as-n" maxlength="500" placeholder="Ej.: llevar rectificador de repuesto"></div></div>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:8px"><input type="checkbox" id="as-wa" style="width:auto" ${tkWaAuto() ? 'checked' : ''}> Enviar por WhatsApp al asignar</label>
     <div class="err" id="as-err"></div>
     <div class="row between" style="margin-top:10px"><span class="sm muted">Le llega el aviso al teléfono con el sitio y la cuenta regresiva.</span>
       <div class="row" style="gap:8px"><button class="btn sec" id="as-x">Cancelar</button><button class="btn" id="as-ok">Asignar</button></div></div>`, { wide: true });
@@ -492,8 +532,34 @@ async function tkAssignModal(id, after){
     const { error } = await sb.rpc('ticket_assign', { p_ticket: t.id, p_staff: st, p_contractor: c, p_note: $('#as-n').value.trim() || null });
     if (error){ $('#as-ok').disabled = false; return ($('#as-err').textContent = errText(error)); }
     await IDB.del('kv', CUR_UID + ':tasks').catch(() => {});
-    m.close(); toast('Asignado: ya le llegó el aviso'); after && after();
+    const wa = $('#as-wa').checked; try { localStorage.setItem('ia_tk_wa', wa ? '1' : '0'); } catch {}
+    m.close(); after && after();
+    tkReachModal({ ...t, staff_ids: st, contractor_id: c, _note: $('#as-n')?.value || '' }, wa, true);
   };
+}
+
+/* ---------- a quién le llegó el aviso, y WhatsApp ---------- */
+const tkWaAuto = () => { try { return localStorage.getItem('ia_tk_wa') !== '0'; } catch { return true; } };
+function tkWaText(t, name){
+  const due = t.due_at ? fmtDT(t.due_at) : null;
+  return [`Hola ${String(name || '').split(/[\s,]+/)[0] || ''}, te asigné el ticket #${t.ext_no} · ${t.site_name}${t.site2_name ? ' – ' + t.site2_name : ''}`,
+    [t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '), due ? `Vence: ${due}` : null, t._note ? `Indicaciones: ${t._note}` : null,
+    `Abrilo en InspectApp: ${location.origin + location.pathname}#/tickets/${t.id}`].filter(Boolean).join('\n');
+}
+async function tkReachModal(t, autoWa, justAssigned){
+  const { data: reach, error } = await sb.rpc('ticket_reach', { p_ticket: t.id });
+  if (error){ toast(justAssigned ? 'Asignado' : errText(error)); return; }
+  const list = reach || [];
+  const why = r => r.devices > 0 ? ['✔ le llega el aviso al teléfono', 'var(--green-d,#15803D)'] : r.has_user ? ['✖ no activó los avisos en su teléfono', 'var(--red)'] : [r.kind === 'contratista' ? '✖ la contratista no tiene usuario en la app' : '✖ no está vinculado a un usuario de la app', 'var(--red)'];
+  const m = modal(`<h2>${justAssigned ? 'Asignado' : 'Avisar'} · #${esc(t.ext_no)} ${esc(t.site_name)}</h2>
+    ${list.map((r, i) => { const w = why(r); return `<div class="item row between" style="gap:10px"><div><b>${esc(r.kind === 'contratista' ? 'Contratista ' + r.name : r.name)}</b><div class="sm" style="color:${w[1]}">${esc(w[0])}</div></div>
+      ${waPhone(r.phone) ? `<button class="btn small" data-wa="${i}" style="background:#16A34A;border-color:#16A34A">WhatsApp</button>` : '<span class="sm muted">sin teléfono cargado</span>'}</div>`; }).join('') || '<p class="muted">No hay nadie asignado.</p>'}
+    ${list.some(r => !r.has_user) ? '<p class="sm muted">Para que le lleguen los avisos al teléfono, vinculalo a su usuario en Mi empresa → columna Horas (o Validación de horas → Recursos) y que toque "Activar avisos" en su teléfono.</p>' : ''}
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="rc-x">Listo</button></div>`);
+  $('#rc-x').onclick = m.close;
+  const send = i => { const r = list[i]; window.open(`https://wa.me/${waPhone(r.phone)}?text=${encodeURIComponent(tkWaText(t, r.kind === 'contratista' ? '' : r.name))}`, '_blank', 'noopener'); };
+  m.el.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => { send(Number(b.dataset.wa)); b.textContent = 'Enviado ✓'; b.classList.add('sec'); });
+  if (autoWa){ const i = list.findIndex(r => waPhone(r.phone)); if (i >= 0){ send(i); const b = m.el.querySelector(`[data-wa="${i}"]`); if (b){ b.textContent = 'Enviado ✓'; b.classList.add('sec'); } } }
 }
 
 /* =====================================================================
@@ -510,13 +576,14 @@ async function tkDetailModal(id, after){
     <div class="stats" style="margin-top:12px">
       <div class="stat"><span>Prioridad</span><b style="color:${P[1]}">${P[0]}</b></div>
       <div class="stat"><span>TTR</span><b>${t.ttr_h ? tkH(Number(t.ttr_h)) : '—'}</b><small>${esc(TK_FALLA_S[t.falla] || '')}${t.afect ? ' · ' + t.afect : ''}${t.node_type ? ' · nodo ' + t.node_type : ''}</small></div>
-      <div class="stat"><span>Reporte</span><b style="font-size:16px">${t.reported_at ? esc(fmtDT(t.reported_at)) : '—'}</b>${t.pause_h > 0 ? `<small>+${t.pause_h} h de gracia</small>` : ''}</div>
+      <div class="stat"><span>Creado / vence</span><b style="font-size:15px">${t.reported_at ? esc(fmtDT(t.reported_at)) : '—'}</b><small>${t.client_due_at ? 'vence ' + esc(fmtDT(t.client_due_at)) + ' (ticket)' : t.due_at ? 'vence ' + esc(fmtDT(t.due_at)) + ' (pliego)' : ''}${t.pause_h > 0 ? ` · +${t.pause_h} h de gracia` : ''}</small></div>
       <div class="stat"><span>Asignado</span><b style="font-size:15px">${esc(tkWho(t) || 'Nadie')}</b>${t.arrived_at ? `<small>llegó ${esc(fmtTime(t.arrived_at))}</small>` : ''}</div></div>
-    <p>${esc([t.category, t.problem].filter(Boolean).join(' · '))}</p>${t.description ? `<p class="sm muted" style="white-space:pre-wrap">${esc(t.description.slice(0, 1500))}</p>` : ''}
+    <p>${esc([t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '))}</p>${t.description ? `<p class="sm muted" style="white-space:pre-wrap">${esc(t.description.slice(0, 1500))}</p>` : ''}
     ${t.capture_path ? '<p class="sm"><a href="#" id="dt-cap">Ver la captura original</a></p>' : ''}
     <details class="sm"><summary style="cursor:pointer">Historial (${(t.history || []).length})</summary>${(t.history || []).map(h => `<div style="padding:3px 0;border-bottom:1px solid var(--line)">${esc(fmtDT(h.at))} · ${esc(h.by || '')}: ${esc(h.ev === 'gracia' ? `gracia +${h.h} h (${h.motivo})` : TK_ST[h.ev] || h.ev)}</div>`).join('')}</details>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
       ${['nuevo', 'asignado', 'en_curso'].includes(t.status) ? `<button class="btn" id="dt-as">${t.staff_ids?.length || t.contractor_id ? 'Reasignar' : 'Asignar'}</button>` : ''}
+      ${(t.staff_ids?.length || t.contractor_id) && ['asignado', 'en_curso'].includes(t.status) ? '<button class="btn sec" id="dt-wa">WhatsApp / avisos</button>' : ''}
       ${['nuevo', 'asignado', 'en_curso'].includes(t.status) ? '<button class="btn sec" id="dt-ed">Corregir datos</button><button class="btn sec" id="dt-gr">Período de gracia</button>' : ''}
       ${url ? `<a class="btn sec" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir en la ticketera ↗</a>` : ''}
       ${t.inspection_id ? `<a class="btn sec" href="#/informe/${esc(t.inspection_id)}">Ver informe</a>` : ''}
@@ -525,6 +592,7 @@ async function tkDetailModal(id, after){
   $('#dt-x').onclick = m.close;
   $('#dt-as')?.addEventListener('click', () => { m.close(); tkAssignModal(t.id, after); });
   $('#dt-ed')?.addEventListener('click', () => { m.close(); tkEditModal(t, after); });
+  $('#dt-wa')?.addEventListener('click', () => { m.close(); tkReachModal(t, false, false); });
   $('#dt-gr')?.addEventListener('click', async () => {
     const h = Number(prompt('¿Cuántas horas de gracia? (las autorizó el cliente: clima, sin acceso…)', '2')); if (!h) return;
     const r = prompt('Motivo (queda en el historial):', ''); if (!r) return;
@@ -534,21 +602,22 @@ async function tkDetailModal(id, after){
   $('#dt-cap')?.addEventListener('click', async e => { e.preventDefault(); const { data } = await sb.storage.from('fotos').createSignedUrl(t.capture_path, 600); if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener'); });
 }
 async function tkEditModal(t, after){
-  const sites = await tkSitesAll(); let afect = t.afect || 'total';
+  const sites = await tkSitesAll(); let afect = t.afect || null;
   const m = modal(`<h2>Corregir ticket #${esc(t.ext_no)}</h2>
-    <label>Fecha y hora del reporte</label><input id="te-r" type="datetime-local" value="${esc(tkLocal(t.reported_at))}">
+    <div class="row" style="gap:10px"><div class="grow"><label>Creado (Created)</label><input id="te-r" type="datetime-local" value="${esc(tkLocal(t.reported_at))}"></div>
+      <div class="grow"><label>Vence (Due del ticket)</label><input id="te-d" type="datetime-local" value="${esc(tkLocal(t.client_due_at))}"></div></div>
     <label>Sitio</label><input id="te-s" list="te-sl" value="${esc(t.site_name)}"><datalist id="te-sl">${sites.map(s => `<option value="${esc(s.name)}">`).join('')}</datalist>
     <div class="row" style="gap:10px"><div class="grow"><label>Tipo de falla</label><select id="te-f">${Object.entries(TK_FALLA).map(([k, l]) => `<option value="${k}" ${k === t.falla ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
       <div><label>Tipo de nodo</label><select id="te-nt"><option value="">—</option>${[1, 2, 3, 4].map(n => `<option ${n === t.node_type ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>
-    <div class="row" style="gap:10px;align-items:center;margin-top:8px"><span class="sm">Afectación</span><div class="tk-seg"><button type="button" data-a="total" class="${afect === 'total' ? 'on' : ''}">Total</button><button type="button" data-a="parcial" class="${afect === 'parcial' ? 'on' : ''}">Parcial</button></div></div>
+    <div class="row" style="gap:10px;align-items:center;margin-top:8px"><span class="sm">Afectación</span><div class="tk-seg"><button type="button" data-a="" class="${!afect ? 'on' : ''}">Sin dato</button><button type="button" data-a="total" class="${afect === 'total' ? 'on' : ''}">Total</button><button type="button" data-a="parcial" class="${afect === 'parcial' ? 'on' : ''}">Parcial</button></div></div>
     <div class="row" style="gap:10px"><div class="grow"><label>Prioridad</label><select id="te-p"><option value="">Según el tipo de nodo</option>${Object.entries(TK_PRIO).map(([k, v]) => `<option value="${k}" ${t.priority_manual && t.priority === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
       <div class="grow"><label>TTR en horas</label><input id="te-t" type="number" min="1" max="2000" placeholder="Según el pliego" value="${t.ttr_manual ? esc(t.ttr_h) : ''}"></div></div>
     <div class="err" id="te-err"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="te-x">Cancelar</button><button class="btn" id="te-ok">Guardar</button></div>`);
-  m.el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { afect = b.dataset.a; m.el.querySelectorAll('[data-a]').forEach(z => z.classList.toggle('on', z === b)); });
+  m.el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { afect = b.dataset.a || null; m.el.querySelectorAll('[data-a]').forEach(z => z.classList.toggle('on', z === b)); });
   $('#te-x').onclick = m.close;
   $('#te-ok').onclick = async () => {
     const s = tkMatchSite(sites, $('#te-s').value), pr = $('#te-p').value, ttr = Number($('#te-t').value) || null;
-    const { error } = await sb.from('tickets').update({ reported_at: $('#te-r').value ? new Date($('#te-r').value).toISOString() : null, site_id: s?.id || null, site_name: s?.name || $('#te-s').value.trim(),
+    const { error } = await sb.from('tickets').update({ reported_at: $('#te-r').value ? new Date($('#te-r').value).toISOString() : null, client_due_at: $('#te-d').value ? new Date($('#te-d').value).toISOString() : null, site_id: s?.id || null, site_name: s?.name || $('#te-s').value.trim(),
       falla: $('#te-f').value, afect, node_type: Number($('#te-nt').value) || null, priority: pr || 'normal', priority_manual: !!pr, ttr_h: ttr, ttr_manual: !!ttr }).eq('id', t.id);
     if (error) return ($('#te-err').textContent = errText(error)); m.close(); toast('Guardado'); after && after();
   };
@@ -628,7 +697,7 @@ async function tkHomeCard(box){
       <div class="row between" style="align-items:flex-start"><div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">${list.length > 1 ? list.length + ' tickets para vos' : 'Ticket para vos'}</div>
         <span style="background:#fff;border-radius:14px;padding:4px">${tkFigure(t, 44)}</span></div>
       <div class="big">${esc(t.site_name)}${t.site2_name ? ' – ' + esc(t.site2_name) : ''}</div>
-      <div>${esc([t.category, t.problem].filter(Boolean).join(' · '))}</div>
+      <div>${esc([t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '))}</div>
       <div class="row between"><span class="sm">#${esc(t.ext_no)}</span><b style="font-size:18px">${esc(tkLeftTxt(t))}</b></div>
       <a class="go" href="#/tickets/${esc(t.id)}" style="color:${bg}">Abrir el ticket</a>
       ${list.length > 1 ? `<a href="#/tickets" style="color:#fff;text-align:center;font-size:14px">Ver los ${list.length}</a>` : ''}</div>`;
@@ -639,7 +708,7 @@ async function viewTickets(v, id){
   if (isManager()){ location.hash = '#/mesa'; return; }
   let list = []; try { list = await tkMine(); } catch (e){ v.innerHTML = `<div class="card">${esc(errText(e))}</div>`; return; }
   v.innerHTML = `<h1>Mis tickets</h1>${list.map(t => `<a class="tk-card" href="#/tickets/${esc(t.id)}" style="border-left-color:${TK_MOOD[tkMood(t)][1]};margin-bottom:10px;text-decoration:none">${tkFigure(t, 44)}<div class="t">
-      <div class="s">#${esc(t.ext_no)}</div><b>${esc(t.site_name)}</b><div class="s">${esc([t.category, t.problem].filter(Boolean).join(' · '))}</div>
+      <div class="s">#${esc(t.ext_no)}</div><b>${esc(t.site_name)}</b><div class="s">${esc([t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '))}</div>
       <div class="l" style="color:${TK_MOOD[tkMood(t)][1]}">${esc(t.status === 'informe' ? 'Informe enviado a la oficina' : tkLeftTxt(t))}</div></div></a>`).join('') || '<div class="card muted">No tenés tickets asignados.</div>'}`;
 }
 async function tkFindInsp(t){
@@ -662,7 +731,7 @@ async function viewTicket(v, id){
   v.innerHTML = `<div style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
     <div class="row between"><a href="${isManager() ? '#/mesa' : '#/home'}" class="btn sec small">‹ ${isManager() ? 'Mesa' : 'Inicio'}</a><span class="pill" style="background:${col};color:#fff;font-size:14px">${esc(tkLeftTxt(t))}</span></div>
     <div class="card" style="margin:0"><div class="row" style="gap:12px;align-items:center">${tkFigure(t, 60)}<div><div class="sm muted">#${esc(t.ext_no)}</div><h1 style="margin:0">${esc(t.site_name)}${t.site2_name ? ' – ' + esc(t.site2_name) : ''}</h1>
-      <div>${esc([t.category, t.problem].filter(Boolean).join(' · '))}</div></div></div>
+      <div>${esc([t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '))}</div></div></div>
       ${task?.description ? `<div style="margin-top:10px;background:#FFFBEB;border-radius:10px;padding:10px">Indicación: ${esc(task.description)}</div>` : ''}
       ${coord ? `<a class="btn" style="display:block;text-decoration:none;text-align:center;margin-top:12px;padding:13px;font-size:16px;background:#2A78D6;border-color:#2A78D6" href="https://www.google.com/maps/dir/?api=1&destination=${coord[0]},${coord[1]}" target="_blank" rel="noopener noreferrer">Ir al sitio (Google Maps)</a>` : ''}</div>
     ${closed ? `<div class="card" style="margin:0;text-align:center"><div style="display:flex;justify-content:center">${tkFigure(t, 80)}</div><h2 style="margin:6px 0">¡Listo!</h2><p class="muted">${t.status === 'cerrado' ? 'La oficina ya lo cargó en el cliente.' : 'Le pasamos el informe a la oficina para que lo cargue en el cliente.'}</p>${ins ? `<a href="#/informe/${esc(ins.id)}">Ver mi informe</a>` : ''}</div>` : `
