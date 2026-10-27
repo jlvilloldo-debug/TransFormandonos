@@ -1,10 +1,10 @@
 /* InspectApp · Transformándonos — service worker
    Guarda la aplicación en el dispositivo para que abra sin señal.
    Los datos (Supabase) nunca se guardan acá: los maneja la app. */
-const VERSION = 'ia-4.8.0';
+const VERSION = 'ia-4.9.0';
 const TILES = 'ia-tiles';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './banner.jpg',
-  './proyectos.js', './fibra.js', './datacenter.js', './horas.js', './permisos.js', './vehiculos.js', './qrcode.js', './jsQR.js', './supabase.js', './leaflet.js', './leaflet.css', './jszip.min.js', './xlsx.full.min.js'];
+  './proyectos.js', './fibra.js', './datacenter.js', './horas.js', './permisos.js', './vehiculos.js', './estadisticas.js', './empresa.js', './qrcode.js', './jsQR.js', './supabase.js', './leaflet.js', './leaflet.css', './jszip.min.js', './xlsx.full.min.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
@@ -67,4 +67,24 @@ self.addEventListener('fetch', e => {
       return r;
     })());
   }
+});
+
+/* ---------- avisos al teléfono (push) ---------- */
+self.addEventListener('push', e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch { d = { t: 'InspectApp', b: e.data ? e.data.text() : '' }; }
+  const url = typeof d.u === 'string' && /^#\/[A-Za-z0-9/_\-]*$/.test(d.u) ? d.u : '#/home';      // solo pantallas de la app
+  e.waitUntil(self.registration.showNotification(String(d.t || 'InspectApp').slice(0, 120), {
+    body: String(d.b || '').slice(0, 400), icon: './icon-192.png', badge: './icon-192.png', data: { url }, tag: url, renotify: true }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const raw = e.notification.data && e.notification.data.url;
+  const url = typeof raw === 'string' && /^#\/[A-Za-z0-9/_\-]*$/.test(raw) ? raw : '#/home';
+  e.waitUntil((async () => {
+    const base = new URL('./', self.registration.scope).href;
+    for (const c of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })){
+      if (c.url.startsWith(base)){ await c.focus(); c.postMessage({ go: url }); return; }
+    }
+    await self.clients.openWindow(base + url);
+  })());
 });

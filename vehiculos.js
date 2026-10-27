@@ -69,16 +69,22 @@ function vehDueChips(v){
    INICIO: botón de jornada y cartel rojo si quedó una abierta
    ===================================================================== */
 async function vehMyState(){
+  const snap = await vehSnap();
+  if (!online()) return { open: snap, drv: null, offline: true };
   const [open, drv] = await Promise.all([
     sb.rpc('veh_my_open').then(r => r.data || null),
     HHS.mine ? sb.from('veh_drives').select('id,day_id,vehicle_id,from_at,from_km').eq('driver_id', HHS.mine.id).is('to_at', null).order('from_at', { ascending: false }).limit(1).then(r => (r.data || [])[0] || null) : null,
   ]);
-  return { open, drv: drv && (!open || drv.day_id !== open.id) ? drv : null };
+  const q = await vehQ();
+  let o = open;
+  if (!o && snap && q.some(x => x.args?.p_id === snap.id || x.args?.p_day === snap.id)) o = snap;      // iniciada sin señal, todavía no llegó
+  if (o && o.id !== snap?.id) await vehSetSnap({ id: o.id, plate: o.plate, vehicle_id: o.vehicle_id, start_at: o.start_at, start_km: o.start_km, day: o.day });
+  if (!o && snap && !q.length) await vehSetSnap(null);
+  return { open: o, drv: drv && (!o || drv.day_id !== o.id) ? drv : null };
 }
 async function vehHomeSlot(btnBox, redBox, after){
   if (!btnBox) return; vehCss();
   const go = (cls, i, l, s, fn) => { btnBox.innerHTML = `<button class="hq-b ${cls}" id="hq-vb"><span class="i">${i}</span><div><div class="l">${l}</div><div class="s">${s}</div></div></button>`; $('#hq-vb').onclick = fn; };
-  if (!online()){ go('', '🚗', 'Jornada del vehículo', 'Necesita señal', () => { location.hash = '#/tools/veh'; }); return; }
   let s; try { s = await vehMyState(); } catch { go('', '🚗', 'Jornada del vehículo', 'Abrir', () => { location.hash = '#/tools/veh'; }); return; }
   const o = s.open;
   if (o && o.day < todayStr() && redBox){
@@ -94,10 +100,10 @@ async function vehHomeSlot(btnBox, redBox, after){
    INICIAR · TOMO EL VOLANTE · TERMINAR
    ===================================================================== */
 async function vehStartModal(preVehicle, after){
-  if (!needOnline()) return;
   if (!HHS.mine){ try { await hhLoadBase(); } catch {} }
   if (!HHS.mine) return toast('Tu usuario no está vinculado a un técnico: pedile al coordinador que te vincule en Validación de horas → Recursos.');
-  const [vs, inUse, mine] = await Promise.all([vehLoadVehicles(), sb.rpc('veh_open_list').then(r => r.data || []), sb.rpc('veh_my_open').then(r => r.data || null)]);
+  const [vs, inUse, mine] = online() ? await Promise.all([vehLoadVehicles(), sb.rpc('veh_open_list').then(r => r.data || []), vehMyState().then(x => x.open)])
+    : await Promise.all([vehLoadVehicles(), [], vehSnap()]);
   if (mine){ toast(`Tenés la jornada del ${fmtD(mine.day)} sin cerrar: cerrala primero.`); return vehCloseModal(mine, after); }
   let withV = true;
   const pre = vs.find(v => v.id === preVehicle);
@@ -109,7 +115,7 @@ async function vehStartModal(preVehicle, after){
       <label>Km del odómetro</label><input id="vs-km" type="number" inputmode="numeric" min="0" step="1" placeholder="Ej.: 48213">
       ${vehPhotoField('vs-ph', 'Foto del odómetro (obligatoria)')}</div>
     <p class="muted sm hidden" id="vs-none"></p>
-    <div class="sm muted" id="vs-s">Se registra la hora y tu ubicación.</div><div class="err" id="vs-err"></div>
+    <div class="sm muted" id="vs-s">${online() ? 'Se registra la hora y tu ubicación.' : '📵 Sin señal: se guarda en el teléfono con la hora de ahora y se envía sola cuando vuelva la señal.'}</div><div class="err" id="vs-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="vs-x">Cancelar</button><button class="btn" id="vs-ok">Iniciar jornada</button></div>`);
   vehBindPhoto('vs-ph');
   const info = () => { const v = vs.find(x => x.id === $('#vs-car').value), b = v && busy(v.id);
@@ -133,24 +139,23 @@ async function vehStartModal(preVehicle, after){
       if (v?.km_last != null && km < Number(v.km_last) && !confirm(`Cargaste ${vehKm(km)} y el último cierre fue ${vehKm(v.km_last)}. ¿Seguro?`)) return;
       if (v?.km_last != null && km - Number(v.km_last) > 300 && !confirm(`Hay ${vehKm(km - v.km_last)} de diferencia con el último cierre. ¿Los km son correctos?`)) return;
       if (!f) return ($('#vs-err').textContent = 'Falta la foto del odómetro.');
-      $('#vs-ok').disabled = true; $('#vs-s').textContent = 'Subiendo la foto…';
-      try { photo = await vehUpload(f); } catch (x){ $('#vs-ok').disabled = false; return ($('#vs-err').textContent = 'Foto: ' + errText(x)); }
     }
     $('#vs-ok').disabled = true; $('#vs-s').textContent = 'Tomando ubicación…';
-    const pos = await getPos();
-    const { error } = await sb.rpc('veh_start_day', { p_vehicle: car, p_km: km, p_photo: photo, p_lat: pos?.lat ?? null, p_lng: pos?.lng ?? null });
-    $('#vs-ok').disabled = false;
-    if (error) return ($('#vs-err').textContent = errText(error));
+    const pos = await getPos(), dayId = uid(), v = vs.find(x => x.id === car);
+    let r;
+    try { $('#vs-s').textContent = withV ? 'Guardando la foto…' : 'Guardando…';
+      r = await vehDo('start', { p_vehicle: car, p_km: km, p_lat: pos?.lat ?? null, p_lng: pos?.lng ?? null, p_id: dayId }, withV ? $('#vs-ph').files[0] : null, withV ? 'Inicio ' + (v?.plate || '') : 'Sin vehículo');
+    } catch (x){ $('#vs-ok').disabled = false; return ($('#vs-err').textContent = errText(x)); }
+    if (withV) await vehSetSnap({ id: dayId, plate: v?.plate || '', vehicle_id: car, start_at: new Date().toISOString(), start_km: km, day: todayStr() });
     m.close(); await IDB.del('kv', CUR_UID + ':veh-list').catch(() => {});
-    toast(withV ? '¡Jornada iniciada! Buen viaje.' : 'Registrado: hoy sin vehículo.'); after && after();
+    toast(r.queued ? '📵 Guardado en el teléfono: se envía solo cuando vuelva la señal.' : withV ? '¡Jornada iniciada! Buen viaje.' : 'Registrado: hoy sin vehículo.'); after && after();
   };
 }
 /* cambio de conductor: el nuevo conductor lo carga desde su celular, o el responsable carga a un conductor ocasional */
 async function vehTakeModal(day, after){
-  if (!needOnline()) return;
   if (!HHS.mine){ try { await hhLoadBase(); } catch {} }
   const resp = HHS.mine && day.responsible_id === HHS.mine.id, mgr = isManager();
-  const drivers = (resp || mgr) ? ((await sb.rpc('veh_drivers')).data || []) : [];
+  const drivers = (resp || mgr) ? ((await cached('veh-drivers', () => sb.rpc('veh_drivers')).catch(() => [])) || []) : [];
   const meDrive = HHS.mine && !resp;
   const m = modal(`<h2>🔄 Cambio de conductor</h2><p class="muted sm" style="margin:-4px 0 6px"><span class="veh-plate">${esc(day.plate)}</span> · responsable del día: <b>${esc(day.responsible)}</b>${day.driver ? ' · maneja ahora: ' + esc(day.driver) : ''}</p>
     ${meDrive ? `<p>Desde este momento <b>vos (${esc(HHS.mine.name)})</b> quedás como conductor y responsable de lo que pase con el vehículo.</p>` : `
@@ -174,18 +179,18 @@ async function vehTakeModal(day, after){
     if (!f) return ($('#vt-err').textContent = 'Falta la foto del odómetro.');
     $('#vt-ok').disabled = true;
     try {
+      if (drv === '__new' && !online()) throw new Error('Sin señal no se puede sumar una persona nueva: elegila de la lista o cargalo cuando vuelva la señal.');
       if (drv === '__new'){ const r = await sb.rpc('veh_add_driver', { p_name: $('#vt-nn').value, p_phone: $('#vt-np').value || null, p_company: $('#vt-nc').value || null }); if (r.error) throw r.error; drv = r.data; }
-      const photo = await vehUpload(f), pos = await getPos();
-      const { error } = await sb.rpc('veh_take_wheel', { p_day: day.day_id, p_km: km, p_photo: photo, p_driver: drv, p_lat: pos?.lat ?? null, p_lng: pos?.lng ?? null });
-      if (error) throw error;
+      const pos = await getPos();
+      var r = await vehDo('take', { p_day: day.day_id, p_km: km, p_driver: drv, p_lat: pos?.lat ?? null, p_lng: pos?.lng ?? null }, f, 'Cambio de conductor ' + (day.plate || ''));
     } catch (x){ $('#vt-ok').disabled = false; return ($('#vt-err').textContent = errText(x)); }
-    m.close(); toast('Cambio de conductor registrado'); after && after();
+    m.close(); toast(r.queued ? '📵 Cambio de conductor guardado en el teléfono: se envía cuando vuelva la señal.' : 'Cambio de conductor registrado'); after && after();
   };
 }
 async function vehCloseModal(day, after){
-  if (!needOnline()) return;
   const id = day.id || day.day_id;
-  const { data: drives } = await sb.from('veh_drives').select('from_km').eq('day_id', id);
+  const drives = online() ? ((await sb.from('veh_drives').select('from_km').eq('day_id', id)).data || []) : [];
+  for (const q of await vehQ()) if (q.op === 'take' && q.args.p_day === id) drives.push({ from_km: q.args.p_km });
   const minKm = Math.max(Number(day.start_km || 0), ...(drives || []).map(d => Number(d.from_km || 0)));
   const m = modal(`<h2>🏁 Terminar jornada</h2><p class="muted sm" style="margin:-4px 0 6px">${day.plate ? `<span class="veh-plate">${esc(day.plate)}</span> · ` : ''}iniciada el ${esc(vehDT(day.start_at))} con ${vehKm(day.start_km)}</p>
     ${day.day < todayStr() ? `<div class="banner off" style="margin:6px 0"><span class="dot"></span><div><b>Esta jornada es del ${esc(fmtD(day.day))}.</b><div class="sm">Cargá los km que marca el odómetro ahora. Si hubo un uso después, avisale al coordinador.</div></div></div>` : ''}
@@ -205,11 +210,12 @@ async function vehCloseModal(day, after){
     if (km - Number(day.start_km || 0) > 1500 && !confirm(`Son ${vehKm(km - day.start_km)} en el día. ¿Los km son correctos?`)) return;
     if (!f) return ($('#vc-err').textContent = 'Falta la foto del odómetro.');
     $('#vc-ok').disabled = true;
-    try { const photo = await vehUpload(f), pos = await getPos();
-      const { error } = await sb.rpc('veh_close_day', { p_day: id, p_km: km, p_photo: photo, p_lat: pos?.lat ?? null, p_lng: pos?.lng ?? null, p_notes: $('#vc-n').value || null });
-      if (error) throw error;
+    let r;
+    try { const pos = await getPos();
+      r = await vehDo('close', { p_day: id, p_km: km, p_lat: pos?.lat ?? null, p_lng: pos?.lng ?? null, p_notes: $('#vc-n').value || null }, f, 'Fin de jornada ' + (day.plate || ''));
     } catch (x){ $('#vc-ok').disabled = false; return ($('#vc-err').textContent = errText(x)); }
-    m.close(); await IDB.del('kv', CUR_UID + ':veh-list').catch(() => {}); toast(`Jornada cerrada · ${vehKm(km - Number(day.start_km || 0))} recorridos`); after && after();
+    await vehSetSnap(null);
+    m.close(); await IDB.del('kv', CUR_UID + ':veh-list').catch(() => {}); toast(`${r.queued ? '📵 Guardado en el teléfono (se envía con señal) · ' : 'Jornada cerrada · '}${vehKm(km - Number(day.start_km || 0))} recorridos`); after && after();
   };
 }
 
@@ -238,7 +244,7 @@ async function viewVeh(v){
   $('#veh-back').onclick = () => { location.hash = '#/tools'; };
   v.querySelectorAll('[data-vt]').forEach(b => b.onclick = () => { history.replaceState(null, '', '#/tools/veh/' + b.dataset.vt); viewVeh(v); });
   const body = $('#veh-body');
-  if (!online()){ body.innerHTML = '<div class="card">El control de vehículos necesita señal (las fotos y los km se validan en el servidor).</div>'; return; }
+  if (!online() && tab !== 'jornada'){ body.innerHTML = '<div class="card">📵 Sin señal. En "Mi jornada" podés iniciar o terminar la jornada: se guarda en el teléfono y se envía sola cuando vuelva la señal.</div>'; return; }
   if (tab === 'jornada') await vehViewMine(body);
   else if (tab === 'enuso') await vehViewInUse(body);
   else if (tab === 'jornadas') await vehViewDays(body);
@@ -256,6 +262,8 @@ function vehBindPh(box){ box.querySelectorAll('[data-vph]').forEach(a => a.oncli
 
 async function vehViewMine(body){
   const st = HHS.mine;
+  const qbox = await vehQueueHTML();
+  if (!online()) return vehViewOffline(body, qbox);
   if (!st){ body.innerHTML = `<div class="card"><b>Tu usuario todavía no está vinculado a un técnico.</b><p class="muted">Pedile al coordinador que te vincule en Validación de horas → Recursos.</p></div>`; return; }
   const [s, vs, days, fines] = await Promise.all([
     vehMyState(), vehLoadVehicles(),
@@ -282,8 +290,8 @@ async function vehViewMine(body){
   if (fines.length) html += `<div class="card"><h2 style="margin:0 0 6px">Mis infracciones</h2>${fines.map(f => `<div class="hh-it"><div class="row between"><b>${esc(plate(f.vehicle_id))} · ${esc(vehDT(f.at))}</b><span class="pill ${VEH_FST[f.status][1]}">${VEH_FST[f.status][0]}</span></div><div class="sm">${esc([f.place, f.description, f.act_no ? 'Acta ' + f.act_no : ''].filter(Boolean).join(' · '))}</div></div>`).join('')}<p class="muted sm">Si tenés un descargo, hablalo con el coordinador.</p></div>`;
   html += `<div class="card"><h2 style="margin:0 0 6px">Mis últimas jornadas</h2>${days.filter(d => d.status === 'cerrada').map(d => `<div class="hh-it"><div class="row between"><b>${esc(hhFmtDay(d.day))}</b>${d.vehicle_id ? `<span class="veh-plate">${esc(plate(d.vehicle_id))}</span>` : '<span class="pill p-info">Sin vehículo</span>'}</div>
       ${d.vehicle_id ? `<div class="sm muted">${esc(fmtTime(d.start_at))} a ${esc(fmtTime(d.end_at))} · ${vehKm(d.start_km)} → ${vehKm(d.end_km)} · <b>${vehKm(Number(d.end_km) - Number(d.start_km))}</b>${d.closed_by_name && d.closed_by_name !== d.created_by_name ? ' · cerró ' + esc(d.closed_by_name) : ''}</div>` : ''}</div>`).join('') || '<p class="muted">Todavía no hay jornadas.</p>'}</div>`;
-  body.innerHTML = html;
-  vehBindPh(body);
+  body.innerHTML = qbox + html;
+  vehBindPh(body); vehBindQueue(body);
   const rowOf = () => ({ day_id: o.id, plate: o.plate, responsible: st.name, responsible_id: st.id, km: Math.max(Number(o.start_km || 0), ...drives.filter(d => d.day_id === o.id).map(d => Number(d.from_km || 0))), driver: vehName(drives.filter(d => d.day_id === o.id && !d.to_at).pop()?.driver_id) });
   $('#vm-start')?.addEventListener('click', () => vehStartModal(null, vehReload));
   $('#vm-close')?.addEventListener('click', () => vehCloseModal(o, vehReload));
@@ -525,4 +533,92 @@ function vehFinePdf(f, w, plate){
     ${w?.found && (w.drives || []).length ? `<div style="margin-top:14px;font-size:13px"><b>Tramos registrados ese día</b>${w.drives.map(d => `<div>${esc(fmtTime(d.from_at))}${d.to_at ? '–' + esc(fmtTime(d.to_at)) : ''} · ${esc(d.driver)}${d.occasional ? ' (ocasional)' : ''} · ${vehKm(d.from_km)}${d.to_km != null ? ' → ' + vehKm(d.to_km) : ''}</div>`).join('')}</div>` : ''}
     <p style="font-size:12px;color:#64748B;margin-top:16px">Los tramos se registran en InspectApp con hora del servidor, km y foto del odómetro al tomar el volante. Emitido el ${esc(vehDT(new Date().toISOString()))} por ${esc(me.full_name || me.email)}.</p>
     <div style="display:flex;gap:40px;margin-top:60px;font-size:13px"><div style="flex:1;border-top:1px solid #0F172A;padding-top:4px;text-align:center">Firma del conductor</div><div style="flex:1;border-top:1px solid #0F172A;padding-top:4px;text-align:center">Firma de coordinación</div></div></div>`);
+}
+
+
+/* =====================================================================
+   SIN SEÑAL: la jornada se guarda en el teléfono y se envía sola
+   ===================================================================== */
+const VEH_RPC = { start: 'veh_start_day', take: 'veh_take_wheel', close: 'veh_close_day' };
+const vehQ = async () => (await IDB.get('kv', CUR_UID + ':vehq').catch(() => null)) || [];
+const vehQSave = q => IDB.put('kv', q, CUR_UID + ':vehq').catch(() => {});
+const vehQFail = async () => (await IDB.get('kv', CUR_UID + ':vehq-err').catch(() => null)) || [];
+const vehSnap = async () => (await IDB.get('kv', CUR_UID + ':veh-open').catch(() => null)) || null;
+const vehSetSnap = o => o ? IDB.put('kv', o, CUR_UID + ':veh-open').catch(() => {}) : IDB.del('kv', CUR_UID + ':veh-open').catch(() => {});
+/* hace la operación ya; si no hay señal (o se corta) la deja en cola. Devuelve { queued } */
+async function vehDo(op, args, file, label){
+  const blob = file ? await compressImage(file, 1600, 0.8) : null;
+  const photo = blob ? `${me.org_id}/veh/${uid()}/${uid()}.jpg` : null;
+  const a = { ...args, p_photo: photo, p_at: new Date().toISOString() };
+  const pend = (await vehQ()).length;
+  if (online() && !pend){
+    try {
+      if (blob){ const { error } = await sb.storage.from('fotos').upload(photo, blob, { contentType: 'image/jpeg', upsert: false }); if (error && !/exist|duplicate/i.test(error.message || '')) throw error; }
+      const { error } = await sb.rpc(VEH_RPC[op], a); if (error) throw error;
+      return { queued: false };
+    } catch (e){ if (!isNetErr(e)) throw e; }
+  }
+  const id = uid();
+  if (blob) await IDB.put('blobs', blob, 'vehq:' + id);
+  const q = await vehQ(); q.push({ id, op, args: a, photo, label: label || op, at: a.p_at }); await vehQSave(q);
+  if (online()) setTimeout(() => vehFlush(), 500);
+  return { queued: true };
+}
+let VEHQ_BUSY = false;
+async function vehFlush(){
+  if (VEHQ_BUSY || !online() || !me || !CUR_UID) return;
+  let q = await vehQ(); if (!q.length) return;
+  VEHQ_BUSY = true; let sent = 0, photos = 0, failed = 0;
+  try {
+    while (q.length){
+      const it = q[0];
+      try {
+        if (it.photo){
+          const blob = await IDB.get('blobs', 'vehq:' + it.id).catch(() => null);
+          if (blob){ const { error } = await sb.storage.from('fotos').upload(it.photo, blob, { contentType: 'image/jpeg', upsert: false }); if (error && !/exist|duplicate/i.test(error.message || '')) throw error; }
+        }
+        const { error } = await sb.rpc(VEH_RPC[it.op], it.args); if (error) throw error;
+        sent++; if (it.photo) photos++;
+      } catch (e){
+        if (isNetErr(e)) break;                                           // se cortó otra vez: sigue después
+        failed++; const f = await vehQFail(); f.push({ ...it, err: errText(e) }); await IDB.put('kv', f.slice(-30), CUR_UID + ':vehq-err').catch(() => {});
+        if (it.op === 'start') await vehSetSnap(null);
+      }
+      await IDB.del('blobs', 'vehq:' + it.id).catch(() => {});
+      q.shift(); await vehQSave(q);
+    }
+  } finally { VEHQ_BUSY = false; }
+  if (sent){
+    await IDB.del('kv', CUR_UID + ':veh-list').catch(() => {});
+    vehNotify('✅ Vehículo: datos enviados', `Se enviaron ${sent} registro(s) de la jornada${photos ? ` con ${photos} foto(s) del odómetro. Ya podés borrar la foto de la galería del teléfono si quedó guardada` : ''}.`);
+  }
+  if (failed) vehNotify('⚠️ Vehículo: no se pudo enviar', `${failed} registro(s) cargados sin señal no los aceptó el servidor. Abrí Vehículos → Mi jornada para ver el motivo.`);
+  if ((sent || failed) && location.hash.startsWith('#/tools/veh')) vehReload();
+}
+function vehNotify(title, body){
+  toast(body);
+  try { if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) navigator.serviceWorker.ready.then(r => r.showNotification(title, { body, icon: 'icon-192.png', badge: 'icon-192.png', tag: 'veh-sync', data: { url: '#/tools/veh' } })).catch(() => {}); } catch {}
+}
+async function vehQueueHTML(){
+  const q = await vehQ(), f = await vehQFail();
+  let h = '';
+  if (q.length) h += `<div class="banner warn" style="margin:0 0 12px"><span class="dot"></span><div><b>📤 ${q.length} registro(s) del vehículo por enviar</b><div class="sm">${q.map(x => esc(x.label) + ' · ' + esc(fmtTime(x.at))).join(' · ')}</div><div class="sm">Se envían solos cuando vuelve la señal. No borres la foto del odómetro hasta que te avise.</div>${online() ? '<button class="btn small" id="vq-go" style="margin-top:6px">Enviar ahora</button>' : ''}</div></div>`;
+  if (f.length) h += `<div class="banner off" style="margin:0 0 12px"><span class="dot"></span><div><b>⚠️ No se pudo enviar</b>${f.map((x, i) => `<div class="sm">${esc(x.label)} (${esc(fmtDT(x.at))}): ${esc(x.err)} <a href="#" data-vqx="${i}">quitar aviso</a></div>`).join('')}<div class="sm">Avisale al coordinador para que lo cargue a mano.</div></div></div>`;
+  return h;
+}
+function vehBindQueue(box){
+  box.querySelector('#vq-go')?.addEventListener('click', () => vehFlush());
+  box.querySelectorAll('[data-vqx]').forEach(a => a.onclick = async e => { e.preventDefault(); const f = await vehQFail(); f.splice(Number(a.dataset.vqx), 1); await IDB.put('kv', f, CUR_UID + ':vehq-err').catch(() => {}); vehReload(); });
+}
+async function vehViewOffline(body, qbox){
+  const o = await vehSnap();
+  body.innerHTML = qbox + (o ? `<div class="card"><div class="row between"><div><h2 style="margin:0">Jornada abierta</h2><div class="sm muted">desde ${esc(vehDT(o.start_at))} · ${vehKm(o.start_km)}</div></div><span class="veh-plate">${esc(o.plate || '')}</span></div>
+      <p class="sm muted">📵 Sin señal: lo que cargues se guarda en el teléfono y se envía solo.</p>
+      ${canWrite() ? `<div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sec" id="vo-take" style="flex:1 1 220px">🔄 Cambio de conductor</button><button class="btn" id="vo-close" style="flex:1 1 220px;background:var(--red);border-color:var(--red)">🏁 Terminar jornada</button></div>` : ''}</div>`
+    : `<div class="card" style="text-align:center"><div style="font-size:40px">🚗</div><h2 style="margin:4px 0">📵 Sin señal</h2><p class="muted sm">Podés iniciar la jornada igual: se guarda en el teléfono con la hora de ahora y se envía sola cuando vuelva la señal.</p>
+      ${canWrite() && can('veh', 2) ? '<button class="btn" id="vo-start" style="font-size:17px;padding:12px 22px">Iniciar jornada</button>' : ''}</div>`);
+  vehBindQueue(body);
+  $('#vo-start')?.addEventListener('click', () => vehStartModal(null, vehReload));
+  $('#vo-close')?.addEventListener('click', () => vehCloseModal(o, vehReload));
+  $('#vo-take')?.addEventListener('click', () => vehTakeModal({ day_id: o.id, plate: o.plate, responsible: HHS.mine?.name || '', responsible_id: HHS.mine?.id, km: o.start_km }, vehReload));
 }

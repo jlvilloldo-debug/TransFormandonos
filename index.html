@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-pdG6IAOQ0OTMPz/tZv4DYVRkmeNNCMn01RYSU0fynls='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-vQX8ULG2z7nnFA1M90tCrx2C8OE1m0LXLtuXfL3BEcA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -417,6 +417,8 @@ tr.sor-bad td{background:var(--red-bg)}
 <script src="horas.js"></script>
 <script src="permisos.js"></script>
 <script src="vehiculos.js"></script>
+<script src="estadisticas.js"></script>
+<script src="empresa.js"></script>
 <script>
 /* No se deja abrir la app dentro de otra página (evita que la tapen con una trampa para robar clics o claves) */
 if (window.top !== window.self){ try { window.top.location = window.self.location.href; } catch {} document.documentElement.innerHTML = ''; throw new Error('frame'); }
@@ -424,7 +426,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.8';
+const APP_VERSION = '4.9';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -525,7 +527,7 @@ async function cached(key, fetcher){
 function storedUid(){ try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null')?.user?.id || null; } catch { return null; } }
 
 /* ---------- inspecciones locales y envío ---------- */
-const ROW_FIELDS = ['id','org_id','template_id','template_name','template_snapshot','site_id','site_name','traza','kind','status','inspector_id','inspector_name','started_at','completed_at','answers','score','max_score','flagged','flagged_items','lat','lng','task_id','project_site_id'];
+const ROW_FIELDS = ['id','org_id','template_id','template_name','template_snapshot','site_id','site_name','traza','kind','status','inspector_id','inspector_name','started_at','completed_at','answers','score','max_score','flagged','flagged_items','lat','lng','task_id','project_site_id','ticket','corr','site2_id','site2_name'];
 const toRow = r => Object.fromEntries(ROW_FIELDS.map(k => [k, r[k] === undefined ? null : r[k]]));
 const localGet = id => IDB.get('insp', id).catch(() => undefined);
 async function localSave(r){ r._rev = (r._rev || 0) + 1; r._dirty = true; await IDB.put('insp', r); updateNet(); syncSoon(); }
@@ -571,7 +573,7 @@ async function syncNow(){
     syncErr = null;
     pruneLocal();
   } catch (e){ syncErr = e; console.warn('envío', e); }
-  finally { syncing = false; updateNet(); }
+  finally { syncing = false; updateNet(); if (typeof vehFlush === 'function') vehFlush().catch(() => {}); }
 }
 async function pruneLocal(){
   for (const r of await localAll()){
@@ -630,6 +632,7 @@ async function doInstall(){
 $('#b-install').onclick = doInstall;
 if ('serviceWorker' in navigator && location.protocol !== 'file:'){
   let reloading = false;
+  navigator.serviceWorker.addEventListener('message', e => { const u = e.data && e.data.go; if (typeof u === 'string' && /^#\/[A-Za-z0-9/_\-]*$/.test(u)) location.hash = u; });
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) return; reloading = true; location.reload(); });
   navigator.serviceWorker.register('./sw.js').then(reg => {
     const offer = w => toast('Hay una versión nueva de InspectApp.', { label: 'Actualizar', fn: async () => { if (leaveGuard){ await leaveGuard(); leaveGuard = null; } w.postMessage('skip'); } });
@@ -1010,6 +1013,7 @@ async function boot(){
     const k = 'hhlink:' + CUR_UID;
     try { if (!sessionStorage.getItem(k)){ const { data } = await sb.rpc('hh_auto_link'); if (data){ sessionStorage.setItem(k, '1'); await IDB.del('kv', CUR_UID + ':hh-staff').catch(() => {}); } } } catch {}
   }
+  if (isManager() && typeof stxLoadCfg === 'function') stxLoadCfg().catch(() => {});
   if (typeof navBuild === 'function') navBuild();
   $('#tab-tasks').textContent = contr ? 'Mis tareas' : 'Tareas';
   if (installPrompt) $('#b-install').classList.remove('hidden');
@@ -1126,6 +1130,7 @@ async function route(){
     else if (tab === 'tasks' && id === 'contratistas') await viewContractors(v);
     else if (tab === 'tasks' && id) await viewTask(v, id);
     else if (tab === 'tasks') await viewTasks(v);
+    else if (tab === 'stats' && id === 'plan') await viewPlan(v);
     else if (tab === 'stats') await viewStats(v);
     else if (tab === 'sites') await viewSites(v);
     else if (tab === 'tpl' && id) await viewTemplateEditor(v, id);
@@ -1140,7 +1145,7 @@ async function route(){
 /* =========================================================
    LISTADOS DE INSPECCIONES (servidor + dispositivo)
    ========================================================= */
-const LIST_COLS = 'id,template_name,site_name,status,started_at,score,max_score,flagged,inspector_name,inspector_id,kind';
+const LIST_COLS = 'id,template_name,site_name,status,started_at,score,max_score,flagged,inspector_name,inspector_id,kind,dist_m';
 async function mergeLocal(rows){
   const map = new Map((rows || []).map(r => [r.id, r]));
   for (const l of await localAll()){
@@ -1158,7 +1163,7 @@ function inspTable(rows){
     <td>${fmtDate(r.started_at)}</td><td>${esc(r.site_name || '—')}</td>
     <td class="hide-sm">${esc(r.template_name)}</td><td class="hide-sm">${esc(r.inspector_name || '')}</td>
     <td>${r.max_score ? pct(r.score, r.max_score) : '—'}${r.flagged ? ` <span class="pill p-bad">${r.flagged} ⚑</span>` : ''}</td>
-    <td><span class="pill p-${r.status}">${r.status === 'completada' ? 'Completada' : 'Borrador'}</span>${r._pending ? ' <span class="pill p-pend" title="Guardada en este dispositivo, falta enviarla">Por enviar</span>' : ''}</td>
+    <td><span class="pill p-${r.status}">${r.status === 'completada' ? 'Completada' : 'Borrador'}</span>${r._pending ? ' <span class="pill p-pend" title="Guardada en este dispositivo, falta enviarla">Por enviar</span>' : ''}${isManager() ? stxFarPill(r) : ''}</td>
     <td>${canDelete(r) ? `<button class="iconbtn" data-del="${r.id}" title="Borrar" aria-label="Borrar">🗑</button>` : ''}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
@@ -1195,7 +1200,7 @@ async function deleteInspection(r){
    INICIO
    ========================================================= */
 async function viewHome(v){
-  if (isContractor()){ await viewTasks(v); const q = document.createElement('div'); q.id = 'hh-quick'; v.prepend(q); return hhHomeQuick(q); }
+  if (isContractor()){ await viewTasks(v); const q = document.createElement('div'); q.id = 'hh-quick'; v.prepend(q); const pa = document.createElement('div'); v.prepend(pa); empPushBanner(pa); return hhHomeQuick(q); }
   let recent = [], kpi = {cMonth: 0, cDraft: 0, flagged: 0};
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
   try {
@@ -1216,6 +1221,7 @@ async function viewHome(v){
   const showInstall = !isStandalone();
   v.innerHTML = `
     <div id="hh-quick"></div>
+    <div id="push-ask"></div>
     <div class="card row between" id="home-hello">
       <div><h1>Hola${me.full_name ? ', ' + esc(me.full_name.split(' ')[0]) : ''}</h1>
       <p class="muted" style="margin:0">${esc(org?.name || '')} · ${org?.is_trial && st!=='vencida' ? 'Prueba gratis' : STATE_TXT[st]} hasta el ${fmtDate(org?.license_expires_at)}</p></div>
@@ -1233,6 +1239,7 @@ async function viewHome(v){
   $('#b-inst2')?.addEventListener('click', doInstall);
   bindInspRows(v, rows);
   hhHomeQuick($('#hh-quick'));
+  empPushBanner($('#push-ask'));
   homeBoard($('#home-board'));
   if (typeof hhHomeAlert === 'function') hhHomeAlert($('#home-board'));
 }
@@ -1298,11 +1305,13 @@ async function newInspection(){
     <datalist id="n-sites">${(sites||[]).map(s => `<option value="${esc(s.name)}${s.traza ? ' · Traza ' + esc(s.traza) : ''}">${esc([s.address, s.grupo].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>
     <p class="muted sm" style="margin:6px 0 0">Si el sitio no está en la lista, escribí el nombre igual: queda registrado como texto.</p>
     <label>Tipo</label><select id="n-kind"><option value="preventivo">Preventivo</option><option value="correctivo">Correctivo</option><option value="otro">Otro</option></select>
+    <div id="n-corr" class="hidden">${stxCorrFields({}, '', sites || [])}</div>
     ${!online() ? '<p class="sm" style="color:var(--amber)">Sin conexión: la inspección se guarda en el teléfono y se envía sola cuando vuelva la señal.</p>' : ''}
     <div class="err" id="n-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="n-cancel">Cancelar</button><button class="btn" id="n-go">Comenzar</button></div>`);
-  const syncKind = () => { const t = tpls.find(x => x.id === $('#n-tpl').value); if (t) $('#n-kind').value = t.kind; };
-  $('#n-tpl').onchange = syncKind; syncKind();
+  const showCorr = () => $('#n-corr').classList.toggle('hidden', $('#n-kind').value !== 'correctivo');
+  const syncKind = () => { const t = tpls.find(x => x.id === $('#n-tpl').value); if (t) $('#n-kind').value = t.kind; showCorr(); };
+  $('#n-tpl').onchange = syncKind; $('#n-kind').onchange = showCorr; syncKind();
   $('#n-cancel').onclick = m.close;
   $('#n-go').onclick = async () => {
     const t = tpls.find(x => x.id === $('#n-tpl').value);
@@ -1311,12 +1320,14 @@ async function newInspection(){
     const site = (sites||[]).find(s => raw === s.name + (s.traza ? ' · Traza ' + s.traza : '') || raw.toLowerCase() === s.name.toLowerCase());
     $('#n-go').disabled = true; $('#n-go').textContent = 'Ubicando…';
     const pos = await getPos();
+    if (site && !(await stxPresenceCheck(site.id, pos))){ $('#n-go').disabled = false; $('#n-go').textContent = 'Comenzar'; return; }
+    const cx = $('#n-kind').value === 'correctivo' ? stxCorrRead(sites || []) : {};
     const rec = {
       id: uid(), org_id: me.org_id, template_id: t.id, template_name: t.name, template_snapshot: t.definition,
       site_id: site?.id || null, site_name: site ? site.name : raw, traza: site?.traza || null,
       kind: $('#n-kind').value, status: 'borrador', inspector_id: me.id, inspector_name: me.full_name || me.email,
       started_at: new Date().toISOString(), completed_at: null, answers: {}, score: 0, max_score: 0, flagged: 0, flagged_items: [],
-      lat: pos?.lat ?? null, lng: pos?.lng ?? null, _synced: false,
+      lat: pos?.lat ?? null, lng: pos?.lng ?? null, ticket: cx.ticket || null, corr: cx.corr || null, site2_id: cx.site2_id || null, site2_name: cx.site2_name || null, _synced: false,
     };
     await localSave(rec);
     m.close(); location.hash = '#/insp/' + rec.id;
@@ -1392,7 +1403,7 @@ async function viewExecute(v, id){
 
   v.innerHTML = `
     <div class="exec-head">
-      <div class="row between"><div><b>${esc(ins.template_name)}</b><div class="muted sm">${esc(ins.site_name || '')}${ins.traza ? ' · Traza ' + esc(ins.traza) : ''} · Ingreso ${fmtDT(ins.started_at)}</div></div>
+      <div class="row between"><div><b>${esc(ins.template_name)}</b><div class="muted sm">${esc(ins.site_name || '')}${ins.site2_name ? ' – ' + esc(ins.site2_name) : ''}${ins.traza ? ' · Traza ' + esc(ins.traza) : ''} · Ingreso ${fmtDT(ins.started_at)}${ins.ticket ? ' · Ticket ' + esc(ins.ticket) : ''}</div>${ins.kind === 'correctivo' ? '<button class="btn sec small" id="x-corr" style="margin-top:4px">🎫 Datos del ticket</button>' : ''}</div>
       <span class="savebar" id="save-st">${ins._dirty ? 'Guardado en el teléfono' : 'Guardado'}</span></div>
       <div class="progress" style="margin-top:8px"><i id="prog" style="width:0"></i></div>
       <div class="muted sm" id="prog-t" style="margin-top:4px"></div>
@@ -1542,6 +1553,7 @@ async function viewExecute(v, id){
     });
   }
   bindItems(v); initSig(v); hydrate(v); updateProgress();
+  $('#x-corr')?.addEventListener('click', () => stxCorrModal(ins, async () => { dirty = true; await save(); viewExecute(v, id); }));
   v.querySelectorAll('[data-secna]').forEach(b => b.onclick = () => {
     const s = def.sections[Number(b.dataset.secna)];
     const pend = s.items.filter(it => ['yesno','okfail','brm'].includes(it.type) && !isAnswered(it, answers[it.id]));
@@ -1634,7 +1646,9 @@ async function viewReport(v, id){
       <div class="rp-kv"><b>Hora de Ingreso</b><span>${fmtTime(ins.started_at)}</span></div>
       <div class="rp-kv"><b>Hora de Salida</b><span>${ins.completed_at ? fmtDT(ins.completed_at) : '—'}</span></div>
       <div class="rp-kv"><b>Técnico</b><span>${esc(ins.inspector_name || '')}</span></div>
-      ${ins.lat ? `<div class="rp-kv"><b>Ubicación al iniciar</b><span>${Number(ins.lat).toFixed(5)}, ${Number(ins.lng).toFixed(5)}</span></div>` : ''}
+      ${ins.lat ? `<div class="rp-kv"><b>Ubicación al iniciar</b><span>${Number(ins.lat).toFixed(5)}, ${Number(ins.lng).toFixed(5)}${ins.dist_m != null ? ' · a ' + esc(stxDistTxt(ins.dist_m)) + ' del sitio' : ''}${stxFarPill(ins)}</span></div>` : ''}
+      ${ins.kind === 'correctivo' && (ins.ticket || ins.corr) ? `<div class="rp-kv"><b>Ticket</b><span>${esc([ins.ticket, ins.corr?.category, ins.corr?.problem].filter(Boolean).join(' / '))}${ins.site2_name ? ' · Tramo hasta ' + esc(ins.site2_name) : ''}</span></div>
+        <div class="rp-kv"><b>Apertura / cierre</b><span>${ins.corr?.open_at ? fmtDT(ins.corr.open_at) : '—'} → ${ins.corr?.close_at ? fmtDT(ins.corr.close_at) : '—'}${ins.corr?.ttr_h ? ' · TTR ' + esc(ins.corr.ttr_h) + ' h' : ''}${ins.corr?.afect ? ' · ' + esc(ins.corr.afect) : ''}${ins.corr?.smt ? ' · ' + esc(ins.corr.smt) : ''}</span></div>` : ''}
       ${body}
       ${media.length ? `<div class="rp-sec" style="break-before:page"><span>Resumen de archivos multimedia</span></div>
         <div class="rp-media">${media.map(p => `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${p.n}${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}</figcaption></figure>`).join('')}</div>` : ''}
@@ -1732,7 +1746,9 @@ async function viewStats(v){
         ${contratos.length ? `<select id="sf-ct" style="width:auto"><option value="">Todos los contratos</option>${contratos.map(k => `<option>${esc(k)}</option>`).join('')}</select>` : ''}
         <select id="sf-kind" style="width:auto"><option value="">Preventivo y correctivo</option><option value="preventivo">Solo preventivo</option><option value="correctivo">Solo correctivo</option></select>
       </div></div>
+    <div id="st-hist"></div>
     <div id="st-body"><div class="card muted">Cargando…</div></div>`;
+  stxCss(); if (online()) stxSection($('#st-hist')).catch(() => {});
   $('#sf-per').value = saved.per || '90'; $('#sf-traza').value = saved.traza || ''; $('#sf-kind').value = saved.kind || '';
   if ($('#sf-ct') && contratos.includes(saved.ct)) $('#sf-ct').value = saved.ct;
   const load = async () => {
@@ -2765,6 +2781,7 @@ async function viewOrg(v){
   const adm = isAdmin();
   v.innerHTML = `
     ${permCanManage() ? `<div class="card row between"><div><h2 style="margin:0">🔐 Permisos por módulo</h2><div class="muted sm">Qué ve y qué puede cargar cada perfil o persona${adm ? ', y qué coordinador te ayuda a manejarlos' : ''}.</div></div><a class="btn sec" href="#/perms">Abrir</a></div>` : ''}
+    ${isManager() ? '<div id="org-ext"></div>' : ''}
     ${adm ? `<div class="card"><h2>Datos de la empresa</h2><div class="row"><input id="o-name" class="grow" value="${esc(org?.name || '')}"><button class="btn sec" id="o-save">Guardar nombre</button></div></div>
     <div class="card"><h2>Sumar usuarios</h2>
       <p class="muted" style="margin-top:0">Pasale este código a cada persona de tu equipo. Al crear su cuenta elige “Tengo un código” y lo ingresa.</p>
@@ -2783,6 +2800,7 @@ async function viewOrg(v){
       <p class="muted" style="margin-top:0">Además de la contraseña, al ingresar se pide un código que genera tu celular. Si alguien roba tu contraseña, igual no puede entrar.${['admin','supervisor','pm'].includes(me.role) ? ' <b>Recomendado para tu rol.</b>' : ''}</p>
       <div id="mfa-body" class="muted sm">Cargando…</div></div>`;
   mfaCard($('#mfa-body'));
+  if ($('#org-ext')) empOrgSection($('#org-ext')).catch(e => console.error(e));
   $('#o-save')?.addEventListener('click', async () => {
     const name = $('#o-name').value.trim(); if (!name) return;
     const { error } = await sb.from('organizations').update({ name }).eq('id', me.org_id);
