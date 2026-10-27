@@ -33,7 +33,7 @@ function permApplyTabs(){
 function permOk(tab, id){
   if (tab === 'perms') return permCanManage();
   if (PERM_TAB[tab]) return can(PERM_TAB[tab]);
-  if (tab === 'tools'){ if (id === 'dc') return can('dc'); if (id === 'hh') return can('horas'); if (id === 'veh') return can('veh') || can('veh_inf'); if (id) return can('fibra'); }
+  if (tab === 'tools'){ if (id === 'camiseta') return true; if (id === 'donde') return isManager(); if (id === 'dc') return can('dc'); if (id === 'hh') return can('horas'); if (id === 'veh') return can('veh') || can('veh_inf'); if (id) return can('fibra'); }
   return true;
 }
 

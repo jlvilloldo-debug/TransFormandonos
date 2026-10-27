@@ -264,6 +264,10 @@ async function viewTools(v){
   const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   v.innerHTML = `
     <div class="card"><h2 style="margin:0">🧰 Herramientas</h2><p class="muted sm" style="margin:6px 0 0">Funcionan también sin señal con lo que ya está descargado en el teléfono.</p></div>
+    ${isManager() ? `<div class="card" id="tool-donde" style="cursor:pointer;border:2px solid #0F2A4A"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">📍</div><div><h2 style="margin:0">¿Dónde está cada uno?</h2>
+      <p class="muted sm" style="margin:4px 0 0">Mapa con cada técnico y contratista sobre la localidad de su tarea: hoy, mañana o la semana. Para repartir mejor las tareas.</p></div></div><span class="btn" style="pointer-events:none">Abrir →</span></div></div>` : ''}
+    <div class="card" id="tool-shirt" style="cursor:pointer"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">👕</div><div><h2 style="margin:0">Mi camiseta</h2>
+      <p class="muted sm" style="margin:4px 0 0">Elegí los colores de tu club para tu muñequito en el mapa.</p></div></div><span class="btn sec" style="pointer-events:none">Elegir →</span></div></div>
     ${cv ? `<div class="card" id="tool-veh" style="cursor:pointer;border:2px solid #2A78D6"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">🚗</div><div><h2 style="margin:0">Control de vehículos</h2>
       <p class="muted sm" style="margin:4px 0 0">Jornada con km y foto del odómetro, cambio de conductor, flota con vencimientos e infracciones.</p></div></div><span class="btn" style="pointer-events:none">Abrir →</span></div></div>` : ''}
     ${cd ? `<div class="card" id="tool-dc" style="cursor:pointer;background:linear-gradient(135deg,#0F2A4A,#1A3A6B);color:#fff;border:0"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">🗄️</div><div><h2 style="margin:0;color:#fff">Relevamiento DC</h2>
@@ -281,6 +285,8 @@ async function viewTools(v){
   $('#tool-dc')?.addEventListener('click', () => { location.hash = '#/tools/dc'; });
   $('#tool-hh')?.addEventListener('click', () => { location.hash = '#/tools/hh'; });
   $('#tool-veh')?.addEventListener('click', () => { location.hash = '#/tools/veh'; });
+  $('#tool-donde')?.addEventListener('click', () => { location.hash = '#/tools/donde'; });
+  $('#tool-shirt')?.addEventListener('click', () => { location.hash = '#/tools/camiseta'; });
   if (typeof hhToolCount === 'function') hhToolCount($('#tool-hh-c'));
   $('#fr-new')?.addEventListener('click', () => newRouteModal(routes));
   fiberFlush();

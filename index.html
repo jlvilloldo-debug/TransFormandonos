@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-xnCTY7Juu8CyrWimofKacxEqDsUO6hPn3qzvwadbGjE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-my8sP9BZPYKgmxdbojfo99dH/z7ZsXDnvheLMh2x5hU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -420,6 +420,7 @@ tr.sor-bad td{background:var(--red-bg)}
 <script src="vehiculos.js"></script>
 <script src="estadisticas.js"></script>
 <script src="tickets.js"></script>
+<script src="donde.js"></script>
 <script src="empresa.js"></script>
 <script>
 /* No se deja abrir la app dentro de otra página (evita que la tapen con una trampa para robar clics o claves) */
@@ -428,7 +429,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.0';
+const APP_VERSION = '5.3';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -1129,6 +1130,8 @@ async function route(){
     else if (tab === 'tools' && id === 'dc') await viewDC(v);
     else if (tab === 'tools' && id === 'hh') await viewHH(v);
     else if (tab === 'tools' && id === 'veh') await viewVeh(v);
+    else if (tab === 'tools' && id === 'donde') await viewDonde(v);
+    else if (tab === 'tools' && id === 'camiseta') await viewShirt(v);
     else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
     else if (tab === 'tools') await viewTools(v);
@@ -2012,12 +2015,15 @@ async function editTask(t, contrs, preset){
     cached('sites-min2', () => pageAll(() => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name').order('id'))).catch(() => []),
   ]);
   if (!tpls.length) return toast('Primero cargá una plantilla.');
+  try { if (typeof hhLoadBase === 'function' && !(HHS.staff || []).length) await hhLoadBase(); } catch {}
+  const staffOpts = (typeof HHS !== 'undefined' && HHS.staff || []).filter(s => s.active && s.kind !== 'contratista');
   const isNew = !t;
   t = t || { task_type: 'inspeccion', priority: 'normal', due_date: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10), sites: [], ...(preset || {}) };
   let chosen = (t.sites || []).map(s => ({...s}));
   const defaultTpl = type => (type === 'inspeccion' ? tpls.find(x => x.kind === 'preventivo') : tpls.find(x => /cierre de tarea/i.test(x.name))) || tpls[0];
   const m = modal(`<h2>${isNew ? (t.is_pending ? 'Nuevo pendiente' : 'Nueva tarea') : 'Editar tarea'}</h2>${t.is_pending && isNew ? '<p class="muted sm" style="margin-top:-6px">Aparece en el mapa con su semáforo. Plazo: crítico 24 h · alto 72 h · normal 5 días.</p>' : ''}
     ${isNew ? `<label>Contratista / cuadrilla</label><select id="nt-c"><option value="">— Sin asignar (la asigno después) —</option>${contrs.map(c => contrOption(c, load, t.contractor_id === c.id)).join('')}</select>` : '<p class="muted sm">Para cambiar la contratista usá el botón <b>Reasignar</b> de la tarea.</p>'}
+    ${staffOpts.length && !t.ticket_id ? `<label>Técnicos que van (opcional)</label><div id="nt-st" class="row" style="gap:6px;flex-wrap:wrap">${staffOpts.map(s => `<label class="pill p-info" style="font-weight:400;cursor:pointer;display:inline-flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" class="nt-sti" value="${esc(s.id)}" ${(t.staff_ids || []).includes(s.id) ? 'checked' : ''} style="width:auto;margin:0"> ${esc(s.name)}</label>`).join('')}</div><p class="muted sm" style="margin:4px 0 0">Así aparecen con su nombre en el mapa "¿Dónde está cada uno?".</p>` : ''}
     <label>Título</label><input id="nt-title" maxlength="300" value="${esc(t.title || '')}" placeholder="${t.is_pending ? 'Ej.: Cambiar grupo electrógeno' : 'Ej.: Preventivo Traza 15 – semana 43'}">
     <div class="row"><div class="grow"><label>Tipo</label><select id="nt-type">${Object.entries(TASK_TYPES).map(([k, x]) => `<option value="${k}" ${t.task_type === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
       <div class="grow"><label>Prioridad</label><select id="nt-pr">${Object.entries(PRIORITIES).map(([k, x]) => `<option value="${k}" ${t.priority === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
@@ -2051,19 +2057,20 @@ async function editTask(t, contrs, preset){
   $('#nt-ok').onclick = async () => {
     const row = { title: $('#nt-title').value.trim(), task_type: $('#nt-type').value, priority: $('#nt-pr').value,
       due_date: $('#nt-due').value, template_id: $('#nt-tpl').value, sites: chosen, description: $('#nt-desc').value.trim() || null,
-      contract: $('#nt-ct').value.trim() || null };
+      contract: $('#nt-ct').value.trim() || null,
+      ...(m.el.querySelector('#nt-st') ? { staff_ids: [...m.el.querySelectorAll('.nt-sti:checked')].map(c => c.value) } : {}) };
     if (!row.title) return ($('#nt-err').textContent = 'Poné un título.');
     if (!row.due_date) return ($('#nt-err').textContent = 'Indicá la fecha límite.');
     if (!chosen.length) return ($('#nt-err').textContent = 'Agregá al menos un sitio.');
     $('#nt-ok').disabled = true;
     const cId = isNew ? ($('#nt-c').value || null) : t.contractor_id;
-    const q = isNew ? sb.from('tasks').insert({ ...row, is_pending: !!t.is_pending, contractor_id: cId, status: cId ? 'asignada' : 'sin_asignar', org_id: me.org_id, created_by: me.id }).select(TASK_COLS).single()
+    const q = isNew ? sb.from('tasks').insert({ ...row, is_pending: !!t.is_pending, contractor_id: cId, status: cId || (row.staff_ids || []).length ? 'asignada' : 'sin_asignar', org_id: me.org_id, created_by: me.id }).select(TASK_COLS).single()
                     : sb.from('tasks').update(row).eq('id', t.id).select(TASK_COLS).single();
     const { data, error } = await q;
     if (error){ $('#nt-ok').disabled = false; return ($('#nt-err').textContent = errText(error)); }
     m.close();
     const c = contrs.find(x => x.id === data.contractor_id);
-    if (isNew && !c){ toast('Tarea creada sin asignar'); location.hash = '#/tasks/' + data.id; return; }
+    if (isNew && !c){ toast((data.staff_ids || []).length ? 'Tarea asignada a ' + data.staff_ids.map(x => staffOpts.find(z => z.id === x)?.name || '').filter(Boolean).join(', ') : 'Tarea creada sin asignar'); location.hash = '#/tasks/' + data.id; return; }
     if (isNew){
       const m2 = modal(`<h2>Tarea asignada a ${esc(c.name)}</h2><p>Avisale por WhatsApp con el detalle y el enlace a la tarea.</p>
         <div class="row" style="justify-content:flex-end"><button class="btn sec" id="w-no">Ahora no</button><button class="btn" id="w-yes" ${c.phone ? '' : 'disabled'}>Enviar WhatsApp</button></div>
@@ -2077,7 +2084,7 @@ async function editTask(t, contrs, preset){
 async function viewTask(v, id){
   const t = await cached('task:' + id, () => sb.from('tasks').select(TASK_COLS).eq('id', id).single());
   const contrs = await loadContractors().catch(() => []);
-  const c = contrs.find(x => x.id === t.contractor_id) || { name: 'Sin asignar' };
+  const c = contrs.find(x => x.id === t.contractor_id) || { name: (t.staff_ids || []).length ? 'Sin contratista' : 'Sin asignar' };
   const mineContractor = isContractor() && me.contractor_id === t.contractor_id;
   if ((t.staff_ids || []).length && !(typeof HHS !== 'undefined' && HHS.staff?.length)){ try { await hhLoadBase(); } catch {} }
   const mineStaff = (t.staff_ids || []).some(sid => (typeof HHS !== 'undefined' && HHS.staff || []).some(z => z.id === sid && z.user_id === me.id));
@@ -2100,7 +2107,7 @@ async function viewTask(v, id){
         ${isAdmin() ? '<button class="btn danger" id="t-del">Borrar</button>' : ''}
         ${t.status === 'completada' ? '<button class="btn" id="t-review">Revisar</button>' : ''}` : ''}</div></div>
     <div class="card">
-      <div class="row between"><div><h1>${esc(t.title)}</h1><div class="muted">${t.is_pending ? `<span class="pill p-bad">⚠ Pendiente · abierto hace ${fmtAge(pendHours(t))}${pendLate(t) ? ' · ATRASADO' : ''}</span><br>` : ''}${isContractor() ? '' : esc(c.name) + ' · '}${TASK_TYPES[t.task_type]} · Prioridad ${PRIORITIES[t.priority].toLowerCase()}${t.contract ? '<br>Contrato: ' + esc(t.contract) : ''}</div></div>
+      <div class="row between"><div><h1>${esc(t.title)}</h1><div class="muted">${t.is_pending ? `<span class="pill p-bad">⚠ Pendiente · abierto hace ${fmtAge(pendHours(t))}${pendLate(t) ? ' · ATRASADO' : ''}</span><br>` : ''}${isContractor() ? '' : esc(c.name) + ' · '}${TASK_TYPES[t.task_type]} · Prioridad ${PRIORITIES[t.priority].toLowerCase()}${t.contract ? '<br>Contrato: ' + esc(t.contract) : ''}${(t.staff_ids || []).length && !isContractor() ? '<br>Técnicos: <b>' + esc(t.staff_ids.map(x => (HHS.staff || []).find(z => z.id === x)?.name || 'Técnico').join(', ')) + '</b>' : ''}</div></div>
         <div style="text-align:right"><span class="pill ${TASK_PILL[t.status]}" style="font-size:14px">${TASK_ST[t.status]}</span>${isOverdue(t) ? ' <span class="pill p-bad" style="font-size:14px">Vencida</span>' : ''}</div></div>
       <div class="stats" style="margin-top:14px">
         <div class="stat"><span>Fecha límite</span><b style="font-size:18px">${fmtDate(dueDate(t.due_date))}</b><small>${taskOpen(t) ? (daysLeft(dueDate(t.due_date)) >= 0 ? `faltan ${daysLeft(dueDate(t.due_date))} días` : `vencida hace ${-daysLeft(dueDate(t.due_date))} días`) : ''}</small></div>
