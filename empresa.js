@@ -87,7 +87,7 @@ async function empOrgSection(box){
       <div><label>Avisar si se carga a más de (metros)</label><input id="emp-pm" type="number" min="50" max="50000" step="50" value="${esc(c.presence_m)}" ${w ? '' : 'disabled'} style="max-width:160px"></div>
       <div><label>Preventivo: período del día</label><input id="emp-cp" type="number" min="1" max="28" value="${esc(c.cert_day_prev)}" ${w ? '' : 'disabled'} style="max-width:100px"></div>
       <div><label>Correctivo: período del día</label><input id="emp-cc" type="number" min="1" max="28" value="${esc(c.cert_day_corr)}" ${w ? '' : 'disabled'} style="max-width:100px"></div></div>
-    <p class="sm muted">Ej.: preventivo 9 = del 9 de un mes al 8 del siguiente. Correctivo 1 = mes calendario.</p>
+    <p class="sm muted">Ej.: 9 = del 9 de un mes al 8 del siguiente (preventivo y correctivo). Con 1 queda el mes calendario. Lo importado de planillas queda en el mes de su solapa.</p>
     ${w ? '<button class="btn small" id="emp-psave">Guardar</button>' : ''}
   </div>
   ${adm ? `<div class="card row between"><div><h2 style="margin:0">💾 Copia de seguridad</h2><div class="muted sm">Un Excel con todos los datos de la empresa: sitios, inspecciones, tareas, horas, vehículos, estadísticas y más (una solapa por tabla).</div></div><button class="btn" id="emp-bk">⬇ Descargar copia</button></div>` : ''}`;

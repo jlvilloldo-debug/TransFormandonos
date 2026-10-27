@@ -84,12 +84,12 @@ async function vehMyState(){
 }
 async function vehHomeSlot(btnBox, redBox, after){
   if (!btnBox) return; vehCss();
-  const go = (cls, i, l, s, fn) => { btnBox.innerHTML = `<button class="hq-b ${cls}" id="hq-vb"><span class="i">${i}</span><div><div class="l">${l}</div><div class="s">${s}</div></div></button>`; $('#hq-vb').onclick = fn; };
+  const go = (cls, i, l, s, fn) => { btnBox.innerHTML = `<button class="hq-b ${cls}" id="hq-vb"><span class="i">${i}</span><div><div class="l">${l}</div><div class="s">${s}</div></div></button>`; const b = btnBox.querySelector('#hq-vb'); if (b) b.onclick = fn; };
   let s; try { s = await vehMyState(); } catch { go('', '🚗', 'Jornada del vehículo', 'Abrir', () => { location.hash = '#/tools/veh'; }); return; }
   const o = s.open;
   if (o && o.day < todayStr() && redBox){
     redBox.innerHTML = `<div class="hq-red"><span style="font-size:24px">⚠️</span><div>Tenés la jornada del ${esc(fmtD(o.day))}${o.plate ? ' (' + esc(o.plate) + ')' : ''} sin cerrar.<div class="sm" style="font-weight:400">Cerrala con los km y la foto del odómetro antes de iniciar la de hoy.</div></div><button id="hq-vclose">Cerrar ahora</button></div>`;
-    $('#hq-vclose').onclick = () => vehCloseModal(o, after);
+    { const c = redBox.querySelector('#hq-vclose'); if (c) c.onclick = () => vehCloseModal(o, after); }
   }
   if (o) go('stop', '🏁', 'Terminar jornada', `${esc(o.plate || '')} · desde ${esc(fmtTime(o.start_at))}${o.day < todayStr() ? ' del ' + esc(fmtD(o.day)) : ''}`, () => vehCloseModal(o, after));
   else if (s.drv) go('', '🚗', 'Estás manejando', 'Tocá para ver la jornada', () => { location.hash = '#/tools/veh'; });

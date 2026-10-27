@@ -6,7 +6,8 @@
    ===================================================================== */
 
 const STX_MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-const STX_CATS = ['Energía', 'Fibra óptica', 'Seguridad física', 'Equipamiento', 'Otros'];
+const STX_CATS = ['Energía', 'Fibra óptica', 'Seguridad física', 'Otros'];          // las 4 del informe (equipamiento, clima, tareas → Otros)
+const STX_CAT_TXT = { 'Energía': 'Energía / Grupo electrógeno' };
 const STX_SMT = ['SMTCGySH', 'SMTCFOyRE', 'SMTCGInfra', 'SMTCGFO', 'SMTPI'];
 const STX_FREQ = { 1: 'Mensual', 2: 'Bimestral', 3: 'Trimestral', 4: 'Cuatrimestral', 6: 'Semestral', 12: 'Anual' };
 const STX_ST = { ok: ['Hecho', '#16A34A'], pendiente: ['Le toca', '#F59E0B'], atrasado: ['Atrasado', '#DC2626'], no_toca: ['No le toca', '#94A3B8'] };
@@ -22,10 +23,10 @@ const stxK = s => norm(s).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(
 
 async function stxLoadCfg(){
   try { STX.cfg = await cached('org-cfg', () => sb.from('org_settings').select('*').maybeSingle()); } catch {}
-  STX.cfg = { cert_day_prev: 9, cert_day_corr: 1, presence_m: 1000, push_mode: 'manual', summary_on: false, summary_freq: 'semanal', summary_dow: 1, pm_auto_tasks: false, ...(STX.cfg || {}) };
+  STX.cfg = { cert_day_prev: 9, cert_day_corr: 9, presence_m: 1000, push_mode: 'manual', summary_on: false, summary_freq: 'semanal', summary_dow: 1, pm_auto_tasks: false, ...(STX.cfg || {}) };
   return STX.cfg;
 }
-function stxCurPeriod(kind = 'preventivo'){ const c = STX.cfg || {}; return stxPeriodOf(todayStr(), kind === 'preventivo' ? c.cert_day_prev || 9 : c.cert_day_corr || 1); }
+function stxCurPeriod(kind = 'preventivo'){ const c = STX.cfg || {}; return stxPeriodOf(todayStr(), kind === 'preventivo' ? c.cert_day_prev || 9 : c.cert_day_corr || 9); }
 
 /* =====================================================================
    LECTURA DE LA PLANILLA (una solapa por mes: "Preventivo <mes> [año]" y "Correctivo <mes> [año]")
@@ -36,13 +37,11 @@ const stxIso = (d, t) => d ? `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.
 const stxDay = d => d ? `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` : null;
 function stxCat(s){
   const n = norm(s);
-  if (!n) return null;
-  if (/energ|ge\b|grupo|combust|fase|disyunt|tension|rectific|bateri|ups/.test(n)) return 'Energía';
-  if (/^fo$|fibra|optic|atenua|corte de fo/.test(n)) return 'Fibra óptica';
-  if (/segur|puerta|intrus|sensor/.test(n)) return 'Seguridad física';
-  if (/equipam|radio|switch|router/.test(n)) return 'Equipamiento';
-  if (/otro|temperat|nodo caido/.test(n)) return 'Otros';
-  return String(s).trim().slice(0, 60);
+  if (!n) return 'Otros';
+  if (/energ|\bge\b|g\.e\.|grupo|combust|fase|disyunt|tension|rectific|bateri|\bups\b/.test(n)) return 'Energía';
+  if (/\bfo\b|fibra|optic|atenua|acoplador/.test(n)) return 'Fibra óptica';
+  if (/segur|\bseg\b|seg\.|puerta|intrus|sensor|alarma/.test(n)) return 'Seguridad física';
+  return 'Otros';
 }
 function stxTtr(v){
   if (typeof v === 'number' && isFinite(v)) return v > 0 && v < 1 ? Math.round(v * 24) : v;     // número de horas (o fracción de día)
@@ -81,6 +80,7 @@ function stxParse(wb){
       data.forEach((r, idx) => {
         const site = String(r[1]).trim().slice(0, 200), d = stxDate(r[2]);
         const na = !d && (/^n\s*\/?\s*a$/i.test(String(r[2] ?? '').trim()) || /no aplica/i.test(String(r[3] ?? '')));
+        if (!d && !na){ rep.noDate = (rep.noDate || 0) + 1; return; }   // sin fecha ni N/A: no es una visita (renglón suelto)
         if (na) rep.na++;
         out.push({ kind, period: per + '-01', day: stxDay(d), na, site_name: site, traza: r[0] == null ? null : String(r[0]).trim().slice(0, 20),
                    note: r[3] == null ? null : String(r[3]).trim().slice(0, 4000), _sort: idx, _sheet: title });
@@ -95,9 +95,9 @@ function stxParse(wb){
       const [py, pm] = per.split('-').map(Number);
       const seen = new Set(); let n = 0;
       for (const r of data){
-        const raw = typeof r[0] === 'string' ? r[0].replace(/\s+/g, ' ').trim() : '';
+        const raw = r[0] == null ? '' : String(r[0]).replace(/\s+/g, ' ').trim();
         let od = stxDate(r[1]);
-        if (!raw && !od) continue;                                   // pie de la planilla (totales, punitorios)
+        if (!raw || (!/\d{4,6}/.test(raw) && !/[a-záéíóúñ]{3,}/i.test(raw))) continue;   // sin ticket (pie de la planilla, fila con fecha y un número suelto)
         if (raw && !od && !/\d{4,6}/.test(raw)) continue;
         if (od && od.m === pm && Math.abs(od.y - py) === 1){ od = { ...od, y: py }; rep.yearFix++; }
         let cd = stxDate(r[6]); if (cd && od && cd.y - od.y === 1 && cd.m === od.m){ cd = { ...cd, y: od.y }; rep.yearFix++; }
@@ -159,7 +159,8 @@ function stxImportModal(after){
     const missPrev = [...miss.values()].filter(x => x.prev), missCorr = [...miss.values()].filter(x => !x.prev);
     const prevN = rows.filter(r => r.kind === 'preventivo' && !r.na).length, corrT = new Set(rows.filter(r => r.kind === 'correctivo').map(r => r.ticket || r.ticket_raw)).size;
     const pers = [...new Set(rows.map(r => stxPer(r.period)))].sort();
-    let planN = 0; try { const { count } = await sb.from('pm_plan').select('id', { count: 'exact', head: true }); planN = count || 0; } catch {}
+    let planN = 0, histN = 0; try { const { count } = await sb.from('pm_plan').select('id', { count: 'exact', head: true }); planN = count || 0; } catch {}
+    try { const { count } = await sb.from('stats_history').select('id', { count: 'exact', head: true }); histN = count || 0; } catch {}
     $('#sx-r').innerHTML = `<div class="stats"><div class="stat"><span>Visitas preventivas</span><b>${prevN}</b></div><div class="stat"><span>Tickets correctivos</span><b>${corrT}</b></div><div class="stat"><span>Meses</span><b>${pers.length}</b><small>${pers.length ? esc(stxPerLabel(pers[0]) + ' a ' + stxPerLabel(pers[pers.length - 1])) : ''}</small></div></div>
       <div class="tblwrap" style="max-height:180px;overflow:auto;margin-top:8px"><table class="tbl"><thead><tr><th>Solapa</th><th>Mes certificado</th><th>Registros</th></tr></thead><tbody>${rep.sheets.map(s => `<tr><td>${esc(s.title)}</td><td>${esc(stxPerLong(s.per))}</td><td class="num">${s.n}</td></tr>`).join('')}</tbody></table></div>
       <ul class="sm" style="margin:8px 0">
@@ -167,16 +168,23 @@ function stxImportModal(after){
         ${rep.dups ? `<li><b>${rep.dups}</b> ticket(s) repetidos en la misma solapa: se cuentan una vez.</li>` : ''}
         ${rep.tramos ? `<li><b>${rep.tramos}</b> correctivo(s) de tramo (Nodo A – Nodo B): se suman a los dos nodos.</li>` : ''}
         ${rep.na ? `<li><b>${rep.na}</b> preventivo(s) "no aplica este mes": no cuentan como faltantes.</li>` : ''}
+        ${rep.noDate ? `<li><b>${rep.noDate}</b> renglón(es) de preventivo sin fecha ni N/A: no se cuentan como visita.</li>` : ''}
         ${rep.noTicket ? `<li><b>${rep.noTicket}</b> correctivo(s) sin número de ticket legible.</li>` : ''}
         ${rep.skipped.length ? `<li>Solapas que no se leen (no son de mantenimiento): ${esc(rep.skipped.join(', '))}.</li>` : ''}
       </ul>
       ${missPrev.length ? `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400"><input type="checkbox" id="sx-mk" checked style="width:auto;margin-top:3px"> Crear en Sitios los <b>${missPrev.length}</b> nodos de los preventivos que no están cargados (${esc(missPrev.slice(0, 8).map(x => x.name).join(', '))}${missPrev.length > 8 ? '…' : ''})</label>` : ''}
       ${missCorr.length ? `<p class="muted sm">${missCorr.length} nombre(s) de los correctivos no coinciden con un sitio (${esc(missCorr.slice(0, 6).map(x => x.name).join(', '))}${missCorr.length > 6 ? '…' : ''}): quedan como texto y cuentan igual en las estadísticas. Podés sumarlos como alias del sitio en Sitios.</p>` : ''}
       ${!planN ? `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin-top:6px"><input type="checkbox" id="sx-mkplan" checked style="width:auto;margin-top:3px"> Armar el <b>plan de preventivos</b> con los nodos de la última solapa (mensual; los que figuran "no aplica" con la frecuencia que surge de la planilla)</label>` : ''}`;
+    if (histN) $('#sx-r').insertAdjacentHTML('beforeend', `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:10px"><input type="checkbox" id="sx-wipe" style="width:auto;margin-top:3px"> <span><b>Borrar el histórico importado (${histN} registros) y volver a importar todo</b><br><span class="sm muted">Para reimportar limpio. No toca lo cargado en la app (inspecciones), ni los sitios, ni el plan.</span></span></label>`);
     $('#sx-go').classList.remove('hidden'); $('#sx-go').disabled = false;
     $('#sx-go').onclick = async () => {
       $('#sx-go').disabled = true; const st = t => { $('#sx-go').textContent = t; };
       try {
+        if ($('#sx-wipe')?.checked){
+          if (!confirm(`Se borran los ${histN} registros importados de planillas y se vuelve a importar este archivo. ¿Seguir?`)){ $('#sx-go').disabled = false; return; }
+          st('Borrando el histórico…');
+          const { error } = await sb.from('stats_history').delete().eq('org_id', me.org_id); if (error) throw error;
+        }
         if ($('#sx-mk')?.checked){
           st('Creando sitios…');
           for (let i = 0; i < missPrev.length; i += 100){
@@ -229,7 +237,7 @@ async function stxSection(box){
   let rows = [], plan = [];
   try {
     [rows, plan] = await Promise.all([
-      cached('stx', () => sb.rpc('stats_rows', { p_from: from + '-01', p_to: cur + '-01' })),
+      cached('stx', () => pageAll(() => sb.rpc('stats_rows', { p_from: from + '-01', p_to: cur + '-01' }), 50000)),   // de a 1000 (tope del servidor)
       cached('stx-plan', () => sb.from('pm_plan').select('id,site_id,site_name,traza,freq_months,start_period,active').eq('active', true).limit(3000)),
     ]);
   } catch (e){ box.innerHTML = `<div class="card"><b>Histórico</b><p class="muted">${esc(errText(e))}</p></div>`; return; }
@@ -264,12 +272,12 @@ async function stxSection(box){
   for (const r of corrRows){ if (!last12.includes(stxPer(r.period))) continue;
     bySite[r.site_name] = (bySite[r.site_name] || 0) + 1;
     const tk = (r.ticket || r.inspection_id || r.ticket_raw) + '|' + stxPer(r.period); if (seenT.has(tk)) continue; seenT.add(tk);
-    const c = r.category || 'Sin categoría'; cats[c] = (cats[c] || 0) + 1;
+    const c = STX_CAT_TXT[stxCat(r.category)] || stxCat(r.category); cats[c] = (cats[c] || 0) + 1;
     if (r.problem){ const k = r.problem.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 50); probs[k] = (probs[k] || 0) + 1; } }
   const top = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n);
   const fromApp = rows.some(r => r.src === 'app'), fromXl = rows.some(r => r.src === 'excel');
   box.innerHTML = `<div class="card">
-      <div class="row between"><div><h2 style="margin:0">📈 Mantenimiento mes a mes</h2><div class="muted sm">Períodos de certificación: preventivo del ${STX.cfg.cert_day_prev} al ${STX.cfg.cert_day_prev} · correctivo por mes. ${fromXl ? 'Histórico de la planilla' : 'Sin histórico importado'}${fromApp ? ' + lo cargado en la app (se actualiza solo)' : ''}.</div></div>
+      <div class="row between"><div><h2 style="margin:0">📈 Mantenimiento mes a mes</h2><div class="muted sm">Períodos de certificación: preventivo del ${STX.cfg.cert_day_prev} al ${STX.cfg.cert_day_prev} · correctivo ${Number(STX.cfg.cert_day_corr) === 1 ? 'por mes calendario' : 'del ' + STX.cfg.cert_day_corr + ' al ' + STX.cfg.cert_day_corr} (el histórico queda en el mes de su solapa). ${fromXl ? 'Histórico de la planilla' : 'Sin histórico importado'}${fromApp ? ' + lo cargado en la app (se actualiza solo)' : ''}.</div></div>
         <div class="row" style="gap:6px">${mgr ? '<button class="btn sec small" id="sx-imp">⬆ Importar planilla</button>' : ''}<button class="btn sec small" id="sx-plan">🗓 Plan de preventivos</button>${mgr ? '<button class="btn small" id="sx-cert">⬇ Certificación</button>' : ''}</div></div>
       <div class="stats" style="margin-top:12px">
         <div class="stat"><span>Preventivos ${esc(stxPerLabel(cur))}</span><b>${curP.prev.size}</b>${curP.due ? `<small>de ${curP.due} del plan</small>` : ''}</div>
@@ -427,7 +435,7 @@ function stxCertModal(){
 async function stxCertExcel(per, tp, tc){
   const [st, rows] = await Promise.all([
     sb.rpc('pm_status', { p_period: per + '-01' }).then(r => { if (r.error) throw r.error; return r.data || []; }),
-    sb.rpc('stats_rows', { p_from: per + '-01', p_to: per + '-01' }).then(r => { if (r.error) throw r.error; return r.data || []; }),
+    pageAll(() => sb.rpc('stats_rows', { p_from: per + '-01', p_to: per + '-01' }), 50000).then(r => { if (r.error) throw r.error; return r.data || []; }),
   ]);
   await hhLoadExcelJS();
   const X = s => { s = s == null ? '' : String(s); return /^[=+\-@\t\r]/.test(s) ? "'" + s : s; };

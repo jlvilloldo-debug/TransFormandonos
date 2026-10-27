@@ -1,7 +1,7 @@
 /* InspectApp · Transformándonos — service worker
    Guarda la aplicación en el dispositivo para que abra sin señal.
    Los datos (Supabase) nunca se guardan acá: los maneja la app. */
-const VERSION = 'ia-4.9.0';
+const VERSION = 'ia-4.9.1';
 const TILES = 'ia-tiles';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './banner.jpg',
   './proyectos.js', './fibra.js', './datacenter.js', './horas.js', './permisos.js', './vehiculos.js', './estadisticas.js', './empresa.js', './qrcode.js', './jsQR.js', './supabase.js', './leaflet.js', './leaflet.css', './jszip.min.js', './xlsx.full.min.js'];
