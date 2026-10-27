@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-oZ2UPaUjOF4xfK3haNroQ1QDNTWIcgqyCv8xBYSLN0A='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-xnCTY7Juu8CyrWimofKacxEqDsUO6hPn3qzvwadbGjE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -388,6 +388,7 @@ tr.sor-bad td{background:var(--red-bg)}
   </header>
   <nav class="tabs" id="tabs">
     <button data-tab="home">Inicio</button>
+    <button data-tab="mesa" id="tab-mesa" class="hidden">Mesa</button>
     <button data-tab="map">Mapa</button>
     <button data-tab="proj">Proyectos</button>
     <button data-tab="tools">🧰 Herramientas</button>
@@ -418,6 +419,7 @@ tr.sor-bad td{background:var(--red-bg)}
 <script src="permisos.js"></script>
 <script src="vehiculos.js"></script>
 <script src="estadisticas.js"></script>
+<script src="tickets.js"></script>
 <script src="empresa.js"></script>
 <script>
 /* No se deja abrir la app dentro de otra página (evita que la tapen con una trampa para robar clics o claves) */
@@ -426,7 +428,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '4.9.1';
+const APP_VERSION = '5.0';
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -527,7 +529,7 @@ async function cached(key, fetcher){
 function storedUid(){ try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null')?.user?.id || null; } catch { return null; } }
 
 /* ---------- inspecciones locales y envío ---------- */
-const ROW_FIELDS = ['id','org_id','template_id','template_name','template_snapshot','site_id','site_name','traza','kind','status','inspector_id','inspector_name','started_at','completed_at','answers','score','max_score','flagged','flagged_items','lat','lng','task_id','project_site_id','ticket','corr','site2_id','site2_name'];
+const ROW_FIELDS = ['id','org_id','template_id','template_name','template_snapshot','site_id','site_name','traza','kind','status','inspector_id','inspector_name','started_at','completed_at','answers','score','max_score','flagged','flagged_items','lat','lng','task_id','project_site_id','ticket','corr','site2_id','site2_name','ticket_id'];
 const toRow = r => Object.fromEntries(ROW_FIELDS.map(k => [k, r[k] === undefined ? null : r[k]]));
 const localGet = id => IDB.get('insp', id).catch(() => undefined);
 async function localSave(r){ r._rev = (r._rev || 0) + 1; r._dirty = true; await IDB.put('insp', r); updateNet(); syncSoon(); }
@@ -1007,6 +1009,7 @@ async function boot(){
   $('#tab-admin').classList.toggle('hidden', !me.is_superadmin);
   const contr = isContractor();
   ['stats','sites','tpl','org'].forEach(t => $(`#tabs [data-tab="${t}"]`).classList.toggle('hidden', contr));
+  $('#tab-mesa').classList.toggle('hidden', !isManager());
   await permLoad(); permApplyTabs();
   // horas para todos: vincula al usuario con su Recurso (por email o nombre; si no hay, lo crea). Una vez por sesión.
   if (online() && me.hh_enabled !== false && typeof can === 'function' && can('horas', 2)){
@@ -1081,12 +1084,13 @@ function navBuild(){
   const c = (m, l) => typeof can !== 'function' || can(m, l);
   const it = [['home', '🏠', 'Inicio', '#/home']];
   if (isManager()){
+    it[0] = ['mesa', '🧭', 'Mesa', '#/mesa'];
     if (c('horas')) it.push(['hhb', '📥', 'Bandeja', '#/tools/hh/bandeja']);
     if (c('tasks')) it.push(['tasks', '📋', 'Tareas', '#/tasks']);
     if (c('map')) it.push(['map', '🗺️', 'Mapa', '#/map']);
   } else {
+    if (c('tasks')) it.push(['tickets', '🎫', 'Tickets', '#/tickets']);
     if (c('horas', 2) && me.hh_enabled !== false) it.push(['hh', '⏱️', 'Horas', '#/tools/hh/hoy']);
-    if (c('tasks')) it.push(['tasks', '📋', 'Tareas', '#/tasks']);
     if (c('veh', 2)) it.push(['veh', '🚗', 'Vehículo', '#/tools/veh']);
   }
   it.push(['more', '☰', 'Más', '#/tools']);
@@ -1095,7 +1099,7 @@ function navBuild(){
 }
 function navMark(){
   const h = location.hash || '#/home', nav = $('#bnav'); if (!nav) return;
-  const k = h.startsWith('#/tools/hh/bandeja') ? 'hhb' : h.startsWith('#/tools/hh') ? 'hh' : h.startsWith('#/tools/veh') ? 'veh' : h.startsWith('#/tasks') ? 'tasks' : h.startsWith('#/map') ? 'map' : h.startsWith('#/home') || h === '#/' ? 'home' : 'more';
+  const k = h.startsWith('#/tools/hh/bandeja') ? 'hhb' : h.startsWith('#/tools/hh') ? 'hh' : h.startsWith('#/tools/veh') ? 'veh' : h.startsWith('#/tasks') ? 'tasks' : h.startsWith('#/tickets') ? 'tickets' : h.startsWith('#/mesa') ? 'mesa' : h.startsWith('#/map') ? 'map' : h.startsWith('#/home') || h === '#/' ? 'home' : 'more';
   nav.querySelectorAll('[data-bn]').forEach(a => a.classList.toggle('on', a.dataset.bn === k));
 }
 window.addEventListener('hashchange', navMark);
@@ -1114,6 +1118,8 @@ async function route(){
     if ((ONLINE_ONLY.includes(tab) || (tab === 'tpl' && id)) && !online()) throw new Error('NEEDS_ONLINE');
     if (!permOk(tab, id)){ v.innerHTML = '<div class="card"><b>No tenés acceso a esta sección.</b><p class="muted">Si la necesitás, pedile al administrador que te habilite el permiso.</p><a href="#/home">Ir al inicio</a></div>'; return; }
     if (tab === 'home') await viewHome(v);
+    else if (tab === 'mesa') await viewMesa(v);
+    else if (tab === 'tickets') await viewTickets(v, id);
     else if (tab === 'insp' && id) await viewExecute(v, id);
     else if (tab === 'insp') await viewInspections(v);
     else if (tab === 'informe') await viewReport(v, id);
@@ -1200,7 +1206,7 @@ async function deleteInspection(r){
    INICIO
    ========================================================= */
 async function viewHome(v){
-  if (isContractor()){ await viewTasks(v); const q = document.createElement('div'); q.id = 'hh-quick'; v.prepend(q); const pa = document.createElement('div'); v.prepend(pa); empPushBanner(pa); return hhHomeQuick(q); }
+  if (isContractor()){ await viewTasks(v); const q = document.createElement('div'); q.id = 'hh-quick'; v.prepend(q); const pa = document.createElement('div'); v.prepend(pa); empPushBanner(pa); const tq = document.createElement('div'); v.prepend(tq); tkHomeCard(tq).catch(() => {}); return hhHomeQuick(q); }
   let recent = [], kpi = {cMonth: 0, cDraft: 0, flagged: 0};
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
   try {
@@ -1220,6 +1226,7 @@ async function viewHome(v){
   const st = licState(org);
   const showInstall = !isStandalone();
   v.innerHTML = `
+    <div id="tk-home"></div>
     <div id="hh-quick"></div>
     <div id="push-ask"></div>
     <div class="card row between" id="home-hello">
@@ -1238,6 +1245,7 @@ async function viewHome(v){
   $('#b-new')?.addEventListener('click', newInspection);
   $('#b-inst2')?.addEventListener('click', doInstall);
   bindInspRows(v, rows);
+  tkHomeCard($('#tk-home')).catch(() => {});
   hhHomeQuick($('#hh-quick'));
   empPushBanner($('#push-ask'));
   homeBoard($('#home-board'));
@@ -1658,7 +1666,8 @@ async function viewReport(v, id){
   const imgs = [...v.querySelectorAll('#report img')];
   $('#b-pdf').onclick = async () => {
     await Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
-    const t = document.title; document.title = `${ins.site_name || 'Inspeccion'} - ${fmtDate(ins.started_at).replaceAll('/','-')}`;
+    const t = document.title; let pn = null; try { pn = sessionStorage.getItem('ia_pdfname'); sessionStorage.removeItem('ia_pdfname'); } catch {}
+    document.title = pn || (ins.ticket_id && ins.ticket ? `${ins.ticket}-${String(ins.site_name || '').replace(/[^\wáéíóúñÁÉÍÓÚÑ]+/g, '-')}` : `${ins.site_name || 'Inspeccion'} - ${fmtDate(ins.started_at).replaceAll('/','-')}`);
     window.print(); setTimeout(() => document.title = t, 1000);
   };
   $('#b-delr')?.addEventListener('click', async () => { await deleteInspection(ins); });
@@ -1908,7 +1917,7 @@ const TASK_TYPES = {inspeccion:'Inspección', instalacion:'Instalación', repara
 const PRIORITIES = {normal:'Normal', alta:'Alta', critica:'Crítica'};
 const TASK_ST = {sin_asignar:'Sin asignar', asignada:'Asignada', vista:'Vista', en_curso:'En curso', completada:'Completada', aprobada:'Aprobada', rechazada:'Rechazada', cancelada:'Cancelada'};
 const TASK_PILL = {sin_asignar:'p-pend', asignada:'p-info', vista:'p-info', en_curso:'p-pend', completada:'p-ok', aprobada:'p-ok', rechazada:'p-bad', cancelada:''};
-const TASK_COLS = 'id,is_pending,origin_inspection_id,project_id,history,contract,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at';
+const TASK_COLS = 'id,ticket_id,staff_ids,is_pending,origin_inspection_id,project_id,history,contract,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at';
 const taskOpen = t => !['completada','aprobada','cancelada'].includes(t.status);
 const dueDate = d => new Date(d + 'T23:59:59');
 const isOverdue = t => taskOpen(t) && dueDate(t.due_date) < new Date();
@@ -2070,7 +2079,9 @@ async function viewTask(v, id){
   const contrs = await loadContractors().catch(() => []);
   const c = contrs.find(x => x.id === t.contractor_id) || { name: 'Sin asignar' };
   const mineContractor = isContractor() && me.contractor_id === t.contractor_id;
-  const canRun = canWrite() && (mineContractor || isManager()) && !['aprobada','cancelada'].includes(t.status);
+  if ((t.staff_ids || []).length && !(typeof HHS !== 'undefined' && HHS.staff?.length)){ try { await hhLoadBase(); } catch {} }
+  const mineStaff = (t.staff_ids || []).some(sid => (typeof HHS !== 'undefined' && HHS.staff || []).some(z => z.id === sid && z.user_id === me.id));
+  const canRun = canWrite() && (mineContractor || mineStaff || isManager()) && !['aprobada','cancelada'].includes(t.status) && !t.ticket_id;   // los de un ticket se hacen desde el ticket
   if (mineContractor && t.status === 'asignada' && online()) sb.rpc('task_mark_seen', { p_task: id }).then(() => {});
   // inspecciones de esta tarea (servidor + teléfono)
   let srv = [];
@@ -2099,6 +2110,7 @@ async function viewTask(v, id){
       </div>
       ${t.description ? `<h3 style="margin-top:16px">Indicaciones</h3><p style="white-space:pre-wrap;margin-top:0">${esc(t.description)}</p>` : ''}
       ${t.origin_inspection_id ? `<p class="sm"><a href="#/informe/${esc(t.origin_inspection_id)}">Ver la inspección donde se detectó</a></p>` : ''}
+      ${t.ticket_id ? `<a class="btn" style="margin-top:10px" href="#/tickets/${esc(t.ticket_id)}">🎫 Abrir el ticket (llegada, planilla y cierre)</a>` : ''}
       ${(t.history || []).length && !isContractor() ? `<details style="margin-top:14px"><summary class="sm" style="cursor:pointer">Historial de asignación (${t.history.length})</summary>
         <div class="sm" style="margin-top:6px">${t.history.map(x => `<div style="padding:4px 0;border-bottom:1px solid var(--line)">${fmtDT(x.at)} · ${esc(x.by || '')}: ${x.from ? esc(x.from) : 'sin asignar'} → <b>${x.to ? esc(x.to) : 'sin asignar'}</b>${x.reason ? ` <span class="muted">(${esc(x.reason)})</span>` : ''}</div>`).join('')}</div></details>` : ''}
       ${t.review_comment || t.quality ? `<div class="banner ${t.status === 'rechazada' ? 'off' : 'trial'}" style="margin:14px 0 0"><span class="dot"></span><div><b>${t.status === 'rechazada' ? 'Rechazada: hay que rehacerla' : 'Revisión del supervisor'}</b>${t.quality ? ` · Calificación ${'★'.repeat(t.quality)}${'☆'.repeat(5 - t.quality)}` : ''}<div>${esc(t.review_comment || '')}</div></div></div>` : ''}

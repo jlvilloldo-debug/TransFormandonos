@@ -406,7 +406,7 @@ async function viewProject(v, id){
         <div><h1 style="margin:0">${esc(p.name)}</h1><div class="muted sm">${esc([PROJ_KIND[p.kind], p.client, p.contract].filter(Boolean).join(' · '))}${p.start_date || p.end_date ? ` · ${fmtD(p.start_date)} → ${fmtD(p.end_date)}` : ''}</div></div></div>
       ${manage && online() ? '<button class="btn sec" id="pj-edit">Editar proyecto</button>' : ''}</div>
       <div class="row" style="margin-top:12px;gap:12px"><b style="font-size:22px">${Math.round(sm.pct)}%</b><div class="progress grow" style="height:10px"><i style="width:${Math.round(sm.pct)}%"></i></div></div>
-      <div class="seg" id="pj-tabs" style="margin-top:12px">${[['res', 'Resumen'], ['sit', `Sitios (${sm.n})`], ['gan', 'Gantt'], ['inv', `Inventario${equip.length ? ' (' + equip.length + ')' : ''}`]].map(([k, t]) => `<button type="button" data-pt="${k}" class="${PTAB === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="seg" id="pj-tabs" style="margin-top:12px">${[['res', 'Resumen'], ['sit', `Sitios (${sm.n})`], ['gan', 'Gantt'], ['inv', `Inventario${equip.length ? ' (' + equip.length + ')' : ''}`], ...(['mantenimiento', 'mixto'].includes(p.kind) && typeof tkProjSla === 'function' ? [['sla', 'Contrato y SLA']] : [])].map(([k, t]) => `<button type="button" data-pt="${k}" class="${PTAB === k ? 'on' : ''}">${t}</button>`).join('')}</div>
     </div>
     <div id="pj-body"></div>`;
   $('#pj-edit')?.addEventListener('click', () => editProject(p));
@@ -414,10 +414,10 @@ async function viewProject(v, id){
     PTAB = k; try { localStorage.setItem('ia_ptab', k); } catch {}
     $$('#pj-tabs [data-pt]').forEach(b => b.classList.toggle('on', b.dataset.pt === k));
     const body = $('#pj-body');
-    if (k === 'res') projResumen(body, ctx); else if (k === 'sit') projSites(body, ctx); else if (k === 'gan') projGantt(body, ctx); else projInventory(body, ctx);
+    if (k === 'res') projResumen(body, ctx); else if (k === 'sit') projSites(body, ctx); else if (k === 'gan') projGantt(body, ctx); else if (k === 'sla') tkProjSla(body, p).catch(e => { body.innerHTML = `<div class="card">${esc(errText(e))}</div>`; }); else projInventory(body, ctx);
   };
   $$('#pj-tabs [data-pt]').forEach(b => b.onclick = () => show(b.dataset.pt));
-  show(['res', 'sit', 'gan', 'inv'].includes(PTAB) ? PTAB : 'res');
+  show(['res', 'sit', 'gan', 'inv'].includes(PTAB) || (PTAB === 'sla' && ['mantenimiento', 'mixto'].includes(p.kind)) ? PTAB : 'res');
 }
 
 /* ---------- Resumen ---------- */
