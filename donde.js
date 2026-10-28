@@ -104,18 +104,21 @@ function dnItems(D){
     return { c: null, s, approx: true, k };
   };
   const tkById = new Map(D.tickets.map(t => [t.id, t]));
+  // cuadrilla vinculada a un técnico ("TRANS - Germán Onnis" = Germán Onnis): se muestra como esa persona
+  const who = (staffIds, contrId) => { const crew = contrId && !(staffIds || []).length ? D.contrs.find(c => c.id === contrId)?.staff_id : null;
+    return crew ? { staff: [crew], contr: null } : { staff: staffIds || [], contr: contrId }; };
   const out = [];
   for (const t of D.tasks){
     const tk = t.ticket_id ? tkById.get(t.ticket_id) : null;
     for (const st of (t.sites || [])){ if (st.done) continue;
       const w = where(st.site_id, st.site_name);
-      out.push({ kind: 'task', id: t.id, title: t.title, date: t.due_date, status: t.status, staff: t.staff_ids || [], contr: t.contractor_id, ticket: tk, project: t.project_id,
+      out.push({ kind: 'task', id: t.id, title: t.title, date: t.due_date, status: t.status, ...who(t.staff_ids, t.contractor_id), ticket: tk, project: t.project_id,
         site: st.site_name, ...w, onsite: t.status === 'en_curso' || !!tk?.arrived_at }); }
   }
   const withTask = new Set(D.tasks.map(t => t.ticket_id).filter(Boolean));
   for (const tk of D.tickets){ if (withTask.has(tk.id)) continue;
     const w = where(tk.site_id, tk.site_name);
-    out.push({ kind: 'ticket', id: tk.id, title: '#' + tk.ext_no + ' · ' + (typeof tkProblem === 'function' ? tkProblem(tk.problem, tk.category) : (tk.problem || '')), date: today, status: tk.status, staff: tk.staff_ids || [], contr: tk.contractor_id,
+    out.push({ kind: 'ticket', id: tk.id, title: '#' + tk.ext_no + ' · ' + (typeof tkProblem === 'function' ? tkProblem(tk.problem, tk.category) : (tk.problem || '')), date: today, status: tk.status, ...who(tk.staff_ids, tk.contractor_id),
       ticket: tk, project: tk.project_id, site: tk.site_name, ...w, onsite: !!tk.arrived_at }); }
   const inRange = x => DN.f === 'hoy' ? (x.date <= today || x.onsite) : DN.f === 'man' ? x.date === tom : true;
   return out.filter(x => inRange(x) && (!DN.proj || x.project === DN.proj) && (!DN.who || (DN.who === 'libre' ? !x.staff.length && !x.contr : x.staff.includes(DN.who) || x.contr === DN.who)));

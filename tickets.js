@@ -739,12 +739,14 @@ async function viewTicket(v, id){
       ${task?.description ? `<div style="margin-top:10px;background:#FFFBEB;border-radius:10px;padding:10px">Indicación: ${esc(task.description)}</div>` : ''}
       ${coord ? `<a class="btn" style="display:block;text-decoration:none;text-align:center;margin-top:12px;padding:13px;font-size:16px;background:#2A78D6;border-color:#2A78D6" href="https://www.google.com/maps/dir/?api=1&destination=${coord[0]},${coord[1]}" target="_blank" rel="noopener noreferrer">Ir al sitio (Google Maps)</a>` : ''}</div>
     ${closed ? `<div class="card" style="margin:0;text-align:center"><div style="display:flex;justify-content:center">${tkFigure(t, 80)}</div><h2 style="margin:6px 0">¡Listo!</h2><p class="muted">${t.status === 'cerrado' ? 'La oficina ya lo cargó en el cliente.' : 'Le pasamos el informe a la oficina para que lo cargue en el cliente.'}</p>${ins ? `<a href="#/informe/${esc(ins.id)}">Ver mi informe</a>` : ''}</div>` : `
+    <div id="t-lessons"></div>
     <div class="sm muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:0 4px">Tres pasos</div>
     <button class="tk-step ${s1 ? 'done' : 'now'}" id="st1"><span class="n">${s1 ? '✓' : '1'}</span><div><b>Llegué al sitio</b><div class="sm muted">${s1 ? 'Registrado ' + esc(fmtTime(t.arrived_at)) : 'Toca al llegar: guarda la hora y tu ubicación'}</div></div></button>
     <button class="tk-step ${s2 ? 'done' : s1 ? 'now' : ''}" id="st2"><span class="n">${s2 ? '✓' : '2'}</span><div><b>${ins ? (s2 ? 'Planilla completa' : 'Seguir con la planilla') : 'Completar la planilla'}</b><div class="sm muted">Correctivo del proyecto, con los datos del ticket ya cargados. Las fotos van en la planilla.</div></div></button>
     <button class="tk-big" id="st3" ${s2 ? '' : 'disabled'}>Realizado y normalizado</button>
     <div class="sm muted" style="text-align:center">${s2 ? 'Para el reloj del SLA y le pasa el informe a la oficina, firmado por vos.' : 'Se habilita cuando la planilla está completa.'}</div>`}
   </div>`;
+  if (typeof taskLessons === 'function') taskLessons($('#t-lessons'), 'reparacion', t.site_id ? [t.site_id] : [], t.id).catch(() => {});
   $('#st1')?.addEventListener('click', async () => {
     if (s1) return; if (!needOnline()) return;
     const pos = await getPos();

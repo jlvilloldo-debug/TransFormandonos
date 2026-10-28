@@ -266,6 +266,8 @@ async function viewTools(v){
     <div class="card"><h2 style="margin:0">🧰 Herramientas</h2><p class="muted sm" style="margin:6px 0 0">Funcionan también sin señal con lo que ya está descargado en el teléfono.</p></div>
     ${isManager() ? `<div class="card" id="tool-donde" style="cursor:pointer;border:2px solid #0F2A4A"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">📍</div><div><h2 style="margin:0">¿Dónde está cada uno?</h2>
       <p class="muted sm" style="margin:4px 0 0">Mapa con cada técnico y contratista sobre la localidad de su tarea: hoy, mañana o la semana. Para repartir mejor las tareas.</p></div></div><span class="btn" style="pointer-events:none">Abrir →</span></div></div>` : ''}
+    ${isManager() ? `<div class="card" id="tool-ctl" style="cursor:pointer;border:2px solid #7C3AED"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">📊</div><div><h2 style="margin:0">Control y desempeño</h2>
+      <p class="muted sm" style="margin:4px 0 0">Tablero de tareas por estado y vencimiento${['admin', 'pm'].includes(me.role) || me.is_superadmin ? '; ficha de cada recurso con sus indicadores y el seguimiento' : ''}.</p></div></div><span class="btn" style="pointer-events:none">Abrir →</span></div></div>` : '<div id="tool-ficha"></div>'}
     <div class="card" id="tool-shirt" style="cursor:pointer"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">👕</div><div><h2 style="margin:0">Mi camiseta</h2>
       <p class="muted sm" style="margin:4px 0 0">Elegí los colores de tu club para tu muñequito en el mapa.</p></div></div><span class="btn sec" style="pointer-events:none">Elegir →</span></div></div>
     ${cv ? `<div class="card" id="tool-veh" style="cursor:pointer;border:2px solid #2A78D6"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">🚗</div><div><h2 style="margin:0">Control de vehículos</h2>
@@ -287,6 +289,10 @@ async function viewTools(v){
   $('#tool-veh')?.addEventListener('click', () => { location.hash = '#/tools/veh'; });
   $('#tool-donde')?.addEventListener('click', () => { location.hash = '#/tools/donde'; });
   $('#tool-shirt')?.addEventListener('click', () => { location.hash = '#/tools/camiseta'; });
+  $('#tool-ctl')?.addEventListener('click', () => { location.hash = '#/control'; });
+  if ($('#tool-ficha') && online()) sb.rpc('perf_self_get').then(({ data }) => { const box = $('#tool-ficha'); if (!box || !data?.enabled || !data.my_staff) return;
+    box.innerHTML = `<div class="card" style="cursor:pointer;border:2px solid #7C3AED"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">📊</div><div><h2 style="margin:0">Mi ficha</h2><p class="muted sm" style="margin:4px 0 0">Tus indicadores del mes y las notas de seguimiento.</p></div></div><span class="btn" style="pointer-events:none">Ver →</span></div></div>`;
+    box.firstElementChild.onclick = () => { location.hash = '#/control/yo'; }; }).catch(() => {});
   if (typeof hhToolCount === 'function') hhToolCount($('#tool-hh-c'));
   $('#fr-new')?.addEventListener('click', () => newRouteModal(routes));
   fiberFlush();
@@ -883,6 +889,7 @@ function editRouteModal(r){
 
 /* ---------- exportar KMZ con las actualizaciones ---------- */
 async function exportFiberKMZ(ctx){
+  await needLib('jszip');
   if (!window.JSZip) return toast('No se pudo cargar el generador de KMZ.');
   const x = s => String(s ?? '').replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
   const { route, elements, events } = ctx, sp = n => (route.splices || []).find(s => s.n === n);

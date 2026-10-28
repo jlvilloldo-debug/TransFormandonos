@@ -1971,6 +1971,7 @@ async function dcScanQR(){
   catch { $('#qs-m').textContent = 'No se pudo usar la cámara. Revisá el permiso del navegador.'; return; }
   const video = $('#qs-v'); if (!video){ stop(); return; } video.srcObject = stream; await video.play().catch(() => {});
   const det = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
+  if (!det) needLib('jsqr').catch(() => {});
   const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
   const tick = async () => {
     if (!alive) return;
@@ -1994,7 +1995,7 @@ async function dcScanQR(){
    ===================================================================== */
 const dcXs = v => { if (v === null || v === undefined) return ''; if (typeof v === 'number') return v; const s = String(v); return /^[=+\-@\t\r]/.test(s) ? "'" + s : s; };
 function dcExportExcel(){
-  if (typeof XLSX === 'undefined') return toast('No se pudo cargar el generador de Excel.');
+  if (typeof XLSX === 'undefined') return void needLib('xlsx').then(dcExportExcel, e => toast(errText(e)));
   const I = DCS.I, wb = XLSX.utils.book_new(), add = (name, rows, widths) => { const ws = XLSX.utils.aoa_to_sheet(rows.map(r => r.map(dcXs))); if (widths) ws['!cols'] = widths.map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31)); };
   const rk = d => dcRackOf(d)?.data?.name || 'Fuera de rack';
   add('Resumen', [['Data center', I.dc.data.name], ['Cliente', I.dc.data.client || ''], ['Dirección', I.dc.data.address || ''], ['Exportado', fmtDT(new Date())], ['Por', dcWho()], [], ['Racks', I.racks.length], ['Equipos', I.devices.filter(d => !['ciego', 'ordenador'].includes(dcDevRole(d))).length], ['Conexiones', I.cables.length], ['Circuitos', I.circuits.length]], [22, 50]);
@@ -2129,6 +2130,7 @@ function dcImportModal(){
     if (!/\.(xlsx|xlsb|xls|xlsm)$/i.test(f.name)) return ($('#im-r').innerHTML = '<p class="err">Elegí un archivo de Excel.</p>');
     $('#im-r').innerHTML = '<p class="muted">Leyendo…</p>';
     try {
+      await needLib('xlsx');
       const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false, bookVBA: false, WTF: false });
       const sheets = wb.SheetNames.slice(0, 80).map(n => ({ name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null, blankrows: true }).slice(0, 2000) }));
       plan = dcBuildImport(dcParseRackBook(sheets));

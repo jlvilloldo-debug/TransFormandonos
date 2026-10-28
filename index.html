@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-my8sP9BZPYKgmxdbojfo99dH/z7ZsXDnvheLMh2x5hU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-qnut8DI0e0anmNc/BGw7iGySjSKAB2v9x+mcW+pWhJU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -17,8 +17,6 @@
 <link rel="stylesheet" href="leaflet.css">
 <script src="supabase.js"></script>
 <script src="leaflet.js"></script>
-<script src="jszip.min.js"></script>
-<script src="xlsx.full.min.js"></script>
 <style>
 :root{
   --navy:#0F2A4A; --navy-2:#1A3A6B; --green:#22B07D; --green-d:#178A61; --teal:#2BB3A6;
@@ -412,15 +410,11 @@ tr.sor-bad td{background:var(--red-bg)}
 
 <script src="proyectos.js"></script>
 <script src="fibra.js"></script>
-<script src="qrcode.js"></script>
-<script src="jsQR.js"></script>
-<script src="datacenter.js"></script>
 <script src="horas.js"></script>
 <script src="permisos.js"></script>
 <script src="vehiculos.js"></script>
 <script src="estadisticas.js"></script>
 <script src="tickets.js"></script>
-<script src="donde.js"></script>
 <script src="empresa.js"></script>
 <script>
 /* No se deja abrir la app dentro de otra página (evita que la tapen con una trampa para robar clics o claves) */
@@ -429,7 +423,21 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.3';
+const APP_VERSION = '5.6';
+/* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
+   Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', donde: 'donde.js', control: 'control.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', dc: () => typeof viewDC === 'function' };
+const _libP = {};
+function needLib(k){
+  if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
+  if (LIB_OK[k]()) return Promise.resolve();
+  const one = src => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.async = false;
+    s.onload = () => ok(); s.onerror = () => { s.remove(); ko(new Error('No se pudo cargar una parte de la app. Revisá la conexión y probá de nuevo.')); };
+    document.head.appendChild(s); });
+  return _libP[k] || (_libP[k] = [].concat(LIBS[k]).reduce((p, src) => p.then(() => one(src)), Promise.resolve()).catch(e => { delete _libP[k]; throw e; }));
+}
+window.addEventListener('load', () => setTimeout(() => { needLib('xlsx').catch(() => {}); needLib('jszip').catch(() => {}); }, 3000));
 /* ===================================================== */
 
 const LOGO = (s=34) => `<img src="icon-192.png" width="${s}" height="${s}" alt="Transformándonos" style="border-radius:${Math.round(s/4.5)}px;display:block">`;
@@ -1109,7 +1117,7 @@ const ONLINE_ONLY = ['org', 'admin'];
 async function route(){
   if (!me) return;
   if (leaveGuard){ await leaveGuard(); leaveGuard = null; }
-  const [, tab='home', id] = (location.hash || '#/home').split('/');
+  const [, tab='home', id, id2] = (location.hash || '#/home').split('/');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
   if (tab !== 'map' && typeof pmap !== 'undefined' && pmap){ pmap.remove(); pmap = null; }
   if (typeof fmap !== 'undefined' && fmap){ fmap.remove(); fmap = null; }
@@ -1127,11 +1135,12 @@ async function route(){
     else if (tab === 'map') await viewMap(v, id);
     else if (tab === 'proj' && id) await viewProject(v, id);
     else if (tab === 'proj') await viewProjects(v);
-    else if (tab === 'tools' && id === 'dc') await viewDC(v);
+    else if (tab === 'tools' && id === 'dc'){ await needLib('dc'); await viewDC(v); }
     else if (tab === 'tools' && id === 'hh') await viewHH(v);
     else if (tab === 'tools' && id === 'veh') await viewVeh(v);
-    else if (tab === 'tools' && id === 'donde') await viewDonde(v);
-    else if (tab === 'tools' && id === 'camiseta') await viewShirt(v);
+    else if (tab === 'tools' && id === 'donde'){ await needLib('donde'); await viewDonde(v); }
+    else if (tab === 'tools' && id === 'camiseta'){ await needLib('donde'); await viewShirt(v); }
+    else if (tab === 'control'){ await needLib('control'); await viewControl(v, id, id2); }
     else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
     else if (tab === 'tools') await viewTools(v);
@@ -1920,7 +1929,7 @@ const TASK_TYPES = {inspeccion:'Inspección', instalacion:'Instalación', repara
 const PRIORITIES = {normal:'Normal', alta:'Alta', critica:'Crítica'};
 const TASK_ST = {sin_asignar:'Sin asignar', asignada:'Asignada', vista:'Vista', en_curso:'En curso', completada:'Completada', aprobada:'Aprobada', rechazada:'Rechazada', cancelada:'Cancelada'};
 const TASK_PILL = {sin_asignar:'p-pend', asignada:'p-info', vista:'p-info', en_curso:'p-pend', completada:'p-ok', aprobada:'p-ok', rechazada:'p-bad', cancelada:''};
-const TASK_COLS = 'id,ticket_id,staff_ids,is_pending,origin_inspection_id,project_id,history,contract,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at';
+const TASK_COLS = 'id,ticket_id,staff_ids,promised_date,promise_changes,is_pending,origin_inspection_id,project_id,history,contract,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at';
 const taskOpen = t => !['completada','aprobada','cancelada'].includes(t.status);
 const dueDate = d => new Date(d + 'T23:59:59');
 const isOverdue = t => taskOpen(t) && dueDate(t.due_date) < new Date();
@@ -2081,14 +2090,33 @@ async function editTask(t, contrs, preset){
   };
 }
 
+/* lecciones aprendidas que aplican a esta tarea (las publica la oficina; sin culpables) */
+async function taskLessons(box, taskType, siteIds, refId){
+  if (!box) return;
+  let L = [];
+  try { L = await cached('lessons-pub', () => sb.from('lessons').select('id,title,happened,do_next,task_types,site_kinds,good').eq('status', 'publicada').order('updated_at', { ascending: false }).limit(300)); } catch { L = []; }
+  let kinds = new Set();
+  if (siteIds.length){ try { const sm = await loadSitesMap(); const ids = new Set(siteIds); (sm || []).forEach(s => { if (ids.has(s.id)) kinds.add(s.kind); }); } catch {} }
+  const hit = (L || []).filter(l => (!(l.task_types || []).length || l.task_types.includes(taskType)) && (!(l.site_kinds || []).length || l.site_kinds.some(k => kinds.has(k)))).slice(0, 8);
+  const canProp = canWrite() && !isContractor() && online();
+  if (!hit.length && !canProp){ box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="card" style="border:2px solid #F59E0B;margin-top:0">${hit.length ? `<details ${hit.length <= 2 ? 'open' : ''}><summary style="cursor:pointer;font-weight:700;font-size:16px">💡 ${hit.length} lección${hit.length === 1 ? '' : 'es'} para este tipo de trabajo</summary>
+    ${hit.map(l => `<div style="border-top:1px solid var(--line);padding:8px 0"><b>${l.good ? '👍' : '💡'} ${esc(l.title)}</b><div class="sm" style="margin-top:2px">${esc(l.do_next)}</div>${l.happened ? `<div class="sm muted">Pasó: ${esc(l.happened)}</div>` : ''}</div>`).join('')}</details>` : '<div class="sm muted">Todavía no hay lecciones para este tipo de trabajo.</div>'}
+    ${canProp ? '<button class="btn sec small" id="tl-prop" style="margin-top:8px">💡 Proponer una lección</button>' : ''}</div>`;
+  if (hit.length && online()){ const k = 'ls-seen:' + refId; try { if (!sessionStorage.getItem(k)){ sessionStorage.setItem(k, '1'); sb.rpc('lesson_seen', { p_ids: hit.map(l => l.id) }).then(() => {}); } } catch {} }
+  $('#tl-prop')?.addEventListener('click', async () => { try { await needLib('control'); } catch (e){ return toast(errText(e)); } ctLessonModal({ task_types: taskType ? [taskType] : [], site_kinds: [...kinds] }, null); });
+}
+
 async function viewTask(v, id){
   const t = await cached('task:' + id, () => sb.from('tasks').select(TASK_COLS).eq('id', id).single());
   const contrs = await loadContractors().catch(() => []);
   const c = contrs.find(x => x.id === t.contractor_id) || { name: (t.staff_ids || []).length ? 'Sin contratista' : 'Sin asignar' };
   const mineContractor = isContractor() && me.contractor_id === t.contractor_id;
-  if ((t.staff_ids || []).length && !(typeof HHS !== 'undefined' && HHS.staff?.length)){ try { await hhLoadBase(); } catch {} }
+  if (((t.staff_ids || []).length || c.staff_id) && !(typeof HHS !== 'undefined' && HHS.staff?.length)){ try { await hhLoadBase(); } catch {} }
   const mineStaff = (t.staff_ids || []).some(sid => (typeof HHS !== 'undefined' && HHS.staff || []).some(z => z.id === sid && z.user_id === me.id));
-  const canRun = canWrite() && (mineContractor || mineStaff || isManager()) && !['aprobada','cancelada'].includes(t.status) && !t.ticket_id;   // los de un ticket se hacen desde el ticket
+  const mineCrew = !!c.staff_id && !(t.staff_ids || []).length && (typeof HHS !== 'undefined' && HHS.staff || []).some(z => z.id === c.staff_id && z.user_id === me.id);
+  const canPromise = canWrite() && online() && (mineContractor || mineStaff || mineCrew) && ['asignada', 'vista', 'en_curso', 'rechazada'].includes(t.status);
+  const canRun = canWrite() && (mineContractor || mineStaff || mineCrew || isManager()) && !['aprobada','cancelada'].includes(t.status) && !t.ticket_id;   // los de un ticket se hacen desde el ticket
   if (mineContractor && t.status === 'asignada' && online()) sb.rpc('task_mark_seen', { p_task: id }).then(() => {});
   // inspecciones de esta tarea (servidor + teléfono)
   let srv = [];
@@ -2115,6 +2143,9 @@ async function viewTask(v, id){
         <div class="stat"><span>Asignada</span><b style="font-size:18px">${fmtDate(t.created_at)}</b><small>${t.seen_at ? 'Vista el ' + fmtDT(t.seen_at) : 'Todavía no la vio'}</small></div>
         <div class="stat"><span>Completada</span><b style="font-size:18px">${t.completed_at ? fmtDate(t.completed_at) : '—'}</b><small>${t.completed_at ? (new Date(t.completed_at) <= dueDate(t.due_date) ? 'a tiempo' : 'fuera de término') : ''}</small></div>
       </div>
+      ${canPromise || t.promised_date ? `<div style="margin-top:14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:12px 14px">
+        <b>📅 ${canPromise ? (t.promised_date ? 'Tu fecha de entrega' : '¿Cuándo la terminás?') : 'Fecha que prometió'}</b>${t.promised_date ? ` · <b>${esc(fmtDate(t.promised_date))}</b>${t.promise_changes ? ` <span class="muted sm">(la cambió ${t.promise_changes} ${t.promise_changes === 1 ? 'vez' : 'veces'})</span>` : ''}${t.completed_at ? (t.completed_at.slice(0, 10) <= t.promised_date ? ' <span class="pill p-ok">cumplida</span>' : ' <span class="pill p-bad">no cumplida</span>') : t.promised_date < todayStr() ? ' <span class="pill p-bad">pasó la fecha</span>' : ''}` : ''}
+        ${canPromise ? `<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><input type="date" id="t-prom" value="${esc(t.promised_date || '')}" min="${todayStr()}" style="width:auto"><button class="btn small" id="t-promok">${t.promised_date ? 'Cambiar fecha' : 'Me comprometo'}</button></div><div class="sm muted" style="margin-top:4px">Fecha límite de la oficina: ${esc(fmtDate(t.due_date))}. Cumplir lo que uno promete cuenta en tu ficha.</div>` : ''}</div>` : ''}
       ${t.description ? `<h3 style="margin-top:16px">Indicaciones</h3><p style="white-space:pre-wrap;margin-top:0">${esc(t.description)}</p>` : ''}
       ${t.origin_inspection_id ? `<p class="sm"><a href="#/informe/${esc(t.origin_inspection_id)}">Ver la inspección donde se detectó</a></p>` : ''}
       ${t.ticket_id ? `<a class="btn" style="margin-top:10px" href="#/tickets/${esc(t.ticket_id)}">🎫 Abrir el ticket (llegada, planilla y cierre)</a>` : ''}
@@ -2122,6 +2153,7 @@ async function viewTask(v, id){
         <div class="sm" style="margin-top:6px">${t.history.map(x => `<div style="padding:4px 0;border-bottom:1px solid var(--line)">${fmtDT(x.at)} · ${esc(x.by || '')}: ${x.from ? esc(x.from) : 'sin asignar'} → <b>${x.to ? esc(x.to) : 'sin asignar'}</b>${x.reason ? ` <span class="muted">(${esc(x.reason)})</span>` : ''}</div>`).join('')}</div></details>` : ''}
       ${t.review_comment || t.quality ? `<div class="banner ${t.status === 'rechazada' ? 'off' : 'trial'}" style="margin:14px 0 0"><span class="dot"></span><div><b>${t.status === 'rechazada' ? 'Rechazada: hay que rehacerla' : 'Revisión del supervisor'}</b>${t.quality ? ` · Calificación ${'★'.repeat(t.quality)}${'☆'.repeat(5 - t.quality)}` : ''}<div>${esc(t.review_comment || '')}</div></div></div>` : ''}
     </div>
+    <div id="t-lessons"></div>
     <div class="card"><h2>Sitios</h2>
       ${(t.sites || []).map((s, i) => { const r = forSite(s); return `<div class="item row between">
         <div><b>${s.done ? '✅ ' : ''}${esc(s.site_name)}</b><div class="muted sm">${r ? (r.status === 'completada' ? `Completada ${fmtDT(r.completed_at)}${r.max_score ? ' · Puntaje ' + pct(r.score, r.max_score) : ''}` : `En curso desde ${fmtDT(r.started_at)}`) + (r._dirty ? ' · por enviar' : '') : 'Sin iniciar'}</div></div>
@@ -2142,6 +2174,10 @@ async function viewTask(v, id){
       answers: {}, score: 0, max_score: 0, flagged: 0, flagged_items: [], lat: pos?.lat ?? null, lng: pos?.lng ?? null, task_id: t.id, _synced: false };
     await localSave(rec); location.hash = '#/insp/' + rec.id;
   });
+  taskLessons($('#t-lessons'), t.task_type, (t.sites || []).map(s => s.site_id).filter(Boolean), t.id).catch(() => {});
+  $('#t-promok')?.addEventListener('click', async () => { const d = $('#t-prom').value; if (!d) return toast('Elegí la fecha');
+    if (d > t.due_date && !confirm('Esa fecha es posterior a la fecha límite de la oficina (' + fmtDate(t.due_date) + '). ¿Prometer igual?')) return;
+    const { error } = await sb.rpc('task_promise', { p_task: t.id, p_date: d }); if (error) return toast(errText(error)); toast('Fecha registrada'); route(); });
   $('#t-wa')?.addEventListener('click', () => notifyWA(c, t));
   $('#t-assign')?.addEventListener('click', async () => {
     if (!needOnline()) return;
@@ -2204,15 +2240,18 @@ async function viewTask(v, id){
 
 async function viewContractors(v){
   if (!isManager()){ location.hash = '#/tasks'; return; }
-  const [contrs, { data: members }] = await Promise.all([loadContractors(), sb.from('profiles').select('id,full_name,email,role,contractor_id,active').eq('role', 'contratista')]);
+  const [contrs, { data: members }] = await Promise.all([loadContractors(), sb.from('profiles').select('id,full_name,email,role,contractor_id,active').eq('role', 'contratista'), (async () => { try { await hhLoadBase(); } catch {} })()]);
   const manage = canWrite() && online();
+  const staffOpts = (HHS.staff || []).filter(s => s.active && s.kind !== 'contratista');
+  const stName = id => staffOpts.find(s => s.id === id)?.name || (HHS.staff || []).find(s => s.id === id)?.name || '';
   v.innerHTML = `
     <div class="card"><div class="row between"><div class="row"><button class="btn sec small" data-go="#/tasks">← Tareas</button><h2 style="margin:0">Contratistas y cuadrillas</h2></div>
-      ${manage ? '<button class="btn" id="c-add">+ Contratista</button>' : ''}</div>
+      <div class="row" style="gap:6px">${manage ? '<button class="btn sec" id="c-link" title="Une cada cuadrilla con el técnico de Recursos que tiene el mismo nombre">🔗 Vincular cuadrillas por nombre</button><button class="btn" id="c-add">+ Contratista</button>' : ''}</div></div>
       <p class="muted sm" style="margin:10px 0 0">Para que una contratista entre a la app: pasale el código de la empresa (en <b>Mi empresa</b>), que cree su cuenta con “Tengo un código”, y después cambiale el rol a <b>Contratista</b> eligiendo a cuál pertenece. Cada usuario ocupa un lugar del cupo de la empresa.</p></div>
-    <div class="card">${contrs.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Contacto</th><th class="hide-sm">WhatsApp</th><th class="hide-sm">Usuarios</th><th>Estado</th><th></th></tr></thead><tbody>
+    <div class="card">${contrs.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Contacto</th><th class="hide-sm">WhatsApp</th><th class="hide-sm">Usuarios</th><th>Es el técnico</th><th>Estado</th><th></th></tr></thead><tbody>
       ${contrs.map(c => { const us = (members || []).filter(m => m.contractor_id === c.id); return `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.contact_name || '')}<div class="muted sm">${esc(c.email || '')}</div></td>
         <td class="hide-sm">${esc(c.phone || '—')}</td><td class="hide-sm">${us.length ? us.map(u => esc(u.full_name || u.email)).join(', ') : '<span class="muted">Sin usuarios</span>'}</td>
+        <td>${c.staff_id ? '👤 ' + esc(stName(c.staff_id)) : '<span class="muted sm">— (contratista)</span>'}</td>
         <td><span class="pill ${c.active ? 'p-ok' : 'p-bad'}">${c.active ? 'Activa' : 'Inactiva'}</span></td>
         <td>${manage ? `<button class="btn sec small" data-ec="${c.id}">Editar</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">Todavía no hay contratistas.</div>'}</div>`;
   const edit = c => {
@@ -2223,13 +2262,14 @@ async function viewContractors(v){
       <div class="row"><div class="grow"><label>WhatsApp (con código de área)</label><input id="cc-p" inputmode="tel" value="${esc(c.phone || '')}" placeholder="Ej.: 342 4123456"></div>
         <div class="grow"><label>Email</label><input id="cc-e" type="email" value="${esc(c.email || '')}"></div></div>
       <label>Notas</label><input id="cc-no" value="${esc(c.notes || '')}">
+      <label>¿Esta cuadrilla es un técnico propio?</label><select id="cc-st"><option value="">No: es una contratista (SIP, Sagir…) · se ve como camioncito</option>${staffOpts.map(s => `<option value="${esc(s.id)}" ${c.staff_id === s.id ? 'selected' : ''}>Sí: es ${esc(s.name)} · se ve como persona con su camiseta</option>`).join('')}</select>
       <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="cc-a" style="width:auto" ${c.active ? 'checked' : ''}> Activa</label>
       <div class="err" id="cc-err"></div>
       <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="cc-x">Cancelar</button><button class="btn" id="cc-ok">Guardar</button></div>`);
     $('#cc-x').onclick = m.close;
     $('#cc-ok').onclick = async () => {
       const row = { name: $('#cc-n').value.trim(), contact_name: $('#cc-ct').value.trim() || null, phone: $('#cc-p').value.trim() || null,
-        email: $('#cc-e').value.trim() || null, notes: $('#cc-no').value.trim() || null, active: $('#cc-a').checked };
+        email: $('#cc-e').value.trim() || null, notes: $('#cc-no').value.trim() || null, active: $('#cc-a').checked, staff_id: $('#cc-st').value || null };
       if (!row.name) return ($('#cc-err').textContent = 'Poné un nombre.');
       const { error } = await (isNew ? sb.from('contractors').insert({ ...row, org_id: me.org_id }) : sb.from('contractors').update(row).eq('id', c.id));
       if (error) return ($('#cc-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe una contratista con ese nombre.' : errText(error));
@@ -2237,6 +2277,8 @@ async function viewContractors(v){
     };
   };
   $('#c-add')?.addEventListener('click', () => edit(null));
+  $('#c-link')?.addEventListener('click', async () => { const { data, error } = await sb.rpc('contr_autolink'); if (error) return toast(errText(error));
+    toast(data ? `Se vincularon ${data} cuadrilla(s). Revisá las que quedaron sin vincular y elegí el técnico en Editar.` : 'No se encontraron nombres que coincidan. Vinculalas a mano en Editar.'); route(); });
   v.querySelectorAll('[data-ec]').forEach(b => b.onclick = () => edit(contrs.find(c => c.id === b.dataset.ec)));
 }
 
@@ -2409,7 +2451,7 @@ function siteKind(t){
   return 'otro';
 }
 function downloadSitesModel(){
-  if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
+  if (!window.XLSX) return void needLib('xlsx').then(downloadSitesModel, e => toast(errText(e)));
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([SITE_XL_HEAD, ['05 - ZUBIZARRETA', 'Sala técnica', 'Nueva York 3952', 'CABA', 'Buenos Aires', 'ASI – Salas de Carrier', '', '', '', '', 'Hospital Zubizarreta'],
     ['San Javier', 'EPI', '', 'San Javier', 'Santa Fe', 'Santa Fe + Conectada', '15', -30.5795, -59.9318, 4, '']]);
@@ -2461,6 +2503,7 @@ async function importSitesExcel(file, existing){
   };
 }
 async function readKML(file){
+  await needLib('jszip');
   if (file.size > 30 * 1024 * 1024) throw new Error('El archivo supera 30 MB.');
   if (/\.kml$/i.test(file.name)) return await file.text();
   if (!window.JSZip) throw new Error('No se pudo cargar el lector de KMZ.');
@@ -2597,7 +2640,7 @@ function rowsToTemplate(rows){
   return { def: { sections: sections.filter(s => s.items.length) }, warns, nq };
 }
 function downloadModel(){
-  if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
+  if (!window.XLSX) return void needLib('xlsx').then(downloadModel, e => toast(errText(e)));
   const ex = [XL_HEAD,
     ['Datos del sitio','Datos generales','Subtítulo','','','','','','',''],
     ['Datos del sitio','Foto general del sitio','Foto','Sí','','','','','',''],
@@ -2626,7 +2669,7 @@ function downloadModel(){
   XLSX.writeFile(wb, 'Modelo_plantilla_InspectApp.xlsx');
 }
 function exportTemplate(t){
-  if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
+  if (!window.XLSX) return void needLib('xlsx').then(() => exportTemplate(t), e => toast(errText(e)));
   const wb = XLSX.utils.book_new(); const ws = xlSheet(templateToRows(t.definition));
   ws['!cols'] = [{wch:30},{wch:60},{wch:13},{wch:11},{wch:10},{wch:8},{wch:8},{wch:8},{wch:30},{wch:18}];
   XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');

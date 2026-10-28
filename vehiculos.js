@@ -414,6 +414,7 @@ function vehEditModal(v, after){
   };
 }
 function vehQR(v){
+  if (typeof dcQRSVG !== 'function') return void needLib('dc').then(() => vehQR(v), e => toast(errText(e)));
   const svg = typeof dcQRSVG === 'function' ? dcQRSVG(vehLink(v.id)) : '';
   const m = modal(`<div style="text-align:center"><div style="width:220px;margin:0 auto">${svg}</div><h2 style="margin:10px 0 2px"><span class="veh-plate" style="font-size:22px">${esc(v.plate)}</span></h2><div class="muted sm">${esc([v.brand, v.model].filter(Boolean).join(' '))}</div>
     <p class="sm">Pegalo en el parabrisas: escaneándolo con la cámara del celular se abre "Iniciar jornada" con este vehículo ya elegido.</p>

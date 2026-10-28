@@ -164,6 +164,7 @@ const EMP_BK = [
 async function empBackup(btn){
   if (!isAdmin() || !needOnline()) return;
   if (!confirm('Se descarga un Excel con todos los datos de la empresa. Guardalo en un lugar seguro: tiene información de todo el personal.')) return;
+  try { await needLib('xlsx'); } catch (e){ return toast(errText(e)); }
   btn.disabled = true; const t0 = btn.textContent;
   const X = v => { if (v == null) return ''; let s = typeof v === 'object' ? JSON.stringify(v) : v;
     if (typeof s === 'string'){ if (s.length > 32000) s = s.slice(0, 32000) + '…(recortado)'; if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; } return s; };

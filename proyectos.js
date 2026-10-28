@@ -757,6 +757,7 @@ function addSitesModal(ctx){
    ===================================================================== */
 const XL_MAX_BYTES = 15 * 1024 * 1024, XL_MAX_ROWS = 20000, XL_MAX_COLS = 200;
 async function readWorkbook(file){
+  await needLib('xlsx').catch(() => {});
   if (!window.XLSX) throw new Error('No se pudo cargar el lector de Excel.');
   if (!file) throw new Error('No se eligió archivo.');
   if (file.size > XL_MAX_BYTES) throw new Error('El archivo supera 15 MB.');
@@ -773,6 +774,7 @@ function sheetRows(ws){
 const xlCell = c => typeof c === 'string' && /^[=+\-@\t\r]/.test(c) ? "'" + c : c;
 function xlSheet(aoa){ return XLSX.utils.aoa_to_sheet(aoa.map(r => r.map(xlCell))); }
 function xlSave(name, sheets){
+  if (!window.XLSX) return void needLib('xlsx').then(() => xlSave(name, sheets), e => toast(errText(e)));
   const wb = XLSX.utils.book_new();
   for (const [n, aoa, cols] of sheets){ const ws = xlSheet(aoa); if (cols) ws['!cols'] = cols.map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, n.slice(0, 31)); }
   XLSX.writeFile(wb, name.replace(/[\\/:*?"<>|]/g, '').slice(0, 120) + '.xlsx');

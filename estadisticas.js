@@ -151,6 +151,7 @@ function stxImportModal(after){
     try {
       if (f.size > 15 * 1024 * 1024) throw new Error('El archivo supera 15 MB.');
       if (!/\.(xlsx|xlsm|xls)$/i.test(f.name)) throw new Error('Tiene que ser un Excel (.xlsx).');
+      await needLib('xlsx');
       const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: false, cellFormula: false, cellHTML: false, cellStyles: false, bookVBA: false, sheetRows: 3000 });
       parsed = stxParse(wb); sites = await stxSites();
     } catch (e){ $('#sx-r').innerHTML = `<p class="err">${esc(errText(e))}</p>`; return; }
