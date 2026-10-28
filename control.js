@@ -7,7 +7,7 @@
    Los números los calcula la base (perf_kpis), que también decide quién ve qué.
    Se carga recién cuando se abre (no pesa en el arranque).
    ===================================================================== */
-const CT = { proj: '', who: '', q: '', month: null, info: null };
+const CT = { proj: '', who: '', q: '', month: null, info: null, pf: '' };   // pf: proyecto elegido en Personas / ficha / objetivos
 const ctMonthKey = d => d.slice(0, 7);
 const ctRange = ym => { const [y, m] = ym.split('-').map(Number); const a = `${ym}-01`; const e = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); return [a, e]; };
 const ctMonthAdd = (ym, n) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
@@ -40,6 +40,9 @@ async function ctInfo(){
   if (!CT.info){ const { data, error } = await sb.rpc('perf_self_get'); if (error) throw error; CT.info = data || {}; }
   return CT.info;
 }
+async function ctProjOpts(){ CT.plist = CT.plist || (await loadProjects().catch(() => [])).filter(p => p.active !== false); return CT.plist; }
+const ctProjSel = (id, val, empty = 'Todos los proyectos') => `<select id="${id}" style="width:auto"><option value="">${empty}</option>${(CT.plist || []).map(p => `<option value="${esc(p.id)}" ${val === p.id ? 'selected' : ''}>${esc(p.short_name || p.name)}</option>`).join('')}</select>`;
+const ctProjName = id => (CT.plist || []).find(p => p.id === id)?.short_name || (CT.plist || []).find(p => p.id === id)?.name || '';
 const ctIsFin = () => me && (['admin', 'pm'].includes(me.role) || me.is_superadmin);
 
 async function viewControl(v, sub, id){
@@ -120,21 +123,24 @@ const ctGps = r => ctPct(r.insp_gps || 0, r.insp_done || 0);
 async function ctPeople(v, tabs){
   CT.month = CT.month || ctMonthKey(todayStr());
   const [a, b] = ctRange(CT.month);
-  const [{ data, error }, info] = await Promise.all([sb.rpc('perf_kpis', { p_from: a, p_to: b, p_staff: null }), ctInfo()]);
+  await ctProjOpts();
+  const [{ data, error }, info] = await Promise.all([sb.rpc('perf_kpis', { p_from: a, p_to: b, p_staff: null, p_project: CT.pf || null }), ctInfo()]);
+  const rowsAll = (data || []);
   if (error) throw error;
-  const rows = (data || []);
+  const rows = CT.pf ? rowsAll.filter(r => (r.tasks_done || 0) + (r.tk_done || 0) + (r.tasks_overdue || 0) + (r.insp_done || 0) > 0) : rowsAll;
   const cell = (val, sem, suf = '') => `<span class="ct-dot" style="background:${CT_SEM[sem][1]};color:${CT_SEM[sem][0]}">${val == null ? '—' : val + suf}</span>`;
-  v.innerHTML = `${tabs}<div class="card"><div class="row between" style="gap:10px;flex-wrap:wrap"><div><h1 style="margin:0">👥 Personas · ${esc(ctMonthTxt(CT.month))}</h1><div class="muted sm">Indicadores que salen solos de lo que registra la app. Tocá una persona para ver su ficha.</div></div>
-      <div class="row" style="gap:6px"><button class="btn sec" id="ct-prev">‹</button><button class="btn sec" id="ct-next" ${CT.month >= ctMonthKey(todayStr()) ? 'disabled' : ''}>›</button></div></div>
+  v.innerHTML = `${tabs}<div class="card"><div class="row between" style="gap:10px;flex-wrap:wrap"><div><h1 style="margin:0">👥 Personas · ${esc(ctMonthTxt(CT.month))}${CT.pf ? ' · ' + esc(ctProjName(CT.pf)) : ''}</h1><div class="muted sm">Indicadores que salen solos de lo que registra la app. Tocá una persona para ver su ficha.</div></div>
+      <div class="row" style="gap:6px">${ctProjSel('ct-pf', CT.pf)}<button class="btn sec" id="ct-prev">‹</button><button class="btn sec" id="ct-next" ${CT.month >= ctMonthKey(todayStr()) ? 'disabled' : ''}>›</button></div></div>
     ${canWrite() ? `<label class="ct-switch" style="margin-top:12px"><input type="checkbox" id="ct-self" ${info.enabled ? 'checked' : ''} style="width:auto;margin:0"><div><b>Cada recurso ve su propia ficha</b><div class="sm muted">Si lo activás, cada técnico ve SOLO la suya en Más → Mi ficha (nunca la de otros ni las comparaciones con el equipo).</div></div></label>` : ''}
     <div class="tblwrap" style="margin-top:12px"><table class="tbl ct-tbl"><thead><tr><th>Persona</th><th class="num">Tareas</th><th class="num">Tickets</th><th class="num">A tiempo</th><th class="num">Volvieron</th><th class="num">Rechazos</th><th class="num">Planillas en el sitio</th><th class="num">Vencidas</th><th class="num">Horas</th></tr></thead><tbody>
     ${rows.map(r => { const ot = ctOnTime(r), gp = ctGps(r);
       return `<tr class="click" data-p="${esc(r.staff_id)}"><td><b>${esc(r.name)}</b></td><td class="num">${r.tasks_done}</td><td class="num">${r.tk_done}</td>
         <td class="num">${cell(ot, ctSem(ot, 85, 70), '%')}</td><td class="num">${cell(r.tk_repeat, ctSem(r.tk_repeat, 0, 1, true))}</td><td class="num">${cell(r.rejections, ctSem(r.rejections, 0, 2, true))}</td>
-        <td class="num">${cell(gp, ctSem(gp, 90, 70), '%')}</td><td class="num">${cell(r.tasks_overdue, ctSem(r.tasks_overdue, 0, 2, true))}</td><td class="num">${String(r.hours).replace('.', ',')}</td></tr>`; }).join('') || '<tr><td colspan="9" class="muted">No hay recursos cargados.</td></tr>'}
+        <td class="num">${cell(gp, ctSem(gp, 90, 70), '%')}</td><td class="num">${cell(r.tasks_overdue, ctSem(r.tasks_overdue, 0, 2, true))}</td><td class="num">${String(r.hours).replace('.', ',')}</td></tr>`; }).join('') || `<tr><td colspan="9" class="muted">${CT.pf ? 'Nadie trabajó en este proyecto en el mes.' : 'No hay recursos cargados.'}</td></tr>`}
     </tbody></table></div>
     <p class="muted sm">A tiempo = tareas cerradas dentro de su fecha + tickets normalizados dentro del SLA · Volvieron = otro ticket en el mismo sitio dentro de los 30 días · Planillas en el sitio = cargadas cerca del sitio (GPS) · Vencidas = asignadas y sin cerrar.</p></div>`;
   v.querySelectorAll('[data-p]').forEach(r => r.onclick = () => { location.hash = '#/control/p/' + r.dataset.p; });
+  $('#ct-pf').onchange = e => { CT.pf = e.target.value; ctPeople(v, tabs); };
   $('#ct-prev').onclick = () => { CT.month = ctMonthAdd(CT.month, -1); ctPeople(v, tabs); };
   $('#ct-next').onclick = () => { CT.month = ctMonthAdd(CT.month, 1); ctPeople(v, tabs); };
   $('#ct-self')?.addEventListener('change', async e => { const on = e.target.checked;
@@ -148,19 +154,21 @@ async function ctFicha(v, staffId, opt = {}){
   const self = !!opt.self, preview = !!opt.preview;
   CT.month = CT.month || ctMonthKey(todayStr());
   const months = [...Array(6)].map((_, i) => ctMonthAdd(CT.month, i - 5));
-  const q = ym => { const [a, b] = ctRange(ym); return sb.rpc('perf_kpis', { p_from: a, p_to: b, p_staff: staffId }); };
+  await ctProjOpts();
+  const PF = CT.pf || null;
+  const q = ym => { const [a, b] = ctRange(ym); return sb.rpc('perf_kpis', { p_from: a, p_to: b, p_staff: staffId, p_project: PF }); };
   const [a, b] = ctRange(CT.month);
   const [cur, team, hist, notes, shirt, qcr, prm, raci, plans] = await Promise.all([
     q(CT.month),
-    self || preview ? Promise.resolve({ data: [] }) : sb.rpc('perf_kpis', { p_from: a, p_to: b, p_staff: null }),
+    self || preview ? Promise.resolve({ data: [] }) : sb.rpc('perf_kpis', { p_from: a, p_to: b, p_staff: null, p_project: PF }),
     Promise.all(months.map(q)),
     sb.from('perf_notes').select('id,kind,body,by_name,created_at').eq('staff_id', staffId).order('created_at', { ascending: false }).limit(50).then(r => r.data || []).catch(() => []),
     self ? sb.rpc('my_shirt').then(r => r.data?.shirt).catch(() => null) : sb.from('hh_staff').select('shirt').eq('id', staffId).maybeSingle().then(r => r.data?.shirt).catch(() => null),
     needLib('donde').catch(() => {}),
   ]).then(async x => { [x[5], x[6], x[7], x[8]] = await Promise.all([
-      sb.rpc('perf_qc', { p_from: a, p_to: b, p_staff: staffId }).then(r => (r.data || [])[0] || null).catch(() => null),
-      sb.rpc('perf_promises', { p_from: a, p_to: b, p_staff: staffId }).then(r => (r.data || [])[0] || null).catch(() => null),
-      sb.from('raci').select('activity,cells,project_id').limit(1000).then(r => (r.data || []).filter(z => z.cells && z.cells[staffId])).catch(() => []),
+      sb.rpc('perf_qc', { p_from: a, p_to: b, p_staff: staffId, p_project: PF }).then(r => (r.data || [])[0] || null).catch(() => null),
+      sb.rpc('perf_promises', { p_from: a, p_to: b, p_staff: staffId, p_project: PF }).then(r => (r.data || [])[0] || null).catch(() => null),
+      sb.from('raci').select('activity,cells,project_id').limit(1000).then(r => (r.data || []).filter(z => z.cells && z.cells[staffId] && (!PF || z.project_id === PF))).catch(() => []),
       sb.from('pdca').select('*').eq('staff_id', staffId).order('created_at', { ascending: false }).limit(20).then(r => r.data || []).catch(() => []),
     ]); return x; });
   if (cur.error) throw cur.error;
@@ -177,8 +185,8 @@ async function ctFicha(v, staffId, opt = {}){
   v.innerHTML = `${opt.tabs || ''}<div class="card">
     ${preview ? '<div class="banner trial ct-noprint" style="margin:0 0 12px"><span class="dot"></span><div><b>Vista previa: así ve su ficha el recurso</b> (sin comparaciones con el equipo). <a href="#" id="ct-endprev">Volver a la ficha completa</a></div></div>' : ''}
     <div class="row between" style="gap:12px;flex-wrap:wrap"><div class="row" style="gap:12px;flex-wrap:nowrap">${typeof shirtFig === 'function' ? shirtFig(shirt, 'parado', 64) : ''}
-      <div><h1 style="margin:0">${self ? 'Mi ficha' : esc(r.name)}</h1><div class="muted sm">${esc(ctMonthTxt(CT.month))}${self ? ' · ' + esc(r.name) : ''}</div></div></div>
-      <div class="row ct-noprint" style="gap:6px;flex-wrap:wrap"><button class="btn sec" id="ct-prev">‹</button><button class="btn sec" id="ct-next" ${CT.month >= ctMonthKey(todayStr()) ? 'disabled' : ''}>›</button>
+      <div><h1 style="margin:0">${self ? 'Mi ficha' : esc(r.name)}</h1><div class="muted sm">${esc(ctMonthTxt(CT.month))}${self ? ' · ' + esc(r.name) : ''}${PF ? ' · solo ' + esc(ctProjName(PF)) : ' · todos los proyectos'}</div></div></div>
+      <div class="row ct-noprint" style="gap:6px;flex-wrap:wrap">${ctProjSel('ct-fpf', CT.pf)}<button class="btn sec" id="ct-prev">‹</button><button class="btn sec" id="ct-next" ${CT.month >= ctMonthKey(todayStr()) ? 'disabled' : ''}>›</button>
         ${fin ? '<button class="btn sec" id="ct-prevw">👁 Ver como lo ve él</button>' : ''}<button class="btn sec" id="ct-print">🖨 Imprimir / PDF</button>${!self ? '<a class="btn sec" href="#/control/personas">← Personas</a>' : ''}</div></div>
     <div class="ct-kpis" style="margin-top:14px">
       ${k('Trabajos cerrados', work, work ? 'ok' : 'na', cmp(`${r.tasks_done} tareas · ${r.tk_done} tickets`, x => (x.tasks_done || 0) + (x.tk_done || 0)))}
@@ -199,7 +207,7 @@ async function ctFicha(v, staffId, opt = {}){
         <li><b>Volvieron</b>: el problema no quedó resuelto (outcome), aunque la tarea se haya cerrado (output).</li>
         <li><b>Rechazos</b>: el supervisor la devolvió para rehacer.</li>
         <li>Son hechos registrados por la app, no opiniones. La evaluación la hace la persona responsable con esta información a la vista.</li></ul></div></div>
-    ${raci.length ? `<h2 style="margin:18px 0 4px">🧩 Responsabilidades (RACI)</h2><div class="sm">${['A', 'R', 'C', 'I'].map(L => { const n = raci.filter(z => z.cells[staffId] === L); return n.length ? `<div style="margin-top:4px"><b>${CT_RACI[L][0]}</b> · ${n.map(z => esc(z.activity)).join(' · ')}</div>` : ''; }).join('')}</div>` : ''}
+    ${raci.length ? `<h2 style="margin:18px 0 4px">🧩 Responsabilidades (RACI)</h2><div class="sm">${['A', 'R', 'C', 'I'].map(L => { const n = raci.filter(z => z.cells[staffId] === L); return n.length ? `<div style="margin-top:4px"><b>${CT_RACI[L][0]}</b> · ${n.map(z => esc(z.activity) + (PF ? '' : ` <span class="muted">(${esc(ctProjName(z.project_id))})</span>`)).join(' · ')}</div>` : ''; }).join('')}</div>` : ''}
     <div class="row between" style="margin:18px 0 4px"><h2 style="margin:0">🔄 Planes de mejora (PDCA)</h2>${fin && canWrite() ? '<button class="btn sec small ct-noprint" id="pd-new">+ Plan de mejora</button>' : ''}</div>
     ${plans.map(pl => ctPdcaCard(pl, ctMetricNow(pl.metric, { r, qcr, prm }), fin && canWrite())).join('') || '<p class="muted sm">No hay planes de mejora.</p>'}
     <h2 style="margin:18px 0 4px">Seguimiento</h2>
@@ -211,6 +219,7 @@ async function ctFicha(v, staffId, opt = {}){
   const cur3 = { r, qcr, prm };
   $('#pd-new')?.addEventListener('click', () => ctPdcaModal({ staff_id: staffId }, cur3, again));
   v.querySelectorAll('[data-pd]').forEach(bt => bt.onclick = () => ctPdcaModal(plans.find(x => x.id === bt.dataset.pd), cur3, again));
+  $('#ct-fpf').onchange = e => { CT.pf = e.target.value; again(); };
   $('#ct-prev').onclick = () => { CT.month = ctMonthAdd(CT.month, -1); again(); };
   $('#ct-next').onclick = () => { CT.month = ctMonthAdd(CT.month, 1); again(); };
   $('#ct-print').onclick = () => window.print();
@@ -558,6 +567,7 @@ async function ctRaci(v, tabs){
       <select id="rc-p" style="width:auto">${projects.map(p => `<option value="${esc(p.id)}" ${p.id === CT.rp ? 'selected' : ''}>${esc(p.short_name || p.name)}</option>`).join('') || '<option value="">Sin proyectos</option>'}</select></div>
     ${edit && CT.rp ? `<div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap"><input id="rc-a" maxlength="200" placeholder="Nueva actividad" style="flex:1;min-width:220px"><button class="btn sec" id="rc-add">+ Actividad</button>
       ${!rows.length ? '<button class="btn sec" id="rc-def">Cargar actividades típicas</button>' : ''}
+      <select id="rc-from" style="width:auto"><option value="">📋 Copiar de otro proyecto…</option>${projects.filter(p => p.id !== CT.rp).map(p => `<option value="${esc(p.id)}">${esc(p.short_name || p.name)}</option>`).join('')}</select>
       <select id="rc-col" style="width:auto"><option value="">+ Persona en la matriz</option>${staff.filter(s => !cols.includes(s)).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></div>` : ''}</div>
     <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr><th>Actividad</th>${cols.map(s => `<th style="text-align:center;white-space:normal;min-width:70px;font-size:12px">${esc(s.name)}</th>`).join('')}${edit ? '<th></th>' : ''}</tr></thead><tbody>
       ${rows.map(r => `<tr><td><b>${esc(r.activity)}</b>${warn(r)}</td>${cols.map(s => cell(r, s)).join('')}${edit ? `<td><button class="iconbtn" data-rdel="${esc(r.id)}" title="Borrar" aria-label="Borrar">🗑</button></td>` : ''}</tr>`).join('') || `<tr><td colspan="${cols.length + 2}" class="muted">Todavía no hay actividades.</td></tr>`}
@@ -567,6 +577,10 @@ async function ctRaci(v, tabs){
   $('#rc-p').onchange = e => { CT.rp = e.target.value; again(); };
   $('#rc-col')?.addEventListener('change', e => { if (!e.target.value) return; (CT.rcols[CT.rp] = CT.rcols[CT.rp] || []).push(e.target.value); again(); });
   $('#rc-add')?.addEventListener('click', async () => { const a = $('#rc-a').value.trim(); if (!a) return; const { error } = await sb.from('raci').insert({ org_id: me.org_id, project_id: CT.rp, activity: a, sort: (rows.length + 1) * 10, cells: {} }); if (error) return toast(errText(error)); again(); });
+  $('#rc-from')?.addEventListener('change', async e => { const from = e.target.value; if (!from) return;
+    const keep = confirm('¿Copiar también las personas (R/A/C/I)?\nAceptar = actividades y personas · Cancelar = solo las actividades');
+    const { data, error } = await sb.rpc('raci_copy', { p_from: from, p_to: CT.rp, p_people: keep }); if (error) return toast(errText(error));
+    toast(data ? `Se copiaron ${data} actividad(es)` : 'No había actividades nuevas para copiar'); again(); });
   $('#rc-def')?.addEventListener('click', async () => { const { error } = await sb.from('raci').insert(RACI_DEF.map((a, i) => ({ org_id: me.org_id, project_id: CT.rp, activity: a, sort: (i + 1) * 10, cells: {} }))); if (error) return toast(errText(error)); again(); });
   v.querySelectorAll('[data-rdel]').forEach(b => b.onclick = async () => { if (!confirm('¿Borrar la actividad?')) return; const { error } = await sb.from('raci').delete().eq('id', b.dataset.rdel); if (error) return toast(errText(error)); again(); });
   v.querySelectorAll('[data-rc]').forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.rc); const cells = { ...(r.cells || {}) }; const cur = cells[b.dataset.rs] || '';
@@ -580,14 +594,20 @@ async function ctOgsm(v, tabs){
   CT.oy = CT.oy || Number(todayStr().slice(0, 4));
   const fin = ctIsFin(), edit = fin && canWrite();
   const a = `${CT.oy}-01-01`, b0 = `${CT.oy}-12-31`, b = b0 < todayStr() ? b0 : todayStr();
-  const [items, team, qcs, prom] = await Promise.all([
+  await ctProjOpts();
+  const OP = CT.op || null;   // null = toda la empresa
+  const pq = q => OP ? q.eq('project_id', OP) : q;
+  const [itemsAll, team, qcs, prom, ptasks] = await Promise.all([
     sb.from('ogsm_items').select('*').eq('year', CT.oy).order('sort').order('updated_at').then(r => r.data || []),
-    fin && a <= b ? sb.rpc('perf_kpis', { p_from: a, p_to: b, p_staff: null }).then(r => r.data || []).catch(() => []) : Promise.resolve([]),
-    sb.from('qc_audits').select('status').gte('done_at', a).lte('done_at', b + 'T23:59:59').limit(5000).then(r => r.data || []).catch(() => []),
-    sb.from('tasks').select('promised_date,completed_at,status').gte('promised_date', a).lt('promised_date', b < todayStr() ? b : todayStr()).limit(5000).then(r => r.data || []).catch(() => []),
+    fin && a <= b ? sb.rpc('perf_kpis', { p_from: a, p_to: b, p_staff: null, p_project: OP }).then(r => r.data || []).catch(() => []) : Promise.resolve([]),
+    sb.from('qc_audits').select('status,task_id').gte('done_at', a).lte('done_at', b + 'T23:59:59').limit(5000).then(r => r.data || []).catch(() => []),
+    pq(sb.from('tasks').select('promised_date,completed_at,status').gte('promised_date', a).lt('promised_date', b < todayStr() ? b : todayStr())).limit(5000).then(r => r.data || []).catch(() => []),
+    OP ? sb.from('tasks').select('id').eq('project_id', OP).limit(10000).then(r => new Set((r.data || []).map(x => x.id))).catch(() => new Set()) : Promise.resolve(null),
   ]);
+  const items = itemsAll.filter(x => (x.project_id || null) === OP);
+  const qcs2 = ptasks ? qcs.filter(x => ptasks.has(x.task_id)) : qcs;
   const S = k => team.reduce((s, x) => s + (x[k] || 0), 0);
-  const qd = qcs.filter(x => ['ok', 'observada', 'rechazada'].includes(x.status)), pv = prom.filter(x => x.status !== 'cancelada');
+  const qd = qcs2.filter(x => ['ok', 'observada', 'rechazada'].includes(x.status)), pv = prom.filter(x => x.status !== 'cancelada');
   const auto = { a_tiempo: team.length ? ctPct(S('tasks_ontime') + S('tk_in_sla'), S('tasks_done') + S('tk_done')) : null, gps: team.length ? ctPct(S('insp_gps'), S('insp_done')) : null,
     repetidos: team.length ? S('tk_repeat') : null, rechazos: team.length ? S('rejections') : null, vencidas: team.length ? S('tasks_overdue') : null,
     qc_ok: qd.length ? ctPct(qd.filter(x => x.status === 'ok').length, qd.length) : null, promesas: pv.length ? ctPct(pv.filter(x => x.completed_at && x.completed_at.slice(0, 10) <= x.promised_date).length, pv.length) : null };
@@ -601,18 +621,19 @@ async function ctOgsm(v, tabs){
   const btn = (kind, parent, label) => edit ? `<button class="btn sec small" data-oadd="${kind}" data-op="${esc(parent || '')}">${label}</button>` : '';
   const ed = it => edit ? `<button class="iconbtn" data-oed="${esc(it.id)}" title="Editar" aria-label="Editar">✏️</button>` : '';
   const objs = items.filter(x => x.kind === 'objetivo');
-  v.innerHTML = `${tabs}<div class="card"><div class="row between" style="gap:10px;flex-wrap:wrap"><div><h1 style="margin:0">🧭 Objetivos ${CT.oy} · OGSM</h1><div class="muted sm"><b>O</b>bjetivo (a dónde vamos) · <b>G</b>oals, metas con número · <b>S</b>trategias (cómo) · <b>M</b>edidas (cómo sabemos que avanza). Las metas con indicador se calculan solas con lo que registra la app.${fin ? '' : ' Los editan el Admin y el PM.'}</div></div>
-      <div class="row" style="gap:6px"><button class="btn sec" id="og-prev">‹</button><button class="btn sec" id="og-next">›</button>${btn('objetivo', '', '+ Objetivo')}</div></div></div>
+  v.innerHTML = `${tabs}<div class="card"><div class="row between" style="gap:10px;flex-wrap:wrap"><div><h1 style="margin:0">🧭 Objetivos ${CT.oy} · ${OP ? esc(ctProjName(OP)) : 'Toda la empresa'}</h1><div class="muted sm"><b>O</b>bjetivo (a dónde vamos) · <b>G</b>oals, metas con número · <b>S</b>trategias (cómo) · <b>M</b>edidas (cómo sabemos que avanza). Las metas con indicador se calculan solas con lo que registra la app.${fin ? '' : ' Los editan el Admin y el PM.'}</div></div>
+      <div class="row" style="gap:6px">${ctProjSel('og-p', CT.op || '', 'Toda la empresa')}<button class="btn sec" id="og-prev">‹</button><button class="btn sec" id="og-next">›</button>${btn('objetivo', '', '+ Objetivo')}</div></div></div>
     ${objs.map(o => `<div class="card"><div class="row between"><h2 style="margin:0">🎯 ${esc(o.body)}</h2>${ed(o)}</div>
       <div class="grid2" style="margin-top:10px">
         <div><h3 style="margin:0 0 4px">Metas</h3>${kids(o.id, 'meta').map(g => `<div class="ct-note"><div class="row between"><b>${esc(g.body)}</b>${ed(g)}</div>${metric(g)}</div>`).join('') || '<p class="muted sm">Sin metas.</p>'}${btn('meta', o.id, '+ Meta')}</div>
         <div><h3 style="margin:0 0 4px">Estrategias y medidas</h3>${kids(o.id, 'estrategia').map(st => `<div class="ct-note"><div class="row between"><b>${esc(st.body)}</b><span>${ctPill(ST[st.status] || ST.en_curso)}${ed(st)}</span></div>
           <div class="sm muted">${st.owner_id ? 'Responsable: ' + esc(own(st.owner_id)) : 'Sin responsable'}</div>
           ${kids(st.id, 'medida').map(md => `<div style="border-top:1px dashed #E2E8F0;margin-top:6px;padding-top:4px"><div class="row between"><span class="sm">📏 ${esc(md.body)}</span>${ed(md)}</div>${metric(md)}</div>`).join('')}
-          ${btn('medida', st.id, '+ Medida')}</div>`).join('') || '<p class="muted sm">Sin estrategias.</p>'}${btn('estrategia', o.id, '+ Estrategia')}</div></div></div>`).join('') || `<div class="card"><p class="muted">Todavía no hay objetivos para ${CT.oy}.${edit ? ' Empezá con "+ Objetivo" (ej.: "Cumplir el SLA del Renglón 3 sin multas").' : ''}</p></div>`}`;
+          ${btn('medida', st.id, '+ Medida')}</div>`).join('') || '<p class="muted sm">Sin estrategias.</p>'}${btn('estrategia', o.id, '+ Estrategia')}</div></div></div>`).join('') || `<div class="card"><p class="muted">Todavía no hay objetivos para ${CT.oy}${OP ? ' en ' + esc(ctProjName(OP)) : ' de toda la empresa'}.${edit ? ' Empezá con "+ Objetivo" (ej.: "Cumplir el SLA del Renglón 3 sin multas").' : ''}</p></div>`}`;
   const again = () => ctOgsm(v, tabs);
+  $('#og-p').onchange = e => { CT.op = e.target.value; again(); };
   $('#og-prev').onclick = () => { CT.oy--; again(); }; $('#og-next').onclick = () => { CT.oy++; again(); };
-  v.querySelectorAll('[data-oadd]').forEach(b => b.onclick = () => ctOgsmModal({ kind: b.dataset.oadd, parent_id: b.dataset.op || null, year: CT.oy }, again));
+  v.querySelectorAll('[data-oadd]').forEach(b => b.onclick = () => ctOgsmModal({ kind: b.dataset.oadd, parent_id: b.dataset.op || null, year: CT.oy, project_id: OP }, again));
   v.querySelectorAll('[data-oed]').forEach(b => b.onclick = () => ctOgsmModal(items.find(x => x.id === b.dataset.oed), again));
 }
 function ctOgsmModal(it, after){
@@ -632,7 +653,7 @@ function ctOgsmModal(it, after){
     if (!d.body) return ($('#og-e').textContent = 'Escribí el texto.');
     if (hasM){ d.metric = $('#og-m').value; d.target = num('#og-t'); d.manual_value = num('#og-v'); }
     if (it.kind === 'estrategia'){ d.owner_id = $('#og-o').value || null; d.status = $('#og-s').value; }
-    const { error } = await (isNew ? sb.from('ogsm_items').insert({ ...d, org_id: me.org_id, kind: it.kind, parent_id: it.parent_id, year: it.year }) : sb.from('ogsm_items').update(d).eq('id', it.id));
+    const { error } = await (isNew ? sb.from('ogsm_items').insert({ ...d, org_id: me.org_id, kind: it.kind, parent_id: it.parent_id, year: it.year, project_id: it.project_id || null }) : sb.from('ogsm_items').update(d).eq('id', it.id));
     if (error) return ($('#og-e').textContent = errText(error)); m.close(); after(); };
   $('#og-d')?.addEventListener('click', async () => { if (!confirm('¿Borrar? También se borra lo que cuelga de este elemento.')) return; const { error } = await sb.from('ogsm_items').delete().eq('id', it.id); if (error) return toast(errText(error)); m.close(); after(); });
 }

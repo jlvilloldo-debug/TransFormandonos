@@ -331,6 +331,7 @@ function editProject(p){
       <div class="grow"><label>Inicio</label><input id="pe-s" type="date" value="${esc(p.start_date || '')}"></div>
       <div class="grow"><label>Fin</label><input id="pe-e" type="date" value="${esc(p.end_date || '')}"></div></div>
     <label>Descripción</label><input id="pe-d" maxlength="2000" value="${esc(p.description || '')}">
+    ${isNew && isManager() ? '<label>Responsabilidades (RACI)</label><select id="pe-raci"><option value="">Empezar de cero (o cargar las actividades típicas después)</option></select><p class="muted sm" style="margin:4px 0 0">Copia las actividades y quién hace qué de otro proyecto. Después se ajusta en Control y desempeño → RACI.</p>' : ''}
     <label>Etapas por las que pasa cada sitio (una por renglón, en orden)</label>
     <textarea id="pe-st" style="min-height:120px">${esc((p.stages || []).join('\n'))}</textarea>
     <label>El sitio cuenta como terminado desde la etapa</label><select id="pe-ds"></select>
@@ -357,6 +358,11 @@ function editProject(p){
     $('#pe-el').querySelectorAll('[data-ed]').forEach(x => x.onclick = () => { elements.splice(Number(x.dataset.ed), 1); drawEl(); });
   };
   $('#pe-st').oninput = fillDs; fillDs(); drawEl();
+  if ($('#pe-raci')) Promise.all([loadProjects().catch(() => []), sb.from('raci').select('project_id').limit(5000).then(r => r.data || []).catch(() => [])]).then(([ps, rr]) => {
+    const n = {}; rr.forEach(x => { n[x.project_id] = (n[x.project_id] || 0) + 1; });
+    const sel = $('#pe-raci'); if (!sel) return;
+    sel.insertAdjacentHTML('beforeend', ps.filter(x => n[x.id]).map(x => `<option value="${esc(x.id)}">Copiar de ${esc(x.short_name || x.name)} (${n[x.id]} actividades, con las personas)</option>`).join(''));
+  });
   $('#pe-t').onchange = () => { if (isNew) { $('#pe-st').value = DEFAULT_STAGES[$('#pe-t').value].join('\n'); $('#pe-ds').value = ''; fillDs(); } };
   $('#pe-add').onclick = () => { if (elements.length >= 40) return; elements.push({ name: '', unit: 'u', serial: false }); drawEl(); };
   $('#pe-x').onclick = m.close;
@@ -380,7 +386,9 @@ function editProject(p){
     if (error){ $('#pe-ok').disabled = false; return ($('#pe-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe un proyecto con ese nombre.' : errText(error)); }
     // sitios con etapas que ya no existen: vuelven a la primera
     if (!isNew){ const gone = (p.stages || []).filter(s => !st.includes(s)); if (gone.length) await sb.from('project_sites').update({ stage: st[0], last_reason: 'Se quitó la etapa del proyecto' }).eq('project_id', p.id).in('stage', gone); }
-    m.close(); toast('Proyecto guardado'); location.hash = '#/proj/' + data.id; route();
+    const raciFrom = isNew ? ($('#pe-raci')?.value || '') : '';
+    if (raciFrom){ const { error: re } = await sb.rpc('raci_copy', { p_from: raciFrom, p_to: data.id, p_people: true }); if (re) toast('El proyecto se creó, pero no se pudo copiar la RACI: ' + errText(re)); }
+    m.close(); toast(raciFrom ? 'Proyecto creado con la RACI copiada' : 'Proyecto guardado'); location.hash = '#/proj/' + data.id; route();
   };
   $('#pe-del')?.addEventListener('click', async () => {
     const ok = prompt(`Se elimina el proyecto "${p.name}" con sus sitios, Gantt e inventario (los sitios y las inspecciones se conservan).\n\nEscribí ELIMINAR para confirmar.`);
