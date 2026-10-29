@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-lLVgxVX0LfVduOdNcesRGG9aeixSpQ9uarJ+A7NCN50='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-gD0p3acchr9FJCZiF5MJyt+UDZG3N/CeSqZ/lJFSmPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -143,7 +143,8 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .thumbs .th{position:relative;width:76px;height:76px;border-radius:8px;overflow:hidden;background:var(--line)}
 .thumbs img{width:100%;height:100%;object-fit:cover}
-.thumbs .x{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;border:0;border-radius:50%;width:22px;height:22px;cursor:pointer;line-height:1}
+.thumbs .x{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.65);color:#fff;border:0;border-radius:50%;width:30px;height:30px;cursor:pointer;line-height:1;font-size:19px}
+.thumbs img{cursor:zoom-in}.thumbs .gal{position:absolute;left:3px;bottom:3px;background:rgba(255,255,255,.9);border-radius:6px;font-size:13px;padding:0 3px}
 .thumbs .up{display:grid;place-items:center;font-size:11px;color:var(--muted)}
 .flag{border-left:3px solid var(--red);padding-left:10px}
 .sig{border:1px dashed var(--muted);border-radius:8px;background:#fff;width:100%;height:160px;touch-action:none}
@@ -423,7 +424,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.7';
+const APP_VERSION = '5.8';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', donde: 'donde.js', control: 'control.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -1117,6 +1118,7 @@ const ONLINE_ONLY = ['org', 'admin'];
 async function route(){
   if (!me) return;
   if (leaveGuard){ await leaveGuard(); leaveGuard = null; }
+  geoStop();
   const [, tab='home', id, id2] = (location.hash || '#/home').split('/');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
   if (tab !== 'map' && typeof pmap !== 'undefined' && pmap){ pmap.remove(); pmap = null; }
@@ -1357,15 +1359,91 @@ async function newInspection(){
 /* =========================================================
    INSPECCIÓN – carga (guarda primero en el teléfono)
    ========================================================= */
-async function compressImage(file, maxSide=1600, quality=0.8){
-  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
-  const k = Math.min(1, maxSide / Math.max(img.width, img.height));
-  const c = document.createElement('canvas'); c.width = Math.round(img.width*k); c.height = Math.round(img.height*k);
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-  URL.revokeObjectURL(img.src);
-  return await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
+/* ---------- fotos: lectura rápida y segura del encabezado JPEG (tamaño, orientación, fecha y GPS) ----------
+   Solo lee los primeros 512 KB, con control de límites: un archivo malformado devuelve {} y nada más. */
+async function jpegMeta(file){
+  const out = {};
+  try {
+    const buf = await file.slice(0, 512 * 1024).arrayBuffer(); const dv = new DataView(buf), L = dv.byteLength;
+    if (L < 4 || dv.getUint16(0) !== 0xFFD8) return out;
+    let o = 2, guard = 0;
+    while (o + 4 <= L && guard++ < 200){
+      if (dv.getUint8(o) !== 0xFF){ o++; continue; }
+      const mk = dv.getUint8(o + 1); if (mk === 0xD8 || mk === 0x01 || (mk >= 0xD0 && mk <= 0xD7)){ o += 2; continue; }
+      if (mk === 0xD9 || mk === 0xDA) break;
+      const len = dv.getUint16(o + 2); if (len < 2) break;
+      if (mk === 0xE1 && o + 10 <= L && dv.getUint32(o + 4) === 0x45786966) exifRead(dv, o + 10, Math.min(L, o + 2 + len), out);
+      if ([0xC0, 0xC1, 0xC2].includes(mk) && o + 9 <= L){ out.h = dv.getUint16(o + 5); out.w = dv.getUint16(o + 7); break; }
+      o += 2 + len;
+    }
+  } catch {}
+  return out;
+}
+function exifRead(dv, t0, end, out){
+  try {
+    const le = dv.getUint16(t0) === 0x4949; const u16 = p => dv.getUint16(p, le), u32 = p => dv.getUint32(p, le);
+    const ok = (p, n) => p >= t0 && p + n <= end;
+    const rat = p => ok(p, 8) && u32(p + 4) ? u32(p) / u32(p + 4) : NaN;
+    const ifd = (off, fn) => { const p = t0 + off; if (!ok(p, 2)) return; const n = Math.min(u16(p), 300);
+      for (let i = 0; i < n; i++){ const e = p + 2 + i * 12; if (!ok(e, 12)) return; fn(u16(e), u16(e + 2), u32(e + 4), e + 8); } };
+    const str = (cnt, vp) => { const p = cnt > 4 ? t0 + u32(vp) : vp; if (!ok(p, cnt) || cnt > 64) return ''; let s = ''; for (let i = 0; i < cnt; i++){ const c = dv.getUint8(p + i); if (!c) break; s += String.fromCharCode(c); } return s; };
+    let exifOff = 0, gpsOff = 0;
+    ifd(u32(t0 + 4), (tag, typ, cnt, vp) => { if (tag === 0x0112) out.orient = u16(vp); if (tag === 0x8769) exifOff = u32(vp); if (tag === 0x8825) gpsOff = u32(vp); });
+    if (exifOff) ifd(exifOff, (tag, typ, cnt, vp) => { if (tag === 0x9003){ const m = /^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)$/.exec(str(cnt, vp)); if (m){ const d = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]); if (!isNaN(d) && d.getFullYear() > 2000) out.taken = d; } } });
+    if (gpsOff){ const g = {}; ifd(gpsOff, (tag, typ, cnt, vp) => {
+        if (tag === 1 || tag === 3) g[tag] = String.fromCharCode(dv.getUint8(vp));
+        if ((tag === 2 || tag === 4) && cnt === 3){ const p = t0 + u32(vp); const v = rat(p) + rat(p + 8) / 60 + rat(p + 16) / 3600; if (isFinite(v)) g[tag] = v; } });
+      if (g[2] != null && g[4] != null){ const lat = g[2] * (g[1] === 'S' ? -1 : 1), lng = g[4] * (g[3] === 'W' ? -1 : 1);
+        if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat || lng)) { out.lat = +lat.toFixed(6); out.lng = +lng.toFixed(6); } } }
+  } catch {}
+}
+/* Achica la foto. Camino rápido: el navegador la decodifica ya achicada (poca memoria, ideal para celulares de gama baja).
+   Siempre se vuelve a generar la imagen desde cero: se descartan datos ocultos y cualquier contenido que no sea la imagen. */
+const PHOTO_MAX_MB = 25;
+async function compressImage(file, maxSide=1280, quality=0.72, meta=null){
+  if (!file || !/^image\//.test(file.type || 'image/') ) throw new Error('El archivo no es una imagen.');
+  if (file.size > PHOTO_MAX_MB * 1024 * 1024) throw new Error(`La foto pesa más de ${PHOTO_MAX_MB} MB.`);
+  const m = meta || await jpegMeta(file);
+  const draw = (src, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(src, 0, 0, w, h); return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('No se pudo procesar la foto')), 'image/jpeg', quality)); };
+  if (m.w && m.h && typeof createImageBitmap === 'function'){
+    const swap = m.orient >= 5 && m.orient <= 8; const W = swap ? m.h : m.w, H = swap ? m.w : m.h;
+    const k = Math.min(1, maxSide / Math.max(W, H)), tw = Math.max(1, Math.round(W * k)), th = Math.max(1, Math.round(H * k));
+    for (const dims of [{resizeWidth: tw, resizeHeight: th}, {resizeWidth: th, resizeHeight: tw}]){
+      let bmp = null;
+      try {
+        bmp = await createImageBitmap(file, {...dims, resizeQuality: 'medium', imageOrientation: 'from-image'});
+        if (bmp.width === tw && bmp.height === th) return await draw(bmp, tw, th);
+      } catch {} finally { bmp && bmp.close && bmp.close(); }
+    }
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.decoding = 'async'; i.onload = () => res(i); i.onerror = () => rej(new Error('Formato de foto no compatible. Si es HEIC, configurá la cámara para guardar en JPG.')); i.src = url; });
+    const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    return await draw(img, Math.round(img.naturalWidth * k), Math.round(img.naturalHeight * k));
+  } finally { URL.revokeObjectURL(url); }
 }
 function getPos(){ return new Promise(res => navigator.geolocation ? navigator.geolocation.getCurrentPosition(p => res({lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy)}), () => res(null), {timeout:6000, maximumAge:30000, enableHighAccuracy:true}) : res(null)); }
+/* GPS en segundo plano mientras se carga una inspección: la foto usa la última posición conocida y no espera */
+const GEO = { last: null, wid: null };
+function geoStart(){ if (!navigator.geolocation || GEO.wid !== null) return; try { GEO.wid = navigator.geolocation.watchPosition(p => { GEO.last = {lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), t: Date.now()}; }, () => {}, {enableHighAccuracy: true, maximumAge: 30000, timeout: 120000}); } catch {} }
+function geoStop(){ if (GEO.wid !== null){ try { navigator.geolocation.clearWatch(GEO.wid); } catch {} GEO.wid = null; } }
+function geoNow(){ const l = GEO.last; return l && Date.now() - l.t < 10 * 60000 ? l : null; }
+function kmBetween(a, b){ const r = Math.PI / 180, d1 = (b.lat - a.lat) * r, d2 = (b.lng - a.lng) * r; const x = Math.sin(d1 / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(d2 / 2) ** 2; return 12742 * Math.asin(Math.min(1, Math.sqrt(x))); }
+/* Foto a pantalla completa: guardar una copia en el teléfono o borrarla */
+function photoViewer(url, {onDel, name} = {}){
+  const m = modal(`<div style="text-align:center"><img id="pv-img" alt="Foto" style="max-width:100%;max-height:68vh;border-radius:8px"></div>
+    <div class="row" style="justify-content:space-between;margin-top:12px;gap:8px;flex-wrap:wrap">
+      ${onDel ? '<button class="btn sec" id="pv-del" style="color:var(--red)">🗑 Borrar</button>' : '<span></span>'}
+      <div class="row" style="gap:8px"><a class="btn sec" id="pv-dl" style="margin:0">💾 Guardar en el teléfono</a><button class="btn" id="pv-x">Cerrar</button></div></div>`);
+  $('#pv-img').src = url; const a = $('#pv-dl'); const fn = (name || 'foto') + '.jpg';
+  if (/^blob:/.test(url)){ a.href = url; a.download = fn; }
+  else a.onclick = async e => { e.preventDefault(); if (!needOnline()) return;
+    try { const b = await (await fetch(url)).blob(); if (!/^image\//.test(b.type)) throw new Error('No es una imagen'); const u = URL.createObjectURL(b); const l = document.createElement('a'); l.href = u; l.download = fn; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 30000); }
+    catch (err){ toast('No se pudo guardar: ' + errText(err)); } };
+  $('#pv-x').onclick = m.close;
+  if (onDel) $('#pv-del').onclick = () => { m.close(); onDel(); };
+}
 
 async function loadInspection(id){
   const loc = await localGet(id);
@@ -1412,6 +1490,7 @@ async function viewExecute(v, id){
   }
   const queueSave = () => { dirty = true; setStatus('Guardando…'); clearTimeout(timer); timer = setTimeout(save, 700); updateProgress(); };
   leaveGuard = save;
+  geoStart();
 
   function updateProgress(){
     const sc = computeScore(def, answers);
@@ -1474,9 +1553,10 @@ async function viewExecute(v, id){
     return `<div class="item ${flagged ? 'flag' : ''}" id="it-${it.id}">
       <div class="q">${esc(it.label)}${req}</div>${ctl}${pendBox}
       ${tools ? `<div id="note-${it.id}" class="${a.note ? '' : 'hidden'}" style="margin-top:8px"><textarea data-note="${it.id}" placeholder="Nota u observación">${esc(a.note || '')}</textarea></div>
-      <div class="thumbs" id="ph-${it.id}">${(a.photos||[]).map((p, i) => `<div class="th"><img data-path="${esc(p.path)}"><button class="x" data-phdel="${it.id}" data-idx="${i}" title="Quitar">×</button></div>`).join('')}</div>
+      <div class="thumbs" id="ph-${it.id}">${(a.photos||[]).map((p, i) => `<div class="th"><img data-path="${esc(p.path)}" data-phview="${it.id}" data-idx="${i}" alt="Foto ${i + 1}">${p.src === 'galeria' ? `<span class="gal" title="${p.warn ? esc(p.warn) : 'De la galería'}">${p.warn ? '⚠' : '🖼'}</span>` : ''}<button class="x" data-phdel="${it.id}" data-idx="${i}" title="Borrar foto" aria-label="Borrar foto">×</button></div>`).join('')}</div>
       <div class="item-tools"><button type="button" data-notebtn="${it.id}">✎ Nota</button>${pd ? '' : `<button type="button" data-pendadd="${it.id}" class="${flagged ? 'pendbtn' : ''}">⚠ Dejar pendiente</button>`}
         <label>📷 Foto${it.photos || it.type === 'photo' ? ' (recomendada)' : ''}<input type="file" accept="image/*" capture="environment" multiple data-phadd="${it.id}" class="hidden"></label>
+        <label title="Adjuntar fotos sacadas con la cámara del teléfono">🖼️ Galería<input type="file" accept="image/jpeg,image/png,image/webp" multiple data-phadd="${it.id}" data-gal="1" class="hidden"></label>
       </div>` : ''}
     </div>`;
   }
@@ -1500,23 +1580,44 @@ async function viewExecute(v, id){
     scope.querySelectorAll('[data-note]').forEach(i => i.oninput = () => { answers[i.dataset.note] = {...(answers[i.dataset.note]||{}), note: i.value}; queueSave(); });
     scope.querySelectorAll('[data-notebtn]').forEach(b => b.onclick = () => { const n = $('#note-' + b.dataset.notebtn); n.classList.remove('hidden'); n.querySelector('textarea').focus(); });
     scope.querySelectorAll('[data-phadd]').forEach(inp => inp.onchange = async () => {
-      const itId = inp.dataset.phadd; const files = [...inp.files]; if (!files.length) return;
-      const box = $('#ph-' + itId);
-      for (const f of files){
-        const ph = document.createElement('div'); ph.className = 'th up'; ph.textContent = 'Procesando…'; box.appendChild(ph);
+      const itId = inp.dataset.phadd, gal = inp.dataset.gal === '1'; const files = [...inp.files].slice(0, 20); inp.value = ''; if (!files.length) return;
+      const box = $('#ph-' + itId); const slots = files.map(() => { const ph = document.createElement('div'); ph.className = 'th up'; ph.textContent = 'Guardando…'; box.appendChild(ph); return ph; });
+      const t0 = Date.parse(ins.started_at) || Date.now(); let warned = 0;
+      for (let k = 0; k < files.length; k++){
+        const f = files[k], ph = slots[k];
         try {
-          const [blob, pos] = await Promise.all([compressImage(f), getPos()]);
+          const meta = await jpegMeta(f);
+          const blob = await compressImage(f, 1280, 0.72, meta);
           const path = `${ins.org_id}/${id}/${uid()}.jpg`;
           await IDB.put('blobs', blob, path);
+          let rec;
+          if (gal){
+            const taken = meta.taken || (f.lastModified ? new Date(f.lastModified) : null);
+            const w = [];
+            if (taken && taken.getTime() < t0 - 12 * 3600000) w.push('sacada el ' + fmtDT(taken.toISOString()));
+            if (meta.lat != null && ins.lat != null && kmBetween({lat: meta.lat, lng: meta.lng}, {lat: ins.lat, lng: ins.lng}) > 1) w.push(`a ${kmBetween({lat: meta.lat, lng: meta.lng}, {lat: ins.lat, lng: ins.lng}).toFixed(1)} km del sitio`);
+            if (w.length) warned++;
+            rec = { path, ts: (taken && !isNaN(taken) ? taken : new Date()).toISOString(), lat: meta.lat ?? null, lng: meta.lng ?? null, acc: null, src: 'galeria', warn: w.length ? 'De la galería, ' + w.join(' y ') : null };
+          } else {
+            const pos = geoNow() || (meta.lat != null ? {lat: meta.lat, lng: meta.lng, acc: null} : null);
+            rec = { path, ts: new Date().toISOString(), lat: pos?.lat ?? null, lng: pos?.lng ?? null, acc: pos?.acc ?? null };
+          }
           const cur = answers[itId] || {};
-          answers[itId] = {...cur, photos: [...(cur.photos||[]), { path, ts: new Date().toISOString(), lat: pos?.lat ?? null, lng: pos?.lng ?? null, acc: pos?.acc ?? null }]};
+          answers[itId] = {...cur, photos: [...(cur.photos||[]), rec]};
           queueSave();
-        } catch (e){ toast('No se pudo procesar la foto: ' + errText(e)); }
+          const u = URL.createObjectURL(blob); blobUrls.set(path, u);
+          ph.className = 'th'; ph.textContent = ''; const im = document.createElement('img'); im.src = u; im.alt = 'Foto'; ph.appendChild(im);
+        } catch (e){ ph.remove(); toast('No se pudo guardar la foto: ' + errText(e)); }
       }
+      if (warned) toast(warned === 1 ? 'Una foto de la galería no es de hoy o de este sitio: queda marcada para la oficina.' : `${warned} fotos de la galería no son de hoy o de este sitio: quedan marcadas para la oficina.`);
       rerenderItem(itId);
     });
+    scope.querySelectorAll('[data-phview]').forEach(im => im.onclick = () => {
+      const itId = im.dataset.phview, idx = Number(im.dataset.idx); const p = answers[itId]?.photos?.[idx]; if (!p || !im.src) return;
+      photoViewer(im.src, { name: 'foto-' + (p.ts || '').slice(0, 19).replace(/[^0-9]/g, ''), onDel: () => scope.querySelector(`[data-phdel="${itId}"][data-idx="${idx}"]`)?.click() });
+    });
     scope.querySelectorAll('[data-phdel]').forEach(b => b.onclick = async () => {
-      if (!confirm('¿Quitar esta foto?')) return;
+      if (!confirm('¿Borrar esta foto?')) return;
       const itId = b.dataset.phdel, idx = Number(b.dataset.idx);
       const [rm] = answers[itId].photos.splice(idx, 1);
       queueSave(); rerenderItem(itId);
@@ -1671,7 +1772,7 @@ async function viewReport(v, id){
         <div class="rp-kv"><b>Apertura / cierre</b><span>${ins.corr?.open_at ? fmtDT(ins.corr.open_at) : '—'} → ${ins.corr?.close_at ? fmtDT(ins.corr.close_at) : '—'}${ins.corr?.ttr_h ? ' · TTR ' + esc(ins.corr.ttr_h) + ' h' : ''}${ins.corr?.afect ? ' · ' + esc(ins.corr.afect) : ''}${ins.corr?.smt ? ' · ' + esc(ins.corr.smt) : ''}</span></div>` : ''}
       ${body}
       ${media.length ? `<div class="rp-sec" style="break-before:page"><span>Resumen de archivos multimedia</span></div>
-        <div class="rp-media">${media.map(p => `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${p.n}${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}</figcaption></figure>`).join('')}</div>` : ''}
+        <div class="rp-media">${media.map(p => `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${p.n}${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}${p.src === 'galeria' ? ` · <b${p.warn ? ' style="color:var(--red)"' : ''}>${esc(p.warn || 'De la galería')}</b>` : ''}</figcaption></figure>`).join('')}</div>` : ''}
       <div class="rp-foot"><span>${esc(ins.site_name || '')} · Generado con InspectApp</span><span>${fmtDT(new Date())}</span></div>
     </div>`;
   await hydrate(v);
