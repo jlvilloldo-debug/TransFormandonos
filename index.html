@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-gD0p3acchr9FJCZiF5MJyt+UDZG3N/CeSqZ/lJFSmPc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-dM7o+EyJt2N9hVpJqAAQH4FCprbKAdlHBEiPuT9k0w0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -35,6 +35,7 @@ a{color:var(--navy-2)}
 .brand{display:flex;align-items:center;gap:10px;font-weight:600;min-width:0}
 .brand small{display:block;font-weight:400;opacity:.7;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .top .sp{flex:1}
+.srch-r{display:flex;gap:10px;align-items:center;padding:10px;border-radius:10px;cursor:pointer;border:0;background:none;width:100%;text-align:left;color:inherit;font:inherit}.srch-r:hover,.srch-r:focus{background:#EEF2F8;outline:none}.srch-r .i{font-size:20px;width:28px;text-align:center;flex:none}.srch-g{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 2px}
 .top button{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 10px;cursor:pointer;white-space:nowrap}
 .netpill{font-size:12px;padding:4px 10px;border-radius:99px;cursor:pointer;white-space:nowrap}
 .netpill.off{background:#C8102E;color:#fff}
@@ -380,6 +381,7 @@ tr.sor-bad td{background:var(--red-bg)}
   <header class="top">
     <div class="brand"><span id="logo-top"></span><div>InspectApp<small id="org-name">—</small></div></div>
     <div class="sp"></div>
+    <button id="b-search" title="Buscar (Ctrl+K)" aria-label="Buscar" style="font-size:16px;padding:5px 10px">🔍</button>
     <span id="net" class="netpill hidden" title="Tocar para enviar ahora"></span>
     <button id="b-install" class="hidden">Instalar</button>
     <span class="hide-sm" id="user-email" style="font-size:13px;opacity:.8"></span>
@@ -424,11 +426,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.8';
+const APP_VERSION = '5.9';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', donde: 'donde.js', control: 'control.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -961,6 +963,58 @@ $('#f-mfa').onsubmit = async ev => {
   } catch (x){ e.textContent = /invalid|expired/i.test(x.message || '') ? 'Código incorrecto o vencido. Probá con el código nuevo.' : errText(x); }
 };
 $('#mfa-out').onclick = async () => { try { await sb.auth.signOut(); } catch {} showLogin(); };
+/* ---------- 🔍 búsqueda general: proyectos, sitios, números de serie, tickets, tareas, lugares, personas ----------
+   En el servidor respeta los permisos de cada uno (search_all). Sin señal busca en lo guardado en el teléfono. */
+const SRCH_K = { proyecto: ['📁', 'Proyectos'], sitio: ['📍', 'Sitios y lugares'], lugar: ['🏬', 'Depósitos y bases'], activo: ['📡', 'Activos (números de serie)'], equipo: ['🔌', 'Equipos instalados'],
+  ticket: ['🎫', 'Tickets'], tarea: ['☑', 'Tareas'], material: ['🧵', 'Materiales'], vehiculo: ['🚗', 'Vehículos'], persona: ['👷', 'Personas'] };
+async function srchLocal(q){
+  const n = x => String(x ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const t = n(q), hit = (...xs) => xs.some(x => n(x).includes(t)), get = k => IDB.get('kv', CUR_UID + ':' + k).catch(() => null), out = [];
+  const [pj, st, as, tk] = await Promise.all([get('projects'), get('sites-map'), get('stk-assets'), get('tasks')]);
+  (pj || []).filter(p => hit(p.name, p.client, p.contract)).slice(0, 8).forEach(p => out.push({ kind: 'proyecto', id: p.id, title: p.name, sub: [p.client, p.contract].filter(Boolean).join(' · '), link: '#/proj/' + p.id }));
+  (st || []).filter(s => hit(s.name, s.localidad, s.address, s.traza)).slice(0, 8).forEach(s => out.push({ kind: 'sitio', id: s.id, title: s.name, sub: [s.localidad, s.traza ? 'Traza ' + s.traza : ''].filter(Boolean).join(' · '), link: 'site:' + s.id }));
+  (as || []).filter(a => hit(a.code, a.name, a.model, a.ext_id, JSON.stringify(a.extra || {}))).slice(0, 8).forEach(a => out.push({ kind: 'activo', id: a.id, title: (a.name || a.type) + ' · ' + a.code, sub: [a.type, a.status].join(' · '), link: '#/stock/a/' + a.id }));
+  (tk || []).filter(x => hit(x.title)).slice(0, 8).forEach(x => out.push({ kind: 'tarea', id: x.id, title: x.title, sub: x.status, link: '#/tasks/' + x.id }));
+  return out;
+}
+function srchSite(id){
+  const s = (typeof SITE_COORDS !== 'undefined' && SITE_COORDS.get(id)) || null;
+  IDB.get('kv', CUR_UID + ':sites-map').catch(() => null).then(list => {
+    const x = (list || []).find(y => y.id === id) || { name: 'Sitio' };
+    const ll = x.lat != null ? [x.lat, x.lng] : s;
+    const m = modal(`<h2>📍 ${esc(x.name)}</h2><p class="muted">${esc([x.localidad, x.provincia, x.address, x.traza ? 'Traza ' + x.traza : ''].filter(Boolean).join(' · ') || 'Sin dirección cargada')}</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap">${typeof can === 'function' && can('stock') ? `<a class="btn" href="#/stock/s/${esc(id)}">📦 Activos en este sitio</a>` : ''}${ll ? `<a class="btn sec" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps?q=${Number(ll[0])},${Number(ll[1])}">🗺 Abrir en el mapa</a>` : ''}<button class="btn sec" data-close>Cerrar</button></div>`);
+    m.el.querySelector('[data-close]').onclick = m.close; m.el.querySelectorAll('a[href^="#/"]').forEach(a => a.addEventListener('click', m.close));
+  });
+}
+function searchOpen(){
+  if (!me) return;
+  const m = modal(`<div class="row" style="gap:6px;flex-wrap:nowrap"><input id="sr-q" type="search" maxlength="60" autocomplete="off" placeholder="Buscar proyectos, sitios, números de serie, tickets…" style="flex:1;font-size:16px">
+      <button class="btn sec" id="sr-scan" title="Escanear QR o código" style="margin:0">📷</button></div>
+    <div class="muted sm" id="sr-m" style="margin-top:8px">Escribí al menos 2 letras.</div><div id="sr-r" style="max-height:60vh;overflow:auto;margin-top:4px"></div>`, { wide: true });
+  const q = $('#sr-q'); q.focus();
+  let tm = null, seq = 0;
+  const run = async () => {
+    const t = q.value.trim(), my = ++seq, box = $('#sr-r'), msg = $('#sr-m');
+    if (!box || !msg) return;
+    if (t.length < 2){ box.innerHTML = ''; msg.textContent = 'Escribí al menos 2 letras.'; return; }
+    msg.textContent = 'Buscando…';
+    let rows = [], local = !online();
+    if (!local){ const { data, error } = await sb.rpc('search_all', { p_q: t }); if (error){ if (isNetErr(error)) local = true; else { msg.textContent = errText(error); return; } } else rows = data || []; }
+    if (local) rows = await srchLocal(t);
+    if (my !== seq || !document.getElementById('sr-r')) return;
+    msg.textContent = rows.length ? (local ? 'Sin señal: busqué en lo guardado en el teléfono.' : `${rows.length} resultado${rows.length === 1 ? '' : 's'}`) : 'No encontré nada con eso.';
+    const g = new Map(); rows.forEach(r => { if (!g.has(r.kind)) g.set(r.kind, []); g.get(r.kind).push(r); });
+    box.innerHTML = [...g.entries()].map(([k, list]) => `<div class="srch-g">${esc((SRCH_K[k] || ['', k])[1])}</div>${list.map(r => `<button class="srch-r" data-l="${esc(r.link)}"><span class="i">${(SRCH_K[r.kind] || ['•'])[0]}</span><span style="min-width:0"><b>${esc(r.title)}</b><div class="muted sm">${esc(r.sub || '')}</div></span></button>`).join('')}`).join('');
+    box.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { const l = b.dataset.l; m.close();
+      if (/^site:[0-9A-Za-z-]{1,40}$/.test(l)) srchSite(l.slice(5)); else if (/^#\/[A-Za-z0-9/_-]*$/.test(l)) location.hash = l; });
+  };
+  q.oninput = () => { clearTimeout(tm); tm = setTimeout(run, 250); };
+  q.onkeydown = e => { if (e.key === 'Enter'){ clearTimeout(tm); run(); } };
+  $('#sr-scan').onclick = async () => { m.close(); try { await needLib('stock'); } catch (e){ return toast(errText(e)); } stkScan(txt => { const mm = /#\/stock\/a\/([0-9A-Za-z-]{1,40})/.exec(txt); if (mm){ location.hash = '#/stock/a/' + mm[1]; return; } searchOpen(); const i = $('#sr-q'); if (i){ i.value = txt.slice(0, 60); i.dispatchEvent(new Event('input')); } }); };
+}
+$('#b-search').onclick = searchOpen;
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && me){ e.preventDefault(); searchOpen(); } });
 $('#b-logout').onclick = async () => {
   const pend = (await localAll()).filter(r => r._dirty).length;
   if (pend && !confirm(`Tenés ${pend} inspección${pend===1?'':'es'} sin enviar. Quedan guardadas en este dispositivo y se envían cuando vuelvas a ingresar con tu usuario. ¿Salir igual?`)) return;
@@ -1143,6 +1197,7 @@ async function route(){
     else if (tab === 'tools' && id === 'donde'){ await needLib('donde'); await viewDonde(v); }
     else if (tab === 'tools' && id === 'camiseta'){ await needLib('donde'); await viewShirt(v); }
     else if (tab === 'control'){ await needLib('control'); await viewControl(v, id, id2); }
+    else if (tab === 'stock'){ if (isContractor()) { location.hash = '#/tasks'; return; } await needLib('stock'); await viewStock(v, id, id2); }
     else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
     else if (tab === 'tools') await viewTools(v);

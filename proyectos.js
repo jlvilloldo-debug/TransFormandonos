@@ -291,7 +291,7 @@ const semChips = sm => ['red', 'amber', 'blue', 'gray', 'green'].filter(c => sm[
 
 async function viewProjects(v){
   const [projects, psAll, tasks] = await Promise.all([loadProjects(), loadPS().catch(() => []), loadAllTasks().catch(() => [])]);
-  const manage = isManager() && canWrite() && online();
+  const manage = isManager() && canWrite() && online() && can('proj', 3);
   const actives = projects.filter(p => p.active);
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">Proyectos</h2>${manage ? '<button class="btn" id="pj-new">+ Proyecto</button>' : ''}</div>
@@ -413,12 +413,13 @@ async function viewProject(v, id){
   v.innerHTML = `
     <div class="card"><div class="row between"><div class="row"><button class="btn sec small" data-go="#/proj">← Proyectos</button>
         <div><h1 style="margin:0">${esc(p.name)}</h1><div class="muted sm">${esc([PROJ_KIND[p.kind], p.client, p.contract].filter(Boolean).join(' · '))}${p.start_date || p.end_date ? ` · ${fmtD(p.start_date)} → ${fmtD(p.end_date)}` : ''}</div></div></div>
-      ${manage && online() ? '<button class="btn sec" id="pj-edit">Editar proyecto</button>' : ''}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${can('stock') ? `<a class="btn" href="#/stock/p/${p.id}" style="margin:0;background:#7C3AED;border-color:#7C3AED">📦 Stock</a>` : ''}${!isContractor() ? '<button class="btn sec" id="pj-mem" style="margin:0">👥 Integrantes</button>' : ''}${manage && online() && can('proj', 3) ? '<button class="btn sec" id="pj-edit" style="margin:0">Editar proyecto</button>' : ''}</div></div>
       <div class="row" style="margin-top:12px;gap:12px"><b style="font-size:22px">${Math.round(sm.pct)}%</b><div class="progress grow" style="height:10px"><i style="width:${Math.round(sm.pct)}%"></i></div></div>
       <div class="seg" id="pj-tabs" style="margin-top:12px">${[['res', 'Resumen'], ['sit', `Sitios (${sm.n})`], ['gan', 'Gantt'], ['inv', `Inventario${equip.length ? ' (' + equip.length + ')' : ''}`], ...(['mantenimiento', 'mixto'].includes(p.kind) && typeof tkProjSla === 'function' ? [['sla', 'Contrato y SLA']] : [])].map(([k, t]) => `<button type="button" data-pt="${k}" class="${PTAB === k ? 'on' : ''}">${t}</button>`).join('')}</div>
     </div>
     <div id="pj-body"></div>`;
   $('#pj-edit')?.addEventListener('click', () => editProject(p));
+  $('#pj-mem')?.addEventListener('click', async () => { try { await needLib('stock'); stkCss(); await stkMembers(p); } catch (e){ toast(errText(e)); } });
   const show = k => {
     PTAB = k; try { localStorage.setItem('ia_ptab', k); } catch {}
     $$('#pj-tabs [data-pt]').forEach(b => b.classList.toggle('on', b.dataset.pt === k));

@@ -270,6 +270,8 @@ async function viewTools(v){
       <p class="muted sm" style="margin:4px 0 0">Tablero de tareas por estado y vencimiento${['admin', 'pm'].includes(me.role) || me.is_superadmin ? '; ficha de cada recurso con sus indicadores y el seguimiento' : ''}.</p></div></div><span class="btn" style="pointer-events:none">Abrir →</span></div></div>` : '<div id="tool-ficha"></div>'}
     <div class="card" id="tool-shirt" style="cursor:pointer"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">👕</div><div><h2 style="margin:0">Mi camiseta</h2>
       <p class="muted sm" style="margin:4px 0 0">Elegí los colores de tu club para tu muñequito en el mapa.</p></div></div><span class="btn sec" style="pointer-events:none">Elegir →</span></div></div>
+    ${typeof can === 'function' && can('stock') && !isContractor() ? `<div class="card" id="tool-stock" style="cursor:pointer;background:linear-gradient(135deg,#5B21B6,#7C3AED);color:#fff;border:0"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">📦</div><div><h2 style="margin:0;color:#fff">Activos y stock</h2>
+      <p class="sm" style="margin:4px 0 0;opacity:.85">Equipos y herramientas por número de serie, materiales por cantidad, depósitos y bases. Stock general y de cada proyecto, con el historial de cada equipo.</p></div></div><span class="btn" style="pointer-events:none;background:#fff;color:#5B21B6">Abrir →</span></div></div>` : ''}
     ${cv ? `<div class="card" id="tool-veh" style="cursor:pointer;border:2px solid #2A78D6"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">🚗</div><div><h2 style="margin:0">Control de vehículos</h2>
       <p class="muted sm" style="margin:4px 0 0">Jornada con km y foto del odómetro, cambio de conductor, flota con vencimientos e infracciones.</p></div></div><span class="btn" style="pointer-events:none">Abrir →</span></div></div>` : ''}
     ${cd ? `<div class="card" id="tool-dc" style="cursor:pointer;background:linear-gradient(135deg,#0F2A4A,#1A3A6B);color:#fff;border:0"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">🗄️</div><div><h2 style="margin:0;color:#fff">Relevamiento DC</h2>
@@ -287,6 +289,7 @@ async function viewTools(v){
   $('#tool-dc')?.addEventListener('click', () => { location.hash = '#/tools/dc'; });
   $('#tool-hh')?.addEventListener('click', () => { location.hash = '#/tools/hh'; });
   $('#tool-veh')?.addEventListener('click', () => { location.hash = '#/tools/veh'; });
+  $('#tool-stock')?.addEventListener('click', () => { location.hash = '#/stock'; });
   $('#tool-donde')?.addEventListener('click', () => { location.hash = '#/tools/donde'; });
   $('#tool-shirt')?.addEventListener('click', () => { location.hash = '#/tools/camiseta'; });
   $('#tool-ctl')?.addEventListener('click', () => { location.hash = '#/control'; });

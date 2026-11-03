@@ -6,18 +6,18 @@
    Este archivo solo declara funciones: no ejecuta nada al cargarse.
    ===================================================================== */
 
-const PERM_MODS = ['insp', 'tasks', 'proj', 'map', 'sites', 'stats', 'tpl', 'org', 'fibra', 'dc', 'dc_net', 'horas', 'rrhh', 'veh', 'veh_inf'];
+const PERM_MODS = ['insp', 'tasks', 'proj', 'map', 'sites', 'stats', 'tpl', 'org', 'fibra', 'dc', 'dc_net', 'horas', 'rrhh', 'veh', 'veh_inf', 'stock'];
 const PERM_NAMES = { insp: 'Inspecciones', tasks: 'Tareas', proj: 'Proyectos', map: 'Mapa', sites: 'Sitios', stats: 'Estadísticas', tpl: 'Plantillas', org: 'Mi empresa (usuarios)',
-  fibra: 'Herramienta de fibra', dc: 'Relevamiento DC', dc_net: 'DC: IP / VLAN / redes', horas: 'Horas y tareas', rrhh: 'Reporte RRHH y guardias', veh: 'Vehículos (jornadas)', veh_inf: 'Infracciones' };
+  fibra: 'Herramienta de fibra', dc: 'Relevamiento DC', dc_net: 'DC: IP / VLAN / redes', horas: 'Horas y tareas', rrhh: 'Reporte RRHH y guardias', veh: 'Vehículos (jornadas)', veh_inf: 'Infracciones', stock: 'Activos y stock' };
 const PERM_LV = ['No ve', 'Ve', 'Carga', 'Gestiona'];
 const PERM_ROLES = { supervisor: 'Supervisor', pm: 'PM', coordinador: 'Coordinador', inspector: 'Técnico', contratista: 'Contratista' };
-const PERM_TAB = { map: 'map', proj: 'proj', insp: 'insp', tasks: 'tasks', stats: 'stats', sites: 'sites', tpl: 'tpl', org: 'org' };
+const PERM_TAB = { map: 'map', proj: 'proj', insp: 'insp', tasks: 'tasks', stats: 'stats', sites: 'sites', tpl: 'tpl', org: 'org', stock: 'stock' };
 let PERMS = null;
 
 function permDefault(role, mod){
   if (role === 'admin') return 3;
   if (['supervisor', 'pm', 'coordinador'].includes(role)) return mod === 'dc_net' ? 0 : 3;
-  if (role === 'inspector') return { insp: 2, tasks: 2, proj: 1, map: 1, sites: 1, tpl: 1, fibra: 2, dc: 2, horas: 2, veh: 2 }[mod] || 0;
+  if (role === 'inspector') return { insp: 2, tasks: 2, proj: 1, map: 1, sites: 1, tpl: 1, fibra: 2, dc: 2, horas: 2, veh: 2, stock: 1 }[mod] || 0;
   if (role === 'contratista') return { insp: 2, tasks: 2, proj: 1, map: 1, fibra: 2, dc: 2, horas: 2, veh: 2 }[mod] || 0;
   return 0;
 }
