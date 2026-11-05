@@ -92,11 +92,11 @@ const stkDate = s => s ? fmtD(s) : '—';
 function stkCfg(){ const c = STK.base?.cfg || {}; return { st_equipo: c.st_equipo?.length ? c.st_equipo : STK_DEF_CFG.st_equipo, st_herr: c.st_herr?.length ? c.st_herr : STK_DEF_CFG.st_herr, owners: c.owners?.length ? c.owners : STK_DEF_CFG.owners }; }
 const stkStatuses = cat => cat === 'herramienta' ? stkCfg().st_herr : stkCfg().st_equipo;
 const stkOpt = (list, cur) => list.map(x => `<option value="${esc(x)}" ${x === cur ? 'selected' : ''}>${esc(x)}</option>`).join('');
-function stkInval(){ for (const k of ['stk-assets', 'stk-places', 'stk-items', 'stk-moves']) IDB.del('kv', CUR_UID + ':' + k).catch(() => {}); STK.base = null; }
+function stkInval(){ for (const k of ['stk-assets', 'stk-places', 'stk-items', 'stk-moves', 'stk-cat']) IDB.del('kv', CUR_UID + ':' + k).catch(() => {}); STK.base = null; }
 
 async function stkLoadBase(force){
   if (STK.base && !force) return STK.base;
-  const [places, projects, sites, items, moves, assets, cfgRow] = await Promise.all([
+  const [places, projects, sites, items, moves, assets, cfgRow, catalog] = await Promise.all([
     cached('stk-places', () => sb.from('stock_places').select('*').order('name')).catch(() => []),
     loadProjects().catch(() => []),
     loadSitesMap().catch(() => []),
@@ -104,9 +104,10 @@ async function stkLoadBase(force){
     cached('stk-moves', () => pageAll(() => sb.from('stock_moves').select('*').order('at').order('id'))).catch(() => []),
     cached('stk-assets', () => pageAll(() => sb.from('assets').select('*').order('code').order('id'))),
     cached('stk-cfg', () => sb.from('org_settings').select('stock_cfg').eq('org_id', me.org_id).maybeSingle()).catch(() => null),
+    cached('stk-cat', () => sb.from('stock_catalog').select('*').order('name')).catch(() => []),
     (async () => { try { if (typeof hhLoadBase === 'function' && !(HHS.staff || []).length) await hhLoadBase(); } catch {} })()]);
   const staff = (typeof HHS !== 'undefined' && HHS.staff) || [];
-  STK.base = { places, projects, sites, items, moves, assets, cfg: cfgRow?.stock_cfg || null, staff,
+  STK.base = { places, projects, sites, items, moves, assets, cfg: cfgRow?.stock_cfg || null, staff, catalog: (catalog || []).filter(c => c.active),
     placeById: new Map(places.map(p => [p.id, p])), projById: new Map(projects.map(p => [p.id, p])), siteById: new Map(sites.map(s => [s.id, s])),
     staffById: new Map(staff.map(s => [s.id, s])), itemById: new Map(items.map(i => [i.id, i])) };
   return STK.base;
@@ -133,7 +134,7 @@ async function viewStock(v, sub, id){
   STK.sel.clear();
   return stkList(v, scope);
 }
-const stkInScope = (a, sc) => sc.kind === 'gen' ? !a.project_id : sc.kind === 'prj' ? a.project_id === sc.id : sc.kind === 'place' ? a.place_id === sc.id : sc.kind === 'site' ? a.site_id === sc.id : true;
+const stkInScope = (a, sc) => sc.kind === 'gen' ? !a.project_id : sc.kind === 'prj' ? a.project_id === sc.id : sc.kind === 'place' ? a.place_id === sc.id : sc.kind === 'site' ? (a.site_id === sc.id || (a.place_id && STK.base.placeById.get(a.place_id)?.site_id === sc.id)) : true;
 const stkScopeProj = sc => sc.kind === 'prj' ? sc.id : null;
 
 function stkScopeHead(sc){
@@ -144,14 +145,15 @@ function stkScopeHead(sc){
   if (sc.kind === 'place'){ const p = B.placeById.get(sc.id); const k = STK_PLACE_KIND[p?.kind] || STK_PLACE_KIND.otro;
     return `<div class="stk-scope all"><div class="big">${k[0]}</div><div style="flex:1;min-width:200px"><h1>${esc(p?.name || 'Lugar')}${p && !p.active ? ' (desarmado)' : ''}</h1><p>${k[1]}${p?.address ? ' · ' + esc(p.address) : ''} · todo lo que hay acá, del stock general y de los proyectos.</p></div><a class="btn sec small" href="#/stock" style="margin:0">← Stock</a></div>`; }
   const s = B.siteById.get(sc.id);
-  return `<div class="stk-scope all"><div class="big">📍</div><div style="flex:1;min-width:200px"><h1>${esc(s?.name || 'Sitio')}</h1><p>Equipos y herramientas que están en este sitio.</p></div><a class="btn sec small" href="#/stock" style="margin:0">← Stock</a></div>`;
+  const pls = B.places.filter(p => p.site_id === sc.id && p.active);
+  return `<div class="stk-scope all"><div class="big">📍</div><div style="flex:1;min-width:200px"><h1>${esc(s?.name || 'Sitio')}</h1><p>Lo que está en este sitio${pls.length ? ' y en ' + pls.map(p => esc(p.name)).join(', ') : ''}.</p></div><a class="btn sec small" href="#/stock" style="margin:0">← Stock</a></div>`;
 }
 
 function stkList(v, sc){
   const B = STK.base, list = B.assets.filter(a => !a.archived && stkInScope(a, sc));
   const eq = list.filter(a => a.cat === 'equipo'), tl = list.filter(a => a.cat === 'herramienta');
-  const pid = stkScopeProj(sc), bal = stkBalances().filter(b => sc.kind === 'gen' ? !b.project : sc.kind === 'prj' ? b.project === sc.id : sc.kind === 'place' ? b.place === sc.id : false);
-  const low = B.items.filter(i => i.active && i.min_qty != null && bal.filter(b => b.item === i.id).reduce((s, b) => s + b.qty, 0) < Number(i.min_qty) && (sc.kind !== 'site'));
+  const pid = stkScopeProj(sc), bal = stkBalances().filter(b => sc.kind === 'gen' ? !b.project : sc.kind === 'prj' ? b.project === sc.id : sc.kind === 'place' ? b.place === sc.id : sc.kind === 'site' ? B.placeById.get(b.place)?.site_id === sc.id : false);
+  const low = B.items.filter(i => i.active && i.min_qty != null && bal.filter(b => b.item === i.id).reduce((s, b) => s + b.qty, 0) < Number(i.min_qty) && ['gen', 'prj'].includes(sc.kind));
   const today = todayStr(), soon = addDays(today, 30);
   const calib = tl.filter(a => a.service_due && a.service_due <= soon);
   const stCount = arr => { const m = new Map(); arr.forEach(a => m.set(a.status, (m.get(a.status) || 0) + 1)); return [...m.entries()].sort((a, b) => b[1] - a[1]); };
@@ -166,7 +168,7 @@ function stkList(v, sc){
       <div class="stk-kpi" style="border-left-color:#1E40AF"><span>📦 En stock</span><b>${eq.filter(a => /stock/i.test(a.status)).length}</b><small>listos para usar</small></div>
       <div class="stk-kpi" style="border-left-color:#991B1B"><span>⚠ Dañados / baja</span><b style="color:${eq.some(a => /dañ|dan|baja/i.test(a.status)) ? 'var(--red)' : 'inherit'}">${eq.filter(a => stkStCol(a.status)[1] === '#991B1B').length}</b><small>a revisar</small></div>
       <div class="stk-kpi" style="border-left-color:#92400E"><span>🧰 Herramientas</span><b>${tl.length}</b><small>${tl.filter(a => a.holder_staff_id).length} asignadas${calib.length ? ` · <b style="color:var(--red)">${calib.length} por calibrar</b>` : ''}</small></div>
-      ${sc.kind !== 'site' ? `<div class="stk-kpi" style="border-left-color:#0E7490"><span>🧵 Materiales</span><b>${new Set(bal.filter(b => b.qty > 0).map(b => b.item)).size}</b><small>${low.length ? `<b style="color:var(--red)">${low.length} bajo el mínimo</b>` : 'con saldo'}</small></div>` : ''}
+      ${true ? `<div class="stk-kpi" style="border-left-color:#0E7490"><span>🧵 Materiales</span><b>${new Set(bal.filter(b => b.qty > 0).map(b => b.item)).size}</b><small>${low.length ? `<b style="color:var(--red)">${low.length} bajo el mínimo</b>` : 'con saldo'}</small></div>` : ''}
     </div>
     <div class="chart-grid" style="margin-bottom:12px">
       <div class="card"><h2 style="margin-top:0">Equipos por estado</h2>${bar(eq)}${tl.length ? `<h2 style="margin:14px 0 6px">Herramientas por estado</h2>${bar(tl)}` : ''}</div>
@@ -231,6 +233,7 @@ function stkAssetsTab(box, sc, cat){
         <button class="btn sec small" id="stk-scan" title="Escanear QR o código de barras" style="margin:0">📷</button>
       </div>
       <div class="row" style="gap:6px;flex-wrap:wrap">
+        ${stkCan(3) ? `<button class="btn sec" id="stk-cat" style="margin:0" title="Tipos, marcas y modelos">⚙ Catálogo</button>` : ''}
         ${w && ['gen', 'prj'].includes(sc.kind) ? `<button class="btn" id="stk-new" style="margin:0">+ ${C[1]}</button><label class="btn sec" style="margin:0">⬆ Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="stk-imp" class="hidden"></label>` : ''}
         <button class="btn sec" id="stk-exp" style="margin:0">⬇ Exportar</button>
       </div>
@@ -248,6 +251,7 @@ function stkAssetsTab(box, sc, cat){
     const hit = B.assets.find(a => stkNorm(a.code) === stkNorm(txt)); if (hit){ location.hash = '#/stock/a/' + hit.id; return; }
     STK.q = txt; $('#stk-q').value = txt; draw(); toast('No hay un activo con ese ID: lo busqué en la lista.'); });
   $('#stk-new')?.addEventListener('click', () => stkEdit(null, { cat, project_id: stkScopeProj(sc) }));
+  $('#stk-cat')?.addEventListener('click', () => stkCatalog('tipo'));
   $('#stk-imp')?.addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) stkImport(f, sc, cat); });
   $('#stk-exp').onclick = () => stkExport(all, sc, cat);
   draw(); bulk();
@@ -268,8 +272,7 @@ function stkEdit(a, preset = {}){
   const extraRows = Object.entries(cur.extra || {});
   const m = modal(`<h2>${isNew ? '+ Nuevo activo' : 'Editar activo'}</h2>
     <div class="stk-kinds" style="grid-template-columns:1fr 1fr">${Object.entries(STK_CAT).map(([k, c]) => `<button type="button" data-cat="${k}" class="${cat === k ? 'on' : ''}"><b>${c[0]}</b>${c[1]}</button>`).join('')}</div>
-    <label>Tipo <span class="muted">(obligatorio)</span></label><input id="se-type" list="se-types" maxlength="80" value="${esc(cur.type || '')}" placeholder="Ej.: AP Outdoor, Antena Satelital, OTDR">
-    <datalist id="se-types">${uniq('type').map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    <label>Tipo <span class="muted">(obligatorio)</span></label><div id="se-typew"></div>
     <label>ID único <span class="muted">(obligatorio)</span></label><div class="row" style="gap:6px;flex-wrap:nowrap"><input id="se-code" maxlength="120" value="${esc(cur.code || '')}" placeholder="Número de serie o código" style="flex:1"><button type="button" class="btn sec" id="se-scan" style="margin:0" title="Escanear">📷</button></div>
     <label>Estado</label><select id="se-st"></select>
     <label>Site Name <span class="muted">(dónde está)</span></label><select id="se-loc">${stkLocOptions(cur)}</select>
@@ -277,8 +280,8 @@ function stkEdit(a, preset = {}){
     <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
     <label>Nombre mostrado</label><input id="se-name" maxlength="200" value="${esc(cur.name || '')}" placeholder="Ej.: ACCESS POINT MERAKI WI-FI 6 OUTDOOR AP">
     <div class="grid2c" style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">
-      <div><label>Vendor</label><input id="se-vendor" list="se-vendors" maxlength="80" value="${esc(cur.vendor || '')}"><datalist id="se-vendors">${uniq('vendor').map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
-      <div><label>Models</label><input id="se-model" list="se-models" maxlength="80" value="${esc(cur.model || '')}"><datalist id="se-models"></datalist></div>
+      <div><label>Vendor <span class="muted">(marca)</span></label><div id="se-vendorw"></div></div>
+      <div><label>Models <span class="muted">(modelo)</span></label><div id="se-modelw"></div></div>
       <div><label>Fecha de Activación</label><input type="date" id="se-act" value="${esc(cur.activated_on || '')}"></div>
       <div><label>Fecha de Desactivación</label><input type="date" id="se-deact" value="${esc(cur.deactivated_on || '')}"></div>
     </div>
@@ -290,14 +293,30 @@ function stkEdit(a, preset = {}){
     <button type="button" class="link" id="se-exadd">+ Agregar campo</button>
     <div class="err" id="se-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="se-x">Cancelar</button><button class="btn" id="se-ok">${isNew ? 'Crear activo' : 'Guardar'}</button></div>`, { wide: true });
+  // con catálogo: menús desplegables; sin catálogo: texto con sugerencias
+  const CAT = B.catalog || [], useT = CAT.some(c => c.kind === 'tipo'), useV = CAT.some(c => c.kind === 'marca'), useM = CAT.some(c => c.kind === 'modelo');
+  const sel = (id, list, curV, ph) => { const names = list.map(x => x.name); const extra = curV && !names.some(n => stkNorm(n) === stkNorm(curV)) ? `<option value="${esc(curV)}" selected>${esc(curV)} (no está en el catálogo)</option>` : '';
+    return `<select id="${id}"><option value="">${ph}</option>${list.map(x => `<option value="${esc(x.name)}" ${stkNorm(x.name) === stkNorm(curV || '') ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}${extra}${stkCan(3) ? '<option value="__add">+ Agregar al catálogo…</option>' : ''}</select>`; };
+  const txt = (id, curV, sugg, ph) => `<input id="${id}" list="${id}-l" maxlength="80" value="${esc(curV || '')}" placeholder="${ph}"><datalist id="${id}-l">${sugg.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+  const brandId = () => CAT.find(c => c.kind === 'marca' && stkNorm(c.name) === stkNorm(m.el.querySelector('#se-vendor')?.value || ''))?.id;
+  const drawType = (v) => { $('#se-typew').innerHTML = useT ? sel('se-type', CAT.filter(c => c.kind === 'tipo' && (c.cat || 'equipo') === cat), v, '— Elegí el tipo —') : txt('se-type', v, uniq('type'), 'Ej.: AP Outdoor, Antena Satelital, OTDR'); bindAdd('se-type', 'tipo'); };
+  const drawVendor = (v) => { $('#se-vendorw').innerHTML = useV ? sel('se-vendor', CAT.filter(c => c.kind === 'marca'), v, '—') : txt('se-vendor', v, uniq('vendor'), ''); bindAdd('se-vendor', 'marca'); $('#se-vendor').addEventListener(useV ? 'change' : 'input', () => drawModel($('#se-model')?.value)); };
+  const drawModel = (v) => { const b = brandId(); $('#se-modelw').innerHTML = useM ? sel('se-model', CAT.filter(c => c.kind === 'modelo' && (!b || c.parent_id === b)), v, b ? '—' : '— Elegí primero la marca —') : txt('se-model', v, models($('#se-vendor')?.value), ''); bindAdd('se-model', 'modelo'); };
+  const bindAdd = (id, kind) => { const el = $('#' + id); if (el?.tagName !== 'SELECT') return; el.addEventListener('change', async () => { if (el.value !== '__add') return; el.value = '';
+    const name = (prompt(`Nombre del nuevo ${kind} para el catálogo:`) || '').trim().slice(0, 80); if (!name) return;
+    if (kind === 'modelo' && !brandId()) return toast('Elegí primero la marca.');
+    const { data, error } = await sb.from('stock_catalog').insert({ org_id: me.org_id, kind, name, cat: kind === 'tipo' ? cat : null, parent_id: kind === 'modelo' ? brandId() : null }).select('*').single();
+    if (error) return toast(errText(error)); CAT.push(data); IDB.del('kv', CUR_UID + ':stk-cat').catch(() => {}); toast('Agregado al catálogo');
+    if (kind === 'tipo') drawType(data.name); else if (kind === 'marca'){ drawVendor(data.name); drawModel(''); } else drawModel(data.name); }); };
   const paint = () => {
     m.el.querySelectorAll('[data-cat]').forEach(b => b.classList.toggle('on', b.dataset.cat === cat));
+    if (useT) drawType($('#se-type')?.value || cur.type);
     const st = $('#se-st'), curSt = st.value || cur.status; const list = stkStatuses(cat); st.innerHTML = stkOpt([...new Set([...list, ...(curSt ? [curSt] : [])])], list.includes(curSt) || curSt === cur.status ? curSt : list[0]);
     $('#se-holdw').classList.toggle('hidden', cat !== 'herramienta' && !cur.holder_staff_id); $('#se-calw').classList.toggle('hidden', cat !== 'herramienta');
   };
-  const fillModels = () => { $('#se-models').innerHTML = models($('#se-vendor').value).map(x => `<option value="${esc(x)}">`).join(''); };
+  drawType(cur.type); drawVendor(cur.vendor); drawModel(cur.model);
   m.el.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { cat = b.dataset.cat; $('#se-st').value = ''; paint(); });
-  $('#se-vendor').oninput = fillModels; fillModels(); paint();
+  paint();
   $('#se-scan').onclick = () => stkScan(t => { $('#se-code').value = String(t).slice(0, 120); });
   $('#se-exadd').onclick = () => { if (m.el.querySelectorAll('.stk-ex').length >= 20) return; $('#se-ex').insertAdjacentHTML('beforeend', stkExRow('', '')); bindEx(); };
   const bindEx = () => m.el.querySelectorAll('[data-exrm]').forEach(b => b.onclick = () => b.closest('.stk-ex').remove()); bindEx();
@@ -546,8 +565,7 @@ async function stkAUso(box, { a, evs }){
 /* ---------- materiales por cantidad ---------- */
 function stkMatTab(box, sc){
   const B = STK.base, w = stkCan(2), pid = stkScopeProj(sc);
-  const bal = stkBalances().filter(b => sc.kind === 'gen' ? !b.project : sc.kind === 'prj' ? b.project === sc.id : sc.kind === 'place' ? b.place === sc.id : false);
-  if (sc.kind === 'site'){ box.innerHTML = '<div class="empty">Los materiales se ven por depósito o por proyecto.</div>'; return; }
+  const bal = stkBalances().filter(b => sc.kind === 'gen' ? !b.project : sc.kind === 'prj' ? b.project === sc.id : sc.kind === 'place' ? b.place === sc.id : sc.kind === 'site' ? B.placeById.get(b.place)?.site_id === sc.id : false);
   const items = B.items.filter(i => i.active).map(i => { const bs = bal.filter(b => b.item === i.id && b.qty > 1e-9); return { i, bs, tot: bs.reduce((s, b) => s + b.qty, 0) }; });
   const used = items.filter(x => x.tot > 0 || sc.kind === 'gen');
   box.innerHTML = `<div class="row between" style="gap:8px;flex-wrap:wrap"><p class="muted sm" style="margin:0">Cable, conectores, cajas… por cantidad. El saldo sale de los movimientos: nadie lo cambia a mano.</p>
@@ -659,7 +677,7 @@ function stkPlacesTab(box, sc){
   const list = B.places.filter(p => sc.kind === 'gen' ? true : p.project_id === pid || !p.project_id);
   const card = p => { const k = STK_PLACE_KIND[p.kind] || STK_PLACE_KIND.otro; const as = B.assets.filter(a => a.place_id === p.id && !a.archived);
     const mats = new Set(bal.filter(b => b.place === p.id && b.qty > 0).map(b => b.item)).size;
-    return `<div class="stk-place" style="${p.active ? '' : 'opacity:.6;border-top-color:#9CA3AF'}"><div class="row between"><div><div style="font-size:28px;line-height:1">${k[0]}</div><b style="font-size:16px">${esc(p.name)}</b><div class="muted sm">${k[1]}${p.project_id ? ' · 📁 ' + esc(stkProjName(p.project_id)) : ' · para toda la empresa'}${p.active ? '' : ' · desarmado ' + fmtD(p.closed_at)}</div>${p.address ? `<div class="muted sm">${esc(p.address)}</div>` : ''}</div></div>
+    return `<div class="stk-place" style="${p.active ? '' : 'opacity:.6;border-top-color:#9CA3AF'}"><div class="row between"><div><div style="font-size:28px;line-height:1">${k[0]}</div><b style="font-size:16px">${esc(p.name)}</b><div class="muted sm">${k[1]}${p.project_id ? ' · 📁 ' + esc(stkProjName(p.project_id)) : ' · para toda la empresa'}${p.active ? '' : ' · desarmado ' + fmtD(p.closed_at)}</div>${p.address ? `<div class="muted sm">${esc(p.address)}</div>` : ''}${p.site_id ? `<div class="sm"><a href="#/stock/s/${p.site_id}">📍 ${esc(B.siteById.get(p.site_id)?.name || 'Sitio')}</a></div>` : ''}</div></div>
       <div class="n"><div><b>${as.filter(a => a.cat === 'equipo').length}</b><span>equipos</span></div><div><b>${as.filter(a => a.cat === 'herramienta').length}</b><span>herramientas</span></div><div><b>${mats}</b><span>materiales</span></div></div>
       <div class="row" style="gap:6px;flex-wrap:wrap"><a class="btn sec small" href="#/stock/l/${p.id}" style="margin:0">Ver lo que hay</a>${w && p.active ? `<button class="btn sec small" data-ple="${p.id}" style="margin:0">✏️</button><button class="btn sec small" data-plc="${p.id}" style="margin:0">📦 Desarmar</button>` : ''}${w && !p.active ? `<button class="btn sec small" data-plo="${p.id}" style="margin:0">♻️ Reabrir</button>` : ''}</div></div>`; };
   box.innerHTML = `<div class="row between" style="gap:8px;flex-wrap:wrap"><p class="muted sm" style="margin:0">Depósitos, bases, obradores y vehículos. Se crean cuando arranca una obra y se desarman cuando termina: al desarmar, la app mueve todo a otro lugar.</p>${w ? '<button class="btn" id="pl-new" style="margin:0">+ Lugar</button>' : ''}</div>
@@ -676,13 +694,14 @@ function stkPlaceEdit(p, pid){
     <div class="stk-kinds">${Object.entries(STK_PLACE_KIND).map(([k, x]) => `<button type="button" data-pk="${k}"><b>${x[0]}</b>${x[1]}</button>`).join('')}</div>
     <label>Nombre</label><input id="pl-n" maxlength="120" value="${esc(cur.name || '')}" placeholder="Ej.: Stock Mantenimiento Pos-Venta - BA">
     <label>Es de</label><select id="pl-p"><option value="">🏢 Toda la empresa</option>${STK.base.projects.filter(x => x.active || x.id === cur.project_id).map(x => `<option value="${x.id}" ${x.id === cur.project_id ? 'selected' : ''}>📁 ${esc(x.name)}</option>`).join('')}</select>
+    <label>Ubicado en el sitio <span class="muted">(para verlo en el mapa)</span></label><select id="pl-s"><option value="">— Ninguno —</option>${STK.base.sites.filter(x => ['deposito', 'contratista'].includes(x.kind) || x.id === cur.site_id).map(x => `<option value="${x.id}" ${x.id === cur.site_id ? 'selected' : ''}>${x.kind === 'contratista' ? '🚚' : '🏬'} ${esc(x.name)}</option>`).join('')}<optgroup label="Otros sitios">${STK.base.sites.filter(x => !['deposito', 'contratista'].includes(x.kind) && x.id !== cur.site_id).slice(0, 2000).map(x => `<option value="${x.id}">📍 ${esc(x.name)}</option>`).join('')}</optgroup></select>
     <label>Dirección</label><input id="pl-a" maxlength="200" value="${esc(cur.address || '')}">
     <label>Notas</label><input id="pl-no" maxlength="500" value="${esc(cur.notes || '')}">
     <div class="err" id="pl-err"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="pl-x">Cancelar</button><button class="btn" id="pl-ok">Guardar</button></div>`);
   const paint = () => m.el.querySelectorAll('[data-pk]').forEach(b => b.classList.toggle('on', b.dataset.pk === kind)); paint();
   m.el.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => { kind = b.dataset.pk; paint(); });
   $('#pl-x').onclick = m.close;
-  $('#pl-ok').onclick = async () => { const row = { name: $('#pl-n').value.trim(), kind, project_id: $('#pl-p').value || null, address: $('#pl-a').value.trim() || null, notes: $('#pl-no').value.trim() || null };
+  $('#pl-ok').onclick = async () => { const row = { name: $('#pl-n').value.trim(), kind, project_id: $('#pl-p').value || null, site_id: $('#pl-s').value || null, address: $('#pl-a').value.trim() || null, notes: $('#pl-no').value.trim() || null };
     if (!row.name) return void ($('#pl-err').textContent = 'Falta el nombre.');
     if (STK.base.places.some(x => stkNorm(x.name) === stkNorm(row.name) && x.id !== cur.id)) return void ($('#pl-err').textContent = 'Ya existe un lugar con ese nombre.');
     const { error } = isNew ? await sb.from('stock_places').insert({ ...row, org_id: me.org_id }) : await sb.from('stock_places').update(row).eq('id', cur.id);
@@ -797,12 +816,23 @@ async function stkImport(file, sc, defCat){
       locN, projN, holderN: g(r, 'holder') });
   });
   const nNew = items.filter(x => !x.ex).length, nUpd = items.length - nNew;
+  // catálogo: nombres que todavía no están (si la empresa ya lo usa)
+  const CAT = B.catalog || [], inCat = (k, n, par) => CAT.some(c => c.kind === k && stkNorm(c.name) === stkNorm(n) && (!par || stkNorm(CAT.find(b => b.id === c.parent_id)?.name) === stkNorm(par)));
+  const useK = k => CAT.some(c => c.kind === k);
+  const uniqN = arr => [...new Map(arr.filter(Boolean).map(n => [stkNorm(n), n])).values()];
+  const newT = useK('tipo') ? uniqN(items.map(x => x.row.type)).filter(n => !inCat('tipo', n)) : [];
+  const newV = useK('marca') ? uniqN(items.map(x => x.row.vendor)).filter(n => !inCat('marca', n)) : [];
+  const newM = useK('modelo') ? [...new Map(items.filter(x => x.row.model && x.row.vendor).map(x => [stkNorm(x.row.vendor) + '|' + stkNorm(x.row.model), [x.row.vendor, x.row.model]])).values()].filter(([v, mo]) => !inCat('modelo', mo, v)) : [];
+  const nCat = newT.length + newV.length + newM.length;
   const projBad = [...new Set(items.filter(x => x.projN && stkNorm(x.projN) !== 'stock general' && !projByName.has(stkNorm(x.projN))).map(x => x.projN))];
   const m = modal(`<h2>⬆ Importar activos</h2>
     <div class="stk-kpis"><div class="stk-kpi" style="border-left-color:#166534"><span>✨ Nuevos</span><b>${nNew}</b></div><div class="stk-kpi" style="border-left-color:#1E40AF"><span>🔄 Se actualizan</span><b>${nUpd}</b><small>mismo ID único</small></div>
       <div class="stk-kpi" style="border-left-color:#991B1B"><span>⚠ Con error</span><b>${errs.length}</b><small>no se cargan</small></div></div>
     <p class="sm">Columnas reconocidas: ${Object.keys(col).map(k => `<span class="pill p-info" style="margin:2px">${esc(rows[0][col[k]])}</span>`).join('')}${extraCols.length ? `<br>Como campos adicionales: ${extraCols.map(([n]) => `<span class="pill" style="margin:2px">${esc(n)}</span>`).join('')}` : ''}</p>
     ${newPlaces.size ? `<label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px"><input type="checkbox" id="im-np" checked style="width:auto;margin-top:3px"><span>Crear como <b>depósitos</b> los lugares que no existen: ${[...newPlaces].slice(0, 12).map(n => `<span class="pill" style="margin:2px">🏬 ${esc(n)}</span>`).join('')}${newPlaces.size > 12 ? '…' : ''}</span></label>` : ''}
+    ${nCat ? `<div class="banner warn" style="margin:8px 0"><span class="dot"></span><div><b>Nombres que no están en el catálogo:</b>
+      ${newT.length ? `<div class="sm">🏷 Tipos: ${newT.slice(0, 10).map(esc).join(', ')}</div>` : ''}${newV.length ? `<div class="sm">🏭 Marcas: ${newV.slice(0, 10).map(esc).join(', ')}</div>` : ''}${newM.length ? `<div class="sm">📟 Modelos: ${newM.slice(0, 10).map(([v, mo]) => esc(v + ' ' + mo)).join(', ')}</div>` : ''}
+      ${stkCan(3) ? `<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:6px"><input type="checkbox" id="im-cat" checked style="width:auto"> Agregarlos al catálogo al importar</label><div class="muted sm">Si alguno está mal escrito, cancelá, corregilo en el Excel o unificalo después en ⚙ Catálogo.</div>` : '<div class="sm">Pedile a quien gestiona el stock que los agregue al catálogo; si no, esas filas no se cargan.</div>'}</div></div>` : ''}
     <label>Los nuevos van a</label><select id="im-sc"><option value="">🏢 Stock general</option>${B.projects.filter(p => p.active).map(p => `<option value="${p.id}" ${stkScopeProj(sc) === p.id ? 'selected' : ''}>📁 Proyecto ${esc(p.name)}</option>`).join('')}</select>
     <p class="muted sm">${col.project !== undefined ? 'Si la fila trae la columna Stock / Proyecto, se usa esa. ' : ''}Categoría por defecto: <b>${STK_CAT[defCat][2]}</b>. Si un activo ya existe, se actualizan sus datos y el cambio queda en su historial.</p>
     ${projBad.length ? `<p class="sm" style="color:var(--amber)">Proyectos que no encontré (esas filas van al destino elegido): ${projBad.slice(0, 6).map(esc).join(', ')}</p>` : ''}
@@ -816,6 +846,12 @@ async function stkImport(file, sc, defCat){
       if (newPlaces.size && $('#im-np')?.checked){
         const { data, error } = await sb.from('stock_places').insert([...newPlaces].map(n => ({ org_id: me.org_id, name: n, kind: 'deposito' }))).select('*'); if (error) throw error;
         (data || []).forEach(p => placeByName.set(stkNorm(p.name), p));
+      }
+      if (nCat && $('#im-cat')?.checked){
+        const add = async rows => { if (!rows.length) return []; const { data, error } = await sb.from('stock_catalog').insert(rows).select('*'); if (error) throw error; CAT.push(...(data || [])); return data; };
+        await add(newT.map(n => ({ org_id: me.org_id, kind: 'tipo', name: n, cat: defCat })));
+        await add(newV.map(n => ({ org_id: me.org_id, kind: 'marca', name: n })));
+        await add(newM.map(([v, mo]) => ({ org_id: me.org_id, kind: 'modelo', name: mo, parent_id: CAT.find(c => c.kind === 'marca' && stkNorm(c.name) === stkNorm(v))?.id })).filter(r => r.parent_id));
       }
       const dest = $('#im-sc').value || null; let done = 0, fails = 0; const ins = [];
       const resolve = x => { const r = { ...x.row }; Object.keys(r).forEach(k => r[k] === undefined && delete r[k]);
@@ -848,16 +884,145 @@ async function stkMembers(p){
   const ids = new Set((mem || []).map(x => x.user_id));
   const R = typeof ROLE_TXT !== 'undefined' ? ROLE_TXT : {};
   const cand = (users || []).filter(u => !ids.has(u.id) && u.role !== 'admin' && u.role !== 'contratista');
+  const [{ data: pcs }, { data: pss }, contrs] = await Promise.all([sb.from('project_contractors').select('contractor_id,added_by').eq('project_id', p.id), sb.from('project_sites').select('id,site_id,contractor_id,stage').eq('project_id', p.id), loadContractors().catch(() => [])]);
+  const editC = isManager() && canWrite() && can('proj', 2);
+  const doneIx = Math.max(0, (p.stages || []).indexOf(p.done_stage || (p.stages || [])[p.stages.length - 1]));
+  const cIds = [...new Set([...(pcs || []).map(x => x.contractor_id), ...(pss || []).filter(x => x.contractor_id).map(x => x.contractor_id)])];
+  const cRows = cIds.map(id => { const c = contrs.find(x => x.id === id) || { name: 'Contratista' }; const mine = (pss || []).filter(x => x.contractor_id === id);
+    return { id, c, n: mine.length, done: mine.filter(x => (p.stages || []).indexOf(x.stage) >= doneIx).length, linked: (pcs || []).some(x => x.contractor_id === id) }; });
+  const cCand = contrs.filter(c => c.active && !cIds.includes(c.id));
   const m = modal(`<h2>👥 Integrantes · ${esc(p.name)}</h2>
     <p class="muted sm">Solo los integrantes ven este proyecto (el administrador ve todos). Quien lo creó queda siempre. Los técnicos lo ven también cuando tienen una tarea o un ticket del proyecto.</p>
     <div class="tblwrap"><table class="tbl"><tbody>${(mem || []).map(x => `<tr><td><b>${esc(x.full_name || x.email)}</b><div class="muted sm">${esc(R[x.role] || x.role)}${x.creator ? ' · <b>creó el proyecto</b>' : ''} · ${esc(x.added_by || '')}</div></td>
       <td class="num">${manage && !x.creator ? `<button class="btn sec small" data-rm="${x.user_id}" style="color:var(--red)">Quitar</button>` : ''}</td></tr>`).join('') || '<tr><td class="muted">Todavía no hay integrantes.</td></tr>'}</tbody></table></div>
     ${manage ? `<label>Agregar integrante</label><div class="row" style="gap:6px;flex-wrap:nowrap"><select id="pm-u" style="flex:1">${cand.map(u => `<option value="${u.id}">${esc(u.full_name || u.email)} · ${esc(R[u.role] || u.role)}</option>`).join('')}</select><button class="btn" id="pm-add" style="margin:0" ${cand.length ? '' : 'disabled'}>+ Agregar</button></div>`
       : '<p class="muted sm">Los integrantes los asigna el administrador.</p>'}
+    <h3 style="margin:18px 0 6px">🚚 Contratistas del proyecto</h3>
+    <p class="muted sm" style="margin-top:0">Cada contratista ve el proyecto y solo los sitios que tiene asignados.</p>
+    <div class="tblwrap"><table class="tbl"><tbody>${cRows.map(r => `<tr><td><b>${esc(r.c.name)}</b><div class="muted sm">${r.n ? `${r.n} sitio${r.n === 1 ? '' : 's'} · ${r.done} terminado${r.done === 1 ? '' : 's'}` : 'Sin sitios asignados todavía'}</div>
+      ${r.n ? `<div class="progress" style="height:6px;margin-top:4px;max-width:220px"><i style="width:${Math.round(r.done * 100 / r.n)}%"></i></div>` : ''}</td>
+      <td class="num">${editC ? `<button class="btn sec small" data-csit="${r.id}">📍 Sitios</button> <button class="btn sec small" data-crm="${r.id}" style="color:var(--red)">Quitar</button>` : ''}</td></tr>`).join('') || '<tr><td class="muted">Todavía no hay contratistas en este proyecto.</td></tr>'}</tbody></table></div>
+    ${editC ? `<div class="row" style="gap:6px;flex-wrap:nowrap;margin-top:8px"><select id="pc-c" style="flex:1">${cCand.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><button class="btn" id="pc-add" style="margin:0" ${cCand.length ? '' : 'disabled'}>+ Contratista al proyecto</button></div>
+      <p class="muted sm">¿No está en la lista? Se da de alta en <a href="#/tasks/contratistas">Tareas → Contratistas y cuadrillas</a>.</p>` : ''}
     <div class="err" id="pm-err"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="pm-x">Cerrar</button></div>`, { wide: true });
-  $('#pm-x').onclick = m.close;
+  $('#pm-x').onclick = () => { m.close(); route(); };
   $('#pm-add')?.addEventListener('click', async () => { const u = $('#pm-u').value; if (!u) return;
     const { error } = await sb.from('project_members').insert({ project_id: p.id, user_id: u, org_id: me.org_id }); if (error) return void ($('#pm-err').textContent = errText(error)); toast('Integrante agregado'); stkMembers(p); });
+  const reload = () => { IDB.del('kv', CUR_UID + ':ps-all').catch(() => {}); stkMembers(p); };
+  $('#pc-add')?.addEventListener('click', async () => { const c = $('#pc-c').value; if (!c) return;
+    const { error } = await sb.from('project_contractors').insert({ project_id: p.id, contractor_id: c, org_id: me.org_id }); if (error) return void ($('#pm-err').textContent = errText(error)); toast('Contratista sumada al proyecto'); reload(); });
+  m.el.querySelectorAll('[data-crm]').forEach(b => b.onclick = async () => { const r = cRows.find(x => x.id === b.dataset.crm);
+    if (!confirm(r.n ? `${r.c.name} tiene ${r.n} sitio${r.n === 1 ? '' : 's'} asignado${r.n === 1 ? '' : 's'}: quedan sin asignar y deja de ver el proyecto. ¿Seguir?` : `¿Quitar a ${r.c.name} del proyecto?`)) return;
+    if (r.n){ const { error } = await sb.from('project_sites').update({ contractor_id: null, last_reason: 'Se quitó la contratista del proyecto' }).eq('project_id', p.id).eq('contractor_id', r.id); if (error) return void ($('#pm-err').textContent = errText(error)); }
+    const { error } = await sb.from('project_contractors').delete().eq('project_id', p.id).eq('contractor_id', r.id); if (error) return void ($('#pm-err').textContent = errText(error)); toast('Quitada'); reload(); });
+  m.el.querySelectorAll('[data-csit]').forEach(b => b.onclick = () => stkContrSites(p, cRows.find(x => x.id === b.dataset.csit), pss || [], contrs));
   m.el.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { if (!confirm('¿Quitar a esta persona del proyecto? Deja de verlo.')) return;
     const { error } = await sb.from('project_members').delete().eq('project_id', p.id).eq('user_id', b.dataset.rm); if (error) return void ($('#pm-err').textContent = errText(error)); toast('Quitado'); stkMembers(p); });
+}
+
+/* sitios del proyecto para una contratista: tildar = asignarle; destildar = queda sin asignar */
+async function stkContrSites(p, r, pss, contrs){
+  const sites = await loadSitesMap().catch(() => []); const sById = new Map(sites.map(x => [x.id, x]));
+  const cName = id => contrs.find(c => c.id === id)?.name || '';
+  const list = pss.map(x => ({ x, s: sById.get(x.site_id) })).sort((a, b) => (a.s?.name || '').localeCompare(b.s?.name || '', 'es'));
+  const m = modal(`<h2>📍 Sitios de ${esc(r.c.name)}</h2><p class="muted sm">Tildá los sitios que hace esta contratista. Si un sitio ya es de otra, pasa a esta.</p>
+    <input id="cs-q" placeholder="🔍 Filtrar sitios" style="margin-bottom:8px">
+    <div style="max-height:50vh;overflow:auto">${list.map(({ x, s }) => `<label class="cs-row" data-n="${esc((s?.name || '') + ' ' + (s?.localidad || '')).toLowerCase()}" style="display:flex;gap:10px;align-items:center;padding:8px;border-bottom:1px solid var(--line);font-weight:400;margin:0">
+      <input type="checkbox" data-ps="${x.id}" style="width:auto" ${x.contractor_id === r.id ? 'checked' : ''}><span style="flex:1"><b>${esc(s?.name || 'Sitio')}</b><span class="muted sm"> ${esc(s?.localidad || '')}</span>
+      ${x.contractor_id && x.contractor_id !== r.id ? `<div class="sm" style="color:var(--amber)">Hoy: ${esc(cName(x.contractor_id))}</div>` : ''}</span><span class="pill p-info">${esc(x.stage || '')}</span></label>`).join('') || '<div class="empty">El proyecto todavía no tiene sitios.</div>'}</div>
+    <div class="err" id="cs-err"></div><div class="row" style="justify-content:space-between;margin-top:10px"><span class="sm muted" id="cs-n"></span><div class="row" style="gap:6px"><button class="btn sec" id="cs-x">Cancelar</button><button class="btn" id="cs-ok">Guardar</button></div></div>`, { wide: true });
+  const count = () => { $('#cs-n').textContent = m.el.querySelectorAll('[data-ps]:checked').length + ' sitios tildados'; }; count();
+  m.el.querySelectorAll('[data-ps]').forEach(c => c.onchange = count);
+  $('#cs-q').oninput = e => { const q = e.target.value.toLowerCase(); m.el.querySelectorAll('.cs-row').forEach(l => l.style.display = l.dataset.n.includes(q) ? '' : 'none'); };
+  $('#cs-x').onclick = () => stkMembers(p);
+  $('#cs-ok').onclick = async () => {
+    const on = [...m.el.querySelectorAll('[data-ps]:checked')].map(c => c.dataset.ps), off = pss.filter(x => x.contractor_id === r.id && !on.includes(x.id)).map(x => x.id);
+    const add = on.filter(id => pss.find(x => x.id === id)?.contractor_id !== r.id);
+    $('#cs-ok').disabled = true;
+    try {
+      for (let i = 0; i < add.length; i += 100){ const { error } = await sb.from('project_sites').update({ contractor_id: r.id, last_reason: 'Asignado desde Contratistas del proyecto' }).in('id', add.slice(i, i + 100)); if (error) throw error; }
+      for (let i = 0; i < off.length; i += 100){ const { error } = await sb.from('project_sites').update({ contractor_id: null, last_reason: 'Quitado desde Contratistas del proyecto' }).in('id', off.slice(i, i + 100)); if (error) throw error; }
+      if (!r.linked) await sb.from('project_contractors').insert({ project_id: p.id, contractor_id: r.id, org_id: me.org_id });
+      IDB.del('kv', CUR_UID + ':ps-all').catch(() => {}); toast(`Listo: ${add.length} asignados, ${off.length} liberados`); stkMembers(p);
+    } catch (e){ $('#cs-err').textContent = errText(e); $('#cs-ok').disabled = false; }
+  };
+}
+
+/* ---------- catálogo de tipos, marcas y modelos ---------- */
+const STK_CATK = { tipo: ['🏷', 'Tipos'], marca: ['🏭', 'Marcas'], modelo: ['📟', 'Modelos'] };
+const stkKey = x => stkNorm(x).replace(/[^a-z0-9]/g, '');
+async function stkCatalog(tab){
+  await stkLoadBase(true);
+  const B = STK.base, CAT = B.catalog, w = stkCan(3);
+  const of = k => CAT.filter(c => c.kind === k);
+  const brands = of('marca'), bName = id => brands.find(b => b.id === id)?.name || '?';
+  const uses = (k, n) => B.assets.filter(a => stkNorm(k === 'tipo' ? a.type : k === 'marca' ? a.vendor : a.model) === stkNorm(n)).length;
+  const usesX = (k, n) => B.assets.filter(a => (k === 'tipo' ? a.type : k === 'marca' ? a.vendor : a.model) === n).length;
+  const field = { tipo: 'type', marca: 'vendor', modelo: 'model' }[tab];
+  // nombres usados en activos que todavía no están en el catálogo
+  const missing = [...new Set(B.assets.map(a => a[field]).filter(Boolean))].filter(n => !of(tab).some(c => stkNorm(c.name) === stkNorm(n)));
+  // grupos parecidos (mismo nombre escrito distinto)
+  const all = [...new Set([...of(tab).map(c => c.name), ...B.assets.map(a => a[field]).filter(Boolean)])];
+  const groups = [...all.reduce((m, n) => { const k = stkKey(n); if (!k) return m; m.set(k, [...(m.get(k) || []), n]); return m; }, new Map()).values()].filter(g => new Set(g).size > 1);
+  const list = of(tab).sort((a, b) => (tab === 'modelo' ? bName(a.parent_id).localeCompare(bName(b.parent_id), 'es') : 0) || a.name.localeCompare(b.name, 'es'));
+  const m = modal(`<div class="row between"><h2 style="margin:0">⚙ Catálogo de activos</h2><button class="btn sec small" id="ct-x">Cerrar</button></div>
+    <p class="muted sm">Lo que está acá aparece en los menús desplegables al crear un activo. Una vez cargado, la base no acepta otros nombres: así no hay "Meraki" y "MERAKI".</p>
+    <div class="seg" style="margin:10px 0">${Object.entries(STK_CATK).map(([k, x]) => `<button data-ctab="${k}" class="${k === tab ? 'on' : ''}">${x[0]} ${x[1]} (${of(k).length})</button>`).join('')}</div>
+    ${w ? `<div class="row" style="gap:6px;flex-wrap:wrap">
+      ${tab === 'modelo' ? `<select id="ct-b" style="width:auto">${brands.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('') || '<option value="">Cargá primero las marcas</option>'}</select>` : ''}
+      ${tab === 'tipo' ? `<select id="ct-c" style="width:auto"><option value="equipo">📡 Equipo</option><option value="herramienta">🧰 Herramienta</option></select>` : ''}
+      <input id="ct-n" maxlength="80" placeholder="${tab === 'marca' ? 'Nueva marca' : 'Nuevo ' + tab}" style="flex:1;min-width:160px"><button class="btn" id="ct-add" style="margin:0">+ Agregar</button></div>` : ''}
+    ${w && missing.length ? `<div class="banner warn" style="margin:10px 0"><span class="dot"></span><div><b>${missing.length} ${tab === 'marca' ? (missing.length === 1 ? 'marca usada' : 'marcas usadas') : tab + (missing.length === 1 ? ' usado' : 's usados')} en activos no ${missing.length === 1 ? 'está' : 'están'} en el catálogo:</b> ${missing.slice(0, 10).map(n => `<span class="pill" style="margin:2px">${esc(n)}</span>`).join('')}${missing.length > 10 ? '…' : ''}
+      <div style="margin-top:6px"><button class="btn small" id="ct-load">⬇ Cargarlos al catálogo</button></div></div></div>` : ''}
+    ${w && groups.length ? `<div class="banner" style="margin:10px 0;background:#EEF2FF"><span class="dot" style="background:#5B5BD6"></span><div style="flex:1"><b>🔗 Parecidos para unificar (${groups.length})</b><div class="muted sm">Elegí cómo queda escrito; los activos con las otras formas pasan a ese nombre y queda en su historial.</div>
+      ${groups.slice(0, 20).map((g, i) => `<div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap">${[...new Set(g)].map((n, j) => `<label style="display:inline-flex;gap:4px;align-items:center;font-weight:400;margin:0"><input type="radio" name="ug${i}" value="${esc(n)}" ${j === 0 ? 'checked' : ''} style="width:auto">${esc(n)} <span class="muted sm">(${usesX(tab, n)})</span></label>`).join('')}<button class="btn small" data-ug="${i}">Unificar</button></div>`).join('')}</div></div>` : ''}
+    <div class="tblwrap" style="max-height:45vh;overflow:auto"><table class="tbl"><tbody>${list.map(c => `<tr><td><b>${esc(c.name)}</b>${tab === 'modelo' ? `<span class="muted sm"> · ${esc(bName(c.parent_id))}</span>` : ''}${tab === 'tipo' ? `<span class="muted sm"> · ${c.cat === 'herramienta' ? '🧰 Herramienta' : '📡 Equipo'}</span>` : ''}</td>
+      <td class="sm muted">${uses(tab, c.name)} activo${uses(tab, c.name) === 1 ? '' : 's'}</td><td class="num">${w ? `<button class="btn sec small" data-cdel="${c.id}" title="Quitar del catálogo">✕</button>` : ''}</td></tr>`).join('') || `<tr><td class="muted">Todavía no hay ${STK_CATK[tab][1].toLowerCase()} en el catálogo: mientras esté vacío, el campo se escribe libre.</td></tr>`}</tbody></table></div>
+    <div class="err" id="ct-err"></div>`, { wide: true });
+  const err = t => { $('#ct-err').textContent = t; };
+  const again = () => { stkInval(); stkCatalog(tab); };
+  $('#ct-x').onclick = () => { m.close(); stkInval(); route(); };
+  m.el.querySelectorAll('[data-ctab]').forEach(b => b.onclick = () => stkCatalog(b.dataset.ctab));
+  $('#ct-add')?.addEventListener('click', async () => { const name = $('#ct-n').value.trim(); if (!name) return;
+    if (tab === 'modelo' && !$('#ct-b').value) return err('Cargá primero la marca.');
+    const { error } = await sb.from('stock_catalog').insert({ org_id: me.org_id, kind: tab, name, cat: tab === 'tipo' ? $('#ct-c').value : null, parent_id: tab === 'modelo' ? $('#ct-b').value : null });
+    if (error) return err(errText(error)); again(); });
+  $('#ct-n')?.addEventListener('keydown', e => { if (e.key === 'Enter') $('#ct-add').click(); });
+  $('#ct-load')?.addEventListener('click', async () => {
+    $('#ct-load').disabled = true;
+    try {
+      // los parecidos entran una sola vez (la forma más usada)
+      const pick = new Map(); missing.forEach(n => { const k = stkKey(n), p = pick.get(k); if (!p || usesX(tab, n) > usesX(tab, p)) pick.set(k, n); });
+      const names = [...pick.values()].filter(n => !of(tab).some(c => stkKey(c.name) === stkKey(n)));
+      let rows;
+      if (tab === 'modelo'){
+        const bmap = new Map(brands.map(b => [stkNorm(b.name), b.id]));
+        rows = names.map(n => { const a = B.assets.find(x => stkNorm(x.model) === stkNorm(n) && x.vendor); return { org_id: me.org_id, kind: 'modelo', name: n, parent_id: a ? bmap.get(stkNorm(a.vendor)) : null }; });
+        const sinMarca = rows.filter(r => !r.parent_id); rows = rows.filter(r => r.parent_id);
+        if (sinMarca.length) toast(`${sinMarca.length} modelo${sinMarca.length === 1 ? '' : 's'} no se cargaron: primero cargá su marca.`);
+      } else rows = names.map(n => ({ org_id: me.org_id, kind: tab, name: n, cat: tab === 'tipo' ? (B.assets.find(x => stkNorm(x.type) === stkNorm(n))?.cat || 'equipo') : null }));
+      for (let i = 0; i < rows.length; i += 200){ const { error } = await sb.from('stock_catalog').insert(rows.slice(i, i + 200)); if (error) throw error; }
+      toast(`${rows.length} cargado${rows.length === 1 ? '' : 's'} al catálogo`); again();
+    } catch (e){ err(errText(e)); $('#ct-load').disabled = false; }
+  });
+  m.el.querySelectorAll('[data-ug]').forEach(b => b.onclick = async () => {
+    const i = Number(b.dataset.ug), g = [...new Set(groups[i])], to = m.el.querySelector(`input[name="ug${i}"]:checked`).value;
+    b.disabled = true;
+    try {
+      if (!of(tab).some(c => c.name === to)){
+        const ex = of(tab).find(c => stkNorm(c.name) === stkNorm(to));
+        if (ex){ const { error } = await sb.from('stock_catalog').update({ name: to }).eq('id', ex.id); if (error) throw error; }
+        else {
+          let parent = null;
+          if (tab === 'modelo'){ const a = B.assets.find(x => g.some(n => stkNorm(n) === stkNorm(x.model)) && x.vendor); parent = a && brands.find(bb => stkNorm(bb.name) === stkNorm(a.vendor))?.id; if (!parent) throw new Error('Primero cargá la marca de ese modelo en el catálogo.'); }
+          const { error } = await sb.from('stock_catalog').insert({ org_id: me.org_id, kind: tab, name: to, parent_id: parent, cat: tab === 'tipo' ? (B.assets.find(x => g.includes(x.type))?.cat || 'equipo') : null }); if (error) throw error;
+        }
+      }
+      const { data, error } = await sb.rpc('catalog_merge', { p_kind: tab, p_from: g.filter(n => n !== to), p_to: to }); if (error) throw error;
+      toast(`Unificado: ${data || 0} activo${data === 1 ? '' : 's'} pasaron a "${to}"`); again();
+    } catch (e){ err(errText(e)); b.disabled = false; }
+  });
+  m.el.querySelectorAll('[data-cdel]').forEach(b => b.onclick = async () => { const c = CAT.find(x => x.id === b.dataset.cdel);
+    if (!confirm(`¿Quitar "${c.name}" del catálogo? Los activos que ya lo usan no cambian.${tab === 'marca' ? ' También se quitan sus modelos.' : ''}`)) return;
+    const { error } = await sb.from('stock_catalog').delete().eq('id', c.id); if (error) return err(errText(error)); again(); });
 }

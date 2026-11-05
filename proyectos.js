@@ -197,6 +197,7 @@ async function viewMap(v, preset){
         <a class="btn small" target="_blank" rel="noopener noreferrer" href="${mapsLink(s.lat, s.lng)}">Cómo llegar</a>
         ${isManager() && canWrite() ? `<button class="btn sec small" data-newpend="${s.id}">+ Pendiente</button>` : ''}
         ${x.inst.length ? `<button class="btn sec small" data-goproj="${x.inst[0].p.id}">Ver proyecto</button>` : ''}
+        ${['deposito', 'contratista'].includes(s.kind) && can('stock') ? `<a class="btn sec small" href="#/stock/s/${s.id}">📦 Stock</a>` : ''}
       </div></div>`;
   };
 

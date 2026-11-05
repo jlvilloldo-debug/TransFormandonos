@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-dM7o+EyJt2N9hVpJqAAQH4FCprbKAdlHBEiPuT9k0w0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-bh5CSNhRRTZdfXdTczkqeHX/i5ZC6MmOuBynYcfA8N8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -426,7 +426,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.9';
+const APP_VERSION = '5.10';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -464,8 +464,8 @@ function uid(){
 }
 const STATE_TXT = {activa:'Activa', por_vencer:'Por vencer', vencida:'Vencida', suspendida:'Suspendida'};
 const KIND_TXT = {preventivo:'Preventivo', correctivo:'Correctivo', otro:'Otro'};
-const SITE_KINDS = {epi:'EPI / Nodo', sala:'Sala técnica / carrier', escuela:'Escuela', edificio:'Edificio', rack:'Rack', repetidora:'Repetidora', acueducto:'Acueducto', tramo_fo:'Tramo de fibra', radioenlace:'Radioenlace', shelter:'Shelter', otro:'Otro'};
-const SITE_COLORS = {epi:'#22B07D', sala:'#0E7490', escuela:'#D97706', edificio:'#7C3AED', rack:'#475569', repetidora:'#8B5CF6', acueducto:'#2B7BD6', tramo_fo:'#F2A93B', radioenlace:'#8B5CF6', shelter:'#0F2A4A', otro:'#6E6E6E'};
+const SITE_KINDS = {epi:'EPI / Nodo', sala:'Sala técnica / carrier', escuela:'Escuela', edificio:'Edificio', rack:'Rack', repetidora:'Repetidora', acueducto:'Acueducto', tramo_fo:'Tramo de fibra', radioenlace:'Radioenlace', shelter:'Shelter', contratista:'Contratista', deposito:'Depósito', otro:'Otro'};
+const SITE_COLORS = {epi:'#22B07D', sala:'#0E7490', escuela:'#D97706', edificio:'#7C3AED', rack:'#475569', repetidora:'#8B5CF6', acueducto:'#2B7BD6', tramo_fo:'#F2A93B', radioenlace:'#8B5CF6', shelter:'#0F2A4A', otro:'#6E6E6E', contratista:'#DB2777', deposito:'#B45309'};
 const online = () => navigator.onLine;
 const isNetErr = e => /Failed to fetch|NetworkError|Load failed|network|fetch failed|ERR_INTERNET|timeout/i.test(String((e && (e.message || e.details)) || e));
 function toast(msg, action){
@@ -486,6 +486,9 @@ function errText(e){
   if (/email rate limit/i.test(m)) return 'Se alcanzó el límite de mails por hora del servidor. Esperá un rato e intentá de nuevo; si pasa seguido, avisale al administrador.';
   if (/rate limit|only request this after/i.test(m)) return 'Demasiados intentos seguidos. Esperá unos minutos.';
   if (/Error sending|sending (confirmation|recovery) email/i.test(m)) return 'El servidor no pudo enviar el mail. Avisale al administrador (configuración de correo de la app).';
+  if (/sites_kind_check/i.test(m)) return 'La base todavía no tiene ese tipo de sitio: corré el archivo 28_catalogo_sitios.sql en Supabase.';
+  if (/sites_org_id_kind_name_key/i.test(m)) return 'Ya existe un sitio de ese tipo con ese nombre.';
+  if (/stock_catalog_u/i.test(m)) return 'Ese nombre ya está en el catálogo.';
   if (/row-level security/i.test(m)) return 'No tenés permiso para esta acción, o la licencia está vencida.';
   if (isNetErr(e)) return 'Sin conexión. Revisá internet e intentá de nuevo.';
   return m;
@@ -2510,7 +2513,8 @@ async function viewSites(v){
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">Sitios <span class="muted sm">(${sites.length})</span></h2>
       ${manage ? `<div class="row"><label class="btn sec" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="sxl" class="hidden"></label><label class="btn sec" style="margin:0">Importar KMZ / KML<input type="file" accept=".kmz,.kml" id="kmz" class="hidden"></label><button class="btn" id="b-add">+ Sitio</button></div>` : ''}</div>
-      ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado de sitios: <button class="link" id="b-smodel">descargá el modelo de Excel</button>, completalo y subilo con <b>Importar Excel</b>.</p>' : ''}
+      ${(() => { const n = sites.filter(x => x.lat != null && x.lng != null && !coordCheck(x.lat, x.lng).ok).length; return n ? `<div class="banner warn" style="margin:10px 0 0"><span class="dot"></span><div><b>${n} sitio${n === 1 ? '' : 's'} con coordenadas fuera de ${COORD_BOX.name}</b> · no se ven en el lugar correcto del mapa.${manage ? ' <button class="btn small" id="b-coord" style="margin-left:6px">Revisar y corregir</button>' : ''}</div></div>` : ''; })()}
+${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado de sitios: <button class="link" id="b-smodel">descargá el modelo de Excel</button>, completalo y subilo con <b>Importar Excel</b>.</p>' : ''}
       <div class="row" style="margin-top:12px">
         <input id="q" class="grow" placeholder="Buscar sitio">
         <select id="f-k" style="width:auto"><option value="">Todos los tipos</option>${Object.entries(SITE_KINDS).map(([k,t]) => `<option value="${k}">${t}</option>`).join('')}</select>
@@ -2550,7 +2554,38 @@ async function viewSites(v){
   $('#b-add')?.addEventListener('click', () => editSite(null));
   $('#b-smodel')?.addEventListener('click', downloadSitesModel);
   $('#sxl')?.addEventListener('change', e => importSitesExcel(e.target.files[0], sites));
+  $('#b-coord')?.addEventListener('click', () => coordReview(sites));
   $('#kmz')?.addEventListener('change', e => importKMZ(e.target.files[0], sites));
+}
+/* ---------- coordenadas: detectar las que caen fuera del país (casi siempre falta el signo menos) ---------- */
+const COORD_BOX = { name: 'Argentina', lat: [-55.3, -21.6], lng: [-73.8, -53.4] };
+const coordIn = (la, lo) => la >= COORD_BOX.lat[0] && la <= COORD_BOX.lat[1] && lo >= COORD_BOX.lng[0] && lo <= COORD_BOX.lng[1];
+function coordCheck(lat, lng){
+  if (lat == null || lng == null || lat === '' || lng === '') return { ok: true };
+  lat = Number(lat); lng = Number(lng);
+  if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { ok: false, fix: null, why: 'no es válida' };
+  if (coordIn(lat, lng)) return { ok: true };
+  for (const [a, b] of [[-Math.abs(lat), -Math.abs(lng)], [lng, lat], [-Math.abs(lng), -Math.abs(lat)]]) if (coordIn(a, b)) return { ok: false, fix: [a, b], why: a === lng || a === -Math.abs(lng) ? 'tiene la latitud y la longitud invertidas' : 'no tiene el signo menos' };
+  return { ok: false, fix: null, why: 'cae fuera de ' + COORD_BOX.name };
+}
+const coordTxt = (a, b) => `${Number(a).toFixed(5)}, ${Number(b).toFixed(5)}`;
+function coordReview(sites){
+  const bad = sites.filter(x => x.lat != null && x.lng != null && !coordCheck(x.lat, x.lng).ok).map(x => ({ x, c: coordCheck(x.lat, x.lng) }));
+  const fixable = bad.filter(b => b.c.fix);
+  const m = modal(`<h2>⚠ Coordenadas para revisar (${bad.length})</h2>
+    <p class="muted sm">Estos sitios caen fuera de ${COORD_BOX.name}. Casi siempre es una coordenada sin el signo menos o con latitud y longitud invertidas.</p>
+    ${fixable.length ? `<button class="btn" id="cr-all">✔ Corregir los ${fixable.length} que tienen arreglo</button>` : ''}
+    <div class="tblwrap" style="max-height:55vh;overflow:auto;margin-top:10px"><table class="tbl"><thead><tr><th>Sitio</th><th>Ahora</th><th>Sugerido</th><th></th></tr></thead><tbody>
+    ${bad.map(({ x, c }) => `<tr><td><b>${esc(x.name)}</b><div class="muted sm">${esc(SITE_KINDS[x.kind] || '')}${x.localidad ? ' · ' + esc(x.localidad) : ''}</div></td>
+      <td class="sm" style="color:var(--red)">${coordTxt(x.lat, x.lng)}<div class="muted">${esc(c.why)}</div></td>
+      <td class="sm" style="color:var(--green-d)">${c.fix ? coordTxt(c.fix[0], c.fix[1]) : '—'}</td>
+      <td class="num">${c.fix ? `<button class="btn small" data-crfix="${x.id}">Corregir</button>` : ''} <button class="btn sec small" data-cred="${x.id}">Editar</button></td></tr>`).join('')}</tbody></table></div>
+    <div class="err" id="cr-err"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="cr-x">Cerrar</button></div>`, { wide: true });
+  const fix = async list => { for (const { x, c } of list){ const { error } = await sb.from('sites').update({ lat: c.fix[0], lng: c.fix[1] }).eq('id', x.id); if (error) throw error; } };
+  $('#cr-x').onclick = () => { m.close(); route(); };
+  $('#cr-all')?.addEventListener('click', async () => { $('#cr-all').disabled = true; try { await fix(fixable); m.close(); toast(`Listo: ${fixable.length} coordenadas corregidas`); route(); } catch (e){ $('#cr-err').textContent = errText(e); $('#cr-all').disabled = false; } });
+  m.el.querySelectorAll('[data-crfix]').forEach(b => b.onclick = async () => { b.disabled = true; try { await fix(bad.filter(z => z.x.id === b.dataset.crfix)); b.closest('tr').style.opacity = .4; b.textContent = '✔ Corregido'; toast('Coordenada corregida'); } catch (e){ $('#cr-err').textContent = errText(e); b.disabled = false; } });
+  m.el.querySelectorAll('[data-cred]').forEach(b => b.onclick = () => { m.close(); editSite(sites.find(z => z.id === b.dataset.cred)); });
 }
 function editSite(s){
   if (!needOnline()) return;
@@ -2563,7 +2598,10 @@ function editSite(s){
     <label>Dirección</label><input id="s-addr" maxlength="300" value="${esc(s.address||'')}" placeholder="Calle y número">
     <div class="row"><div class="grow"><label>Localidad</label><input id="s-loc" maxlength="120" value="${esc(s.localidad||'')}"></div><div class="grow"><label>Provincia</label><input id="s-prov" maxlength="120" value="${esc(s.provincia||'')}"></div></div>
     <div class="row"><div class="grow"><label>Latitud</label><input id="s-lat" type="number" step="any" value="${s.lat ?? ''}"></div><div class="grow"><label>Longitud</label><input id="s-lng" type="number" step="any" value="${s.lng ?? ''}"></div></div>
+    <div id="s-coordw"></div>
     <button class="link" id="s-gps" style="margin-top:6px">Usar mi ubicación actual</button>
+    <div id="s-cw" class="hidden"><label>Contratista de este sitio <span class="muted">(su base o taller)</span></label><select id="s-contr"><option value="">—</option></select></div>
+    <div id="s-dw" class="hidden"><label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:10px"><input type="checkbox" id="s-stock" style="width:auto"> <span>Usar como <b>lugar de stock</b> (aparece en Activos y stock → Lugares)</span></label></div>
     <label>Otros nombres (separados por coma)</label><input id="s-alias" value="${esc((s.aliases||[]).join(', '))}" placeholder="Ej.: C. Aricaiquin, Cacique">
     <label>Notas</label><input id="s-notes" value="${esc(s.notes||'')}">
     <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="s-active" style="width:auto" ${s.active ? 'checked' : ''}> Activo</label>
@@ -2571,6 +2609,20 @@ function editSite(s){
     <div class="row between" style="margin-top:10px">${isNew ? '<span></span>' : '<button class="btn danger small" id="s-del">Eliminar</button>'}
       <div class="row"><button class="btn sec" id="s-cancel">Cancelar</button><button class="btn" id="s-save">Guardar</button></div></div>`);
   $('#s-cancel').onclick = m.close;
+  const kindUI = () => { const k = $('#s-kind').value; $('#s-cw').classList.toggle('hidden', k !== 'contratista'); $('#s-dw').classList.toggle('hidden', !['deposito', 'contratista'].includes(k) || !(typeof can === 'function' && can('stock', 3))); };
+  $('#s-kind').addEventListener('change', kindUI); kindUI();
+  loadContractors().then(cs => { const sel = $('#s-contr'); if (!sel) return; sel.innerHTML = '<option value="">—</option>' + cs.filter(c => c.active || c.id === s.contractor_id).map(c => `<option value="${c.id}" ${c.id === s.contractor_id ? 'selected' : ''}>${esc(c.name)}</option>`).join(''); }).catch(() => {});
+  let placeOfSite = null;
+  if (!isNew && typeof can === 'function' && can('stock')) sb.from('stock_places').select('id,active').eq('site_id', s.id).limit(1).then(r => { placeOfSite = r.data?.[0] || null; const c = $('#s-stock'); if (c && placeOfSite?.active) c.checked = true; });
+  let coordOk = false;
+  const coordUI = () => { const w = $('#s-coordw'); const c = coordCheck($('#s-lat').value, $('#s-lng').value);
+    const key = c.ok ? '' : JSON.stringify(c); if (w.dataset.k === key) return; w.dataset.k = key; coordOk = false;
+    w.innerHTML = c.ok ? '' : `<div class="banner warn" style="margin:8px 0"><span class="dot"></span><div><b>Esta coordenada ${esc(c.why)}.</b>${c.fix ? ` ¿Quisiste decir <b>${coordTxt(c.fix[0], c.fix[1])}</b>?` : ''}
+      <div class="row" style="gap:6px;margin-top:6px">${c.fix ? '<button type="button" class="btn small" id="s-cfix">✔ Corregir</button>' : ''}<button type="button" class="btn sec small" id="s-cok">Está bien así</button></div></div></div>`;
+    $('#s-cfix')?.addEventListener('click', () => { $('#s-lat').value = c.fix[0]; $('#s-lng').value = c.fix[1]; coordUI(); });
+    $('#s-cok')?.addEventListener('click', () => { coordOk = true; w.innerHTML = '<p class="muted sm">Se guarda tal cual.</p>'; }); };
+  const coordForce = () => { $('#s-coordw').dataset.k = '-'; coordUI(); };
+  $('#s-lat').addEventListener('change', coordUI); $('#s-lng').addEventListener('change', coordUI); coordUI();
   $('#s-gps').onclick = async () => { const p = await getPos(); if (!p) return toast('No se pudo obtener la ubicación.'); $('#s-lat').value = p.lat.toFixed(6); $('#s-lng').value = p.lng.toFixed(6); };
   $('#s-save').onclick = async () => {
     const row = { name: $('#s-name').value.trim(), kind: $('#s-kind').value, traza: $('#s-traza').value.trim() || null,
@@ -2579,8 +2631,15 @@ function editSite(s){
       aliases: $('#s-alias').value.split(',').map(x => x.trim()).filter(Boolean), notes: $('#s-notes').value.trim() || null, active: $('#s-active').checked,
       address: $('#s-addr').value.trim() || null, localidad: $('#s-loc').value.trim() || null, provincia: $('#s-prov').value.trim() || null };
     if (!row.name) return ($('#s-err').textContent = 'Poné un nombre.');
-    const { error } = await (isNew ? sb.from('sites').insert({...row, org_id: me.org_id}) : sb.from('sites').update(row).eq('id', s.id));
+    if (!coordCheck(row.lat, row.lng).ok && !coordOk){ coordForce(); return ($('#s-err').textContent = 'Revisá la coordenada: corregila o tocá "Está bien así".'); }
+    row.contractor_id = row.kind === 'contratista' ? ($('#s-contr').value || null) : null;
+    const { data: saved, error } = await (isNew ? sb.from('sites').insert({...row, org_id: me.org_id}).select('id').single() : sb.from('sites').update(row).eq('id', s.id).select('id').single());
     if (error) return ($('#s-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe un sitio con ese nombre y tipo.' : errText(error));
+    const wantStock = !$('#s-dw').classList.contains('hidden') && $('#s-stock').checked;
+    try {
+      if (wantStock && !placeOfSite){ const { error: e2 } = await sb.from('stock_places').insert({ org_id: me.org_id, name: row.name, kind: row.kind === 'contratista' ? 'base' : 'deposito', site_id: saved.id, address: [row.address, row.localidad].filter(Boolean).join(', ') || null }); if (e2) throw e2; IDB.del('kv', CUR_UID + ':stk-places').catch(() => {}); }
+      else if (wantStock && placeOfSite && !placeOfSite.active){ await sb.from('stock_places').update({ active: true }).eq('id', placeOfSite.id); }
+    } catch (e){ toast('El sitio se guardó, pero no se pudo crear el lugar de stock: ' + errText(e)); }
     m.close(); toast('Sitio guardado'); route();
   };
   $('#s-del')?.addEventListener('click', async () => {
@@ -2603,6 +2662,8 @@ function siteKind(t){
   if (/tramo|fibra/.test(n)) return 'tramo_fo';
   if (/radio/.test(n)) return 'radioenlace';
   if (/shelter/.test(n)) return 'shelter';
+  if (/contratista|cuadrilla|subcontrat/.test(n)) return 'contratista';
+  if (/deposito|almacen|panol|obrador/.test(n)) return 'deposito';
   if (/epi|nodo/.test(n)) return 'epi';
   return 'otro';
 }
@@ -2613,7 +2674,7 @@ function downloadSitesModel(){
     ['San Javier', 'EPI', '', 'San Javier', 'Santa Fe', 'Santa Fe + Conectada', '15', -30.5795, -59.9318, 4, '']]);
   ws['!cols'] = [{wch:28},{wch:18},{wch:30},{wch:18},{wch:16},{wch:26},{wch:8},{wch:12},{wch:12},{wch:12},{wch:30}];
   XLSX.utils.book_append_sheet(wb, ws, 'Sitios');
-  const wi = XLSX.utils.aoa_to_sheet([['Una fila por sitio. Obligatorio: Nombre.'], ['Tipo: EPI · Sala técnica · Escuela · Edificio · Rack · Repetidora · Acueducto · Tramo de fibra · Radioenlace · Shelter · Otro'], ['Localidad y Provincia: sirven para agrupar los sitios en el mapa.'],
+  const wi = XLSX.utils.aoa_to_sheet([['Una fila por sitio. Obligatorio: Nombre.'], ['Tipo: EPI · Sala técnica · Escuela · Edificio · Rack · Repetidora · Acueducto · Tramo de fibra · Radioenlace · Shelter · Contratista · Depósito · Otro'], ['Localidad y Provincia: sirven para agrupar los sitios en el mapa.'],
     ['Grupo / contrato: sirve para filtrar los sitios de cada contrato o cliente.'], ['Latitud y Longitud en grados decimales (ej.: -34.6037). Si no las tenés, dejalas vacías y cargalas después con "Usar mi ubicación".'],
     ['Otros nombres: separados por coma, para encontrar el sitio aunque lo escriban distinto.']]);
   wi['!cols'] = [{wch:120}]; XLSX.utils.book_append_sheet(wb, wi, 'Instrucciones');
@@ -2641,10 +2702,13 @@ async function importSitesExcel(file, existing){
   if (!rows.length) return toast('El archivo no tiene sitios.');
   const exist = new Set(existing.map(s => s.kind + '|' + s.name.toLowerCase()));
   const nuevos = rows.filter(r => !exist.has(r.kind + '|' + r.name.toLowerCase()));
+  let fixed = 0; const outside = [];
+  nuevos.forEach(r => { const c = coordCheck(r.lat, r.lng); if (c.ok) return; if (c.fix){ r.lat = c.fix[0]; r.lng = c.fix[1]; fixed++; } else outside.push(r.name); });
   const m = modal(`<h2>Importar sitios</h2>
     <p>Se encontraron <b>${rows.length}</b> sitios; <b>${nuevos.length}</b> son nuevos (los que ya existen con el mismo nombre y tipo no se tocan).</p>
     <div class="tblwrap" style="max-height:260px;overflow:auto"><table class="tbl"><thead><tr><th>Nombre</th><th>Tipo</th><th>Dirección</th><th>Grupo</th></tr></thead><tbody>
       ${nuevos.slice(0, 60).map(r => `<tr><td>${esc(r.name)}</td><td>${SITE_KINDS[r.kind]}</td><td class="sm">${esc(r.address || '')}</td><td class="sm">${esc(r.grupo || '')}</td></tr>`).join('')}</tbody></table></div>
+    ${fixed ? `<div class="banner trial" style="margin:8px 0"><span class="dot"></span><div><b>Se corrigieron ${fixed} coordenada${fixed === 1 ? '' : 's'}</b> que venían sin el signo menos o invertidas.</div></div>` : ''}${outside.length ? `<div class="banner warn" style="margin:8px 0"><span class="dot"></span><div><b>${outside.length} con coordenadas fuera de ${COORD_BOX.name}</b>: ${outside.slice(0, 8).map(esc).join(', ')}${outside.length > 8 ? '…' : ''}. Se importan igual; revisalas después en Sitios.</div></div>` : ''}
     ${nuevos.some(r => r.lat === null) ? '<p class="muted sm">Los sitios sin coordenadas no aparecen en el mapa: cargalas después desde Editar → "Usar mi ubicación actual" estando en el sitio.</p>' : ''}
     <div class="err" id="sx-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="sx-x">Cancelar</button><button class="btn" id="sx-go" ${nuevos.length ? '' : 'disabled'}>Importar ${nuevos.length}</button></div>`, {wide:true});
