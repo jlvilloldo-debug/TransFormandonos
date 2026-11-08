@@ -195,6 +195,7 @@ async function viewMap(v, preset){
     return `<div class="pp"><b style="font-size:15px">${esc(s.name)}</b><div class="muted sm">${esc([s.localidad, s.provincia].filter(Boolean).join(', ') || s.address || SITE_KINDS[s.kind] || '')}</div>${parts.join('')}
       <div class="row" style="margin-top:8px;gap:6px">
         <a class="btn small" target="_blank" rel="noopener noreferrer" href="${mapsLink(s.lat, s.lng)}">Cómo llegar</a>
+        ${!isContractor() ? `<a class="btn sec small" href="#/sitio/${s.id}">Ficha</a>` : ''}
         ${isManager() && canWrite() ? `<button class="btn sec small" data-newpend="${s.id}">+ Pendiente</button>` : ''}
         ${x.inst.length ? `<button class="btn sec small" data-goproj="${x.inst[0].p.id}">Ver proyecto</button>` : ''}
         ${['deposito', 'contratista'].includes(s.kind) && can('stock') ? `<a class="btn sec small" href="#/stock/s/${s.id}">📦 Stock</a>` : ''}

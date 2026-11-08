@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-bh5CSNhRRTZdfXdTczkqeHX/i5ZC6MmOuBynYcfA8N8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-Z206Cs8kaTmTrCjEx156BCOneJtjzqCsw2EWIBVadsg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -426,11 +426,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.10';
+const APP_VERSION = '5.11';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -921,7 +921,10 @@ $('#f-signup').onsubmit = async ev => {
   ev.preventDefault(); const f = ev.target; const e = $('#e-signup'); e.textContent = ''; e.className = 'err';
   if (!strongPass(f.password.value)) { e.textContent = 'La contraseña tiene que tener al menos 8 caracteres y combinar letras y números.'; return; }
   const meta = { full_name: f.full_name.value.trim() };
-  if (signupMode === 'codigo'){
+  if (signupMode === 'invite'){
+    if (!/^[0-9a-f-]{36}$/i.test(f.dataset.invite || '')) { e.textContent = 'La invitación no es válida.'; return; }
+    meta.invite = f.dataset.invite;
+  } else if (signupMode === 'codigo'){
     if (!f.join_code.value.trim()) { e.textContent = 'Ingresá el código de la empresa.'; return; }
     meta.join_code = f.join_code.value.trim().toUpperCase();
   } else {
@@ -1010,7 +1013,7 @@ function searchOpen(){
     const g = new Map(); rows.forEach(r => { if (!g.has(r.kind)) g.set(r.kind, []); g.get(r.kind).push(r); });
     box.innerHTML = [...g.entries()].map(([k, list]) => `<div class="srch-g">${esc((SRCH_K[k] || ['', k])[1])}</div>${list.map(r => `<button class="srch-r" data-l="${esc(r.link)}"><span class="i">${(SRCH_K[r.kind] || ['•'])[0]}</span><span style="min-width:0"><b>${esc(r.title)}</b><div class="muted sm">${esc(r.sub || '')}</div></span></button>`).join('')}`).join('');
     box.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { const l = b.dataset.l; m.close();
-      if (/^site:[0-9A-Za-z-]{1,40}$/.test(l)) srchSite(l.slice(5)); else if (/^#\/[A-Za-z0-9/_-]*$/.test(l)) location.hash = l; });
+      if (/^site:[0-9A-Za-z-]{1,40}$/.test(l)) location.hash = '#/sitio/' + l.slice(5); else if (/^#\/[A-Za-z0-9/_-]*$/.test(l)) location.hash = l; });
   };
   q.oninput = () => { clearTimeout(tm); tm = setTimeout(run, 250); };
   q.onkeydown = e => { if (e.key === 'Enter'){ clearTimeout(tm); run(); } };
@@ -1043,6 +1046,7 @@ sb.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') setTimeout(boot, 0);
 });
 function showLogin(msg){ $('#bnav')?.classList.remove('on'); document.body.classList.remove('has-bnav');
+  const inv = /^#\/invitacion\/([0-9a-f-]{36})$/i.exec(location.hash); if (inv && !msg){ showInvite(inv[1]); return; }
   $('#v-app').classList.add('hidden'); $('#v-auth').classList.remove('hidden'); showForm('f-login');
   if (msg) $('#e-login').textContent = msg;
 }
@@ -1200,6 +1204,8 @@ async function route(){
     else if (tab === 'tools' && id === 'donde'){ await needLib('donde'); await viewDonde(v); }
     else if (tab === 'tools' && id === 'camiseta'){ await needLib('donde'); await viewShirt(v); }
     else if (tab === 'control'){ await needLib('control'); await viewControl(v, id, id2); }
+    else if (tab === 'sitio' || tab === 'vinc'){ if (isContractor()) { location.hash = '#/tasks'; return; } await needLib('sitios'); if (tab === 'sitio') await viewSite(v, id); else await viewLinks(v); }
+    else if (tab === 'invitacion'){ v.innerHTML = '<div class="card"><h2>Invitación</h2><p>Ya ingresaste con una cuenta. La invitación es para crear una cuenta nueva: abrí el link en otro navegador o cerrá la sesión primero.</p><a class="btn" href="#/home">Ir al inicio</a></div>'; }
     else if (tab === 'stock'){ if (isContractor()) { location.hash = '#/tasks'; return; } await needLib('stock'); await viewStock(v, id, id2); }
     else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
@@ -2512,6 +2518,7 @@ async function viewSites(v){
   const grupos = [...new Set(sites.map(s => s.grupo).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'es'));
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">Sitios <span class="muted sm">(${sites.length})</span></h2>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sec" id="b-sx" style="margin:0">⬇ Excel</button><button class="btn sec" id="b-sk" style="margin:0" title="Para abrir en Google Earth">🌍 KMZ</button>${!isContractor() ? '<a class="btn sec" href="#/vinc" style="margin:0">🔗 Vínculos</a>' : ''}</div>
       ${manage ? `<div class="row"><label class="btn sec" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="sxl" class="hidden"></label><label class="btn sec" style="margin:0">Importar KMZ / KML<input type="file" accept=".kmz,.kml" id="kmz" class="hidden"></label><button class="btn" id="b-add">+ Sitio</button></div>` : ''}</div>
       ${(() => { const n = sites.filter(x => x.lat != null && x.lng != null && !coordCheck(x.lat, x.lng).ok).length; return n ? `<div class="banner warn" style="margin:10px 0 0"><span class="dot"></span><div><b>${n} sitio${n === 1 ? '' : 's'} con coordenadas fuera de ${COORD_BOX.name}</b> · no se ven en el lugar correcto del mapa.${manage ? ' <button class="btn small" id="b-coord" style="margin-left:6px">Revisar y corregir</button>' : ''}</div></div>` : ''; })()}
 ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado de sitios: <button class="link" id="b-smodel">descargá el modelo de Excel</button>, completalo y subilo con <b>Importar Excel</b>.</p>' : ''}
@@ -2522,40 +2529,115 @@ ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado d
         ${grupos.length ? `<select id="f-g" style="width:auto"><option value="">Todos los grupos</option>${grupos.map(g => `<option>${esc(g)}</option>`).join('')}</select>` : ''}
       </div></div>
     <div class="card"><div id="map"></div><div class="row sm muted" style="margin-top:8px">${Object.entries(SITE_KINDS).filter(([k]) => k !== 'radioenlace').map(([k,t]) => `<span><span class="kind-dot" style="background:${SITE_COLORS[k]}"></span>${k === 'repetidora' ? 'Repetidora / radioenlace' : t}</span>`).join('')}</div></div>
-    <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Tipo</th><th>Traza</th><th class="hide-sm">Grupo</th><th class="hide-sm">Coordenadas</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></div>`;
+    <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr>${manage ? '<th style="width:28px"><input type="checkbox" id="s-all" aria-label="Elegir todos"></th>' : ''}<th>Nombre</th><th>Tipo</th><th>Traza</th><th class="hide-sm">Grupo</th><th class="hide-sm">Coordenadas</th><th></th></tr></thead><tbody id="rows"></tbody></table></div><div id="s-bulk" style="position:sticky;bottom:80px;z-index:20;background:var(--navy);color:#fff;border-radius:12px;padding:10px 12px;display:none;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"></div></div>`;
   if (mapObj){ mapObj.remove(); mapObj = null; }
   let layer = null;
   if (window.L){
     mapObj = L.map('map', {preferCanvas:true}).setView([-29.5, -60.3], 7);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap'}).addTo(mapObj);
   } else $('#map').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa.</p>';
+  const sel = new Set(); let shownRows = sites;
+  const siteLinks = isContractor() ? [] : await cached('site-links', () => pageAll(() => sb.from('site_links').select('id,name,kind,status,site_a,site_b,a_lat,a_lng,b_lat,b_lng,geom').order('name').order('id'))).catch(() => []);
   const render = () => {
     const q = $('#q').value.trim().toLowerCase(), k = $('#f-k').value, t = $('#f-t').value, g = $('#f-g')?.value || '';
     const rows = sites.filter(s => (!g || s.grupo === g) && (!q || (s.name + ' ' + (s.aliases||[]).join(' ') + ' ' + (s.address || '') + ' ' + (s.localidad || '') + ' ' + (s.provincia || '') + ' ' + (s.grupo || '')).toLowerCase().includes(q)) && (!k || s.kind === k) && (!t || s.traza === t));
-    $('#rows').innerHTML = rows.slice(0, 500).map(s => `<tr>
+    shownRows = rows;
+    $('#rows').innerHTML = rows.slice(0, 500).map(s => `<tr class="click" data-open="${s.id}">${manage ? `<td><input type="checkbox" data-sck="${s.id}" ${sel.has(s.id) ? 'checked' : ''} aria-label="Elegir"></td>` : ''}
       <td><b>${esc(s.name)}</b>${s.active ? '' : ' <span class="pill p-bad">Inactivo</span>'}${s.address || s.localidad ? `<div class="muted sm">${esc([s.address, s.localidad, s.provincia].filter(Boolean).join(', '))}</div>` : ''}</td>
       <td><span class="kind-dot" style="background:${SITE_COLORS[s.kind]}"></span>${SITE_KINDS[s.kind]}</td>
       <td>${esc(s.traza || '')}</td><td class="hide-sm">${esc(s.grupo || '')}</td>
       <td class="hide-sm sm">${s.lat ? Number(s.lat).toFixed(5) + ', ' + Number(s.lng).toFixed(5) : (s.path ? 'Recorrido' : '—')}</td>
       <td>${manage ? `<button class="btn sec small" data-edit="${s.id}">Editar</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Sin sitios. Importá el KMZ de tus trazas o agregalos a mano.</td></tr>';
-    v.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editSite(sites.find(s => s.id === b.dataset.edit)));
+    v.querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); editSite(sites.find(s => s.id === b.dataset.edit)); });
+    v.querySelectorAll('[data-open]').forEach(tr => tr.onclick = e => { if (e.target.closest('[data-sck],[data-edit]')) return; location.hash = '#/sitio/' + tr.dataset.open; });
+    v.querySelectorAll('[data-sck]').forEach(c => c.onchange = () => { c.checked ? sel.add(c.dataset.sck) : sel.delete(c.dataset.sck); bulk(); });
     if (mapObj){
       if (layer) layer.remove(); layer = L.featureGroup().addTo(mapObj);
       rows.forEach(s => {
-        const pop = `<b>${esc(s.name)}</b><br>${SITE_KINDS[s.kind]}${s.traza ? ' · Traza ' + esc(s.traza) : ''}`;
+        const pop = `<b>${esc(s.name)}</b><br>${SITE_KINDS[s.kind]}${s.traza ? ' · Traza ' + esc(s.traza) : ''}<br><a href="#/sitio/${s.id}">Ver ficha →</a>`;
         if (s.path?.length > 1) L.polyline(s.path.map(([x, y]) => [y, x]), {color: SITE_COLORS[s.kind], weight: 3, opacity: .8}).bindPopup(pop).addTo(layer);
         else if (s.lat) L.circleMarker([s.lat, s.lng], {radius: 6, color: '#fff', weight: 1.5, fillColor: SITE_COLORS[s.kind], fillOpacity: 1}).bindPopup(pop).addTo(layer);
       });
+      const ids = new Set(rows.map(s => s.id));
+      siteLinks.filter(l => ids.has(l.site_a) || ids.has(l.site_b)).forEach(l => L.polyline(l.geom?.length > 1 ? l.geom : [[l.a_lat, l.a_lng], [l.b_lat, l.b_lng]], { color: l.kind === 'fo' ? '#F2A93B' : l.kind === 'mw' ? '#7C3AED' : '#0E7490', weight: 3, opacity: .85, dashArray: l.kind === 'fo' ? null : '8 6' }).bindTooltip(esc(l.name), { sticky: true }).addTo(layer));
       if (layer.getLayers().length) mapObj.fitBounds(layer.getBounds(), {padding: [20, 20], maxZoom: 13});
     }
   };
+  const bulk = () => { const el = $('#s-bulk'); if (!el) return; if (!sel.size){ el.style.display = 'none'; return; } el.style.display = 'flex';
+    el.innerHTML = `<b>${sel.size} elegido${sel.size === 1 ? '' : 's'}</b><button class="btn small" id="sb-go">✏️ Cambiar datos</button><button class="btn small sec" id="sb-xls">⬇ Excel</button><button class="btn small sec" id="sb-kmz">🌍 KMZ</button><button class="btn small sec" id="sb-x">✕</button>`;
+    $('#sb-go').onclick = async () => { try { await needLib('sitios'); siteBulk([...sel], sites); } catch (e){ toast(errText(e)); } };
+    $('#sb-xls').onclick = async () => { try { await needLib('sitios'); siteExportXlsx(sites.filter(s => sel.has(s.id))); } catch (e){ toast(errText(e)); } };
+    $('#sb-kmz').onclick = async () => { try { await needLib('sitios'); siteExportKmz(sites.filter(s => sel.has(s.id)), siteLinks.filter(l => sel.has(l.site_a) || sel.has(l.site_b))); } catch (e){ toast(errText(e)); } };
+    $('#sb-x').onclick = () => { sel.clear(); render(); bulk(); }; };
   $('#q').oninput = render; $('#f-k').onchange = render; $('#f-t').onchange = render; $('#f-g') && ($('#f-g').onchange = render);
   render();
   $('#b-add')?.addEventListener('click', () => editSite(null));
+  $('#s-all')?.addEventListener('change', e => { shownRows.slice(0, 500).forEach(s => e.target.checked ? sel.add(s.id) : sel.delete(s.id)); render(); bulk(); });
+  $('#b-sx').onclick = async () => { try { await needLib('sitios'); siteExportXlsx(shownRows); } catch (e){ toast(errText(e)); } };
+  $('#b-sk').onclick = async () => { try { await needLib('sitios'); siteExportKmz(shownRows, siteLinks.filter(l => shownRows.some(s => s.id === l.site_a || s.id === l.site_b))); } catch (e){ toast(errText(e)); } };
   $('#b-smodel')?.addEventListener('click', downloadSitesModel);
   $('#sxl')?.addEventListener('change', e => importSitesExcel(e.target.files[0], sites));
   $('#b-coord')?.addEventListener('click', () => coordReview(sites));
   $('#kmz')?.addEventListener('change', e => importKMZ(e.target.files[0], sites));
+}
+/* ---------- invitaciones: link de un solo uso con rol y proyectos ya asignados ---------- */
+const inviteLink = t => `${location.origin}${location.pathname}#/invitacion/${t}`;
+async function invList(){
+  const box = $('#inv-list'); if (!box || !online()) return;
+  const { data } = await sb.from('org_invites').select('id,email,full_name,role,token,expires_at,used_at,created_by,project_ids').order('created_at', { ascending: false }).limit(50);
+  const now = new Date().toISOString(), pend = (data || []).filter(i => !i.used_at && i.expires_at > now), used = (data || []).filter(i => i.used_at).slice(0, 5);
+  if (!pend.length && !used.length){ box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="tblwrap" style="margin-top:10px"><table class="tbl"><tbody>${pend.map(i => `<tr><td><b>${esc(i.full_name || i.email)}</b><div class="muted sm">${esc(i.email)} · ${esc(ROLE_TXT[i.role] || i.role)}${i.project_ids?.length ? ` · ${i.project_ids.length} proyecto${i.project_ids.length === 1 ? '' : 's'}` : ''} · vence ${fmtD(i.expires_at)}</div></td>
+      <td class="num" style="white-space:nowrap"><span class="pill p-pend">✉ Pendiente</span> <button class="btn sec small" data-invshow="${i.id}">Link</button> <button class="btn sec small" data-invdel="${i.id}" title="Anular">✕</button></td></tr>`).join('')}
+    ${used.map(i => `<tr><td><b>${esc(i.full_name || i.email)}</b><div class="muted sm">${esc(i.email)} · ${esc(ROLE_TXT[i.role] || i.role)}</div></td><td class="num"><span class="pill p-activa">✔ Creó su cuenta</span></td></tr>`).join('')}</tbody></table></div>`;
+  box.querySelectorAll('[data-invshow]').forEach(b => b.onclick = () => inviteShare(pend.find(i => i.id === b.dataset.invshow)));
+  box.querySelectorAll('[data-invdel]').forEach(b => b.onclick = async () => { if (!confirm('¿Anular esta invitación? El link deja de funcionar.')) return; const { error } = await sb.from('org_invites').delete().eq('id', b.dataset.invdel); if (error) return toast(errText(error)); invList(); });
+}
+async function inviteModal(){
+  if (!needOnline()) return;
+  const [projects, contrs] = await Promise.all([loadProjects().catch(() => []), loadContractors().catch(() => [])]);
+  const roles = Object.entries(ROLE_TXT).filter(([r]) => r !== 'admin');
+  const m = modal(`<h2>✉ Invitar a una persona</h2><p class="muted sm">Se arma un link de un solo uso, válido 7 días, que solo sirve para ese mail. La persona crea su cuenta y entra con el rol y los proyectos que elijas.</p>
+    <label>Nombre y apellido</label><input id="iv-n" maxlength="120">
+    <label>Mail</label><input id="iv-e" type="email" maxlength="200" autocomplete="off">
+    <label>Rol</label><select id="iv-r">${roles.map(([r, t]) => `<option value="${r}" ${r === 'inspector' ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+    <div id="iv-cw" class="hidden"><label>Contratista</label><select id="iv-c">${contrs.filter(c => c.active).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+    <div id="iv-pw"><label>Proyectos que va a ver <span class="muted">(queda como integrante)</span></label><div style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">${projects.filter(p => p.active).map(p => `<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:4px 0"><input type="checkbox" data-ivp="${p.id}" style="width:auto"> ${esc(p.name)}</label>`).join('') || '<span class="muted sm">No hay proyectos activos.</span>'}</div></div>
+    <div class="err" id="iv-err"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="iv-x">Cancelar</button><button class="btn" id="iv-ok">Crear invitación</button></div>`);
+  const ui = () => { const r = $('#iv-r').value; $('#iv-cw').classList.toggle('hidden', r !== 'contratista'); $('#iv-pw').classList.toggle('hidden', r === 'contratista'); };
+  $('#iv-r').onchange = ui; ui(); $('#iv-x').onclick = m.close;
+  $('#iv-ok').onclick = async () => {
+    const email = $('#iv-e').value.trim(), role = $('#iv-r').value;
+    if (!/^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/.test(email)) return void ($('#iv-err').textContent = 'Revisá el mail.');
+    const row = { org_id: me.org_id, email, full_name: $('#iv-n').value.trim() || null, role, contractor_id: role === 'contratista' ? ($('#iv-c').value || null) : null,
+      project_ids: role === 'contratista' ? [] : [...m.el.querySelectorAll('[data-ivp]:checked')].map(c => c.dataset.ivp) };
+    $('#iv-ok').disabled = true;
+    const { data, error } = await sb.from('org_invites').insert(row).select('*').single();
+    if (error){ $('#iv-err').textContent = errText(error); $('#iv-ok').disabled = false; return; }
+    inviteShare(data); invList();
+  };
+}
+function inviteShare(i){
+  const link = inviteLink(i.token), txt = `Hola${i.full_name ? ' ' + i.full_name.split(' ')[0] : ''}: te invito a InspectApp. Creá tu cuenta con este link (vale 7 días): ${link}`;
+  const m = modal(`<h2>✉ Invitación lista</h2><p>Mandale este link a <b>${esc(i.email)}</b>. Al abrirlo crea su contraseña y entra como <b>${esc(ROLE_TXT[i.role] || i.role)}</b>.</p>
+    <input id="is-l" readonly value="${esc(link)}" style="font-size:13px">
+    <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap"><button class="btn" id="is-c">📋 Copiar link</button><a class="btn sec" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=${encodeURIComponent(txt)}">WhatsApp</a><a class="btn sec" href="mailto:${encodeURIComponent(i.email)}?subject=${encodeURIComponent('Invitación a InspectApp')}&body=${encodeURIComponent(txt)}">Correo</a><button class="btn sec" id="is-x">Listo</button></div>
+    <p class="muted sm">El link es personal: solo sirve para ese mail y una sola vez.</p>`);
+  $('#is-c').onclick = async () => { try { await navigator.clipboard.writeText(link); toast('Link copiado'); } catch { $('#is-l').select(); } };
+  $('#is-x').onclick = m.close;
+}
+/* pantalla de ingreso: la persona abrió un link de invitación */
+async function showInvite(token){
+  $('#bnav')?.classList.remove('on'); document.body.classList.remove('has-bnav');
+  $('#v-app').classList.add('hidden'); $('#v-auth').classList.remove('hidden'); showForm('f-signup');
+  const f = $('#f-signup'), e = $('#e-signup');
+  signupMode = 'invite'; $('#seg-signup').classList.add('hidden'); $('#w-org').classList.add('hidden'); $('#w-code').classList.add('hidden');
+  $('#signup-hint').textContent = 'Revisando la invitación…';
+  let info = null; try { const { data } = await sb.rpc('invite_info', { p_token: token }); info = data; } catch {}
+  if (!info){ $('#signup-hint').innerHTML = '<b style="color:var(--red)">La invitación no es válida, ya se usó o venció.</b> Pedile otra al administrador de tu empresa.'; f.querySelector('button.btn').disabled = true; return; }
+  f.dataset.invite = token;
+  $('#signup-hint').innerHTML = `Te invitaron a <b>${esc(info.org)}</b> como <b>${esc(ROLE_TXT[info.role] || info.role)}</b>. Elegí tu contraseña para crear la cuenta.`;
+  f.email.value = info.email; f.email.readOnly = true; if (info.full_name && !f.full_name.value) f.full_name.value = info.full_name;
 }
 /* ---------- coordenadas: detectar las que caen fuera del país (casi siempre falta el signo menos) ---------- */
 const COORD_BOX = { name: 'Argentina', lat: [-55.3, -21.6], lng: [-73.8, -53.4] };
@@ -2682,6 +2764,7 @@ function downloadSitesModel(){
 }
 async function importSitesExcel(file, existing){
   if (!file) return;
+  try { await needLib('sitios'); return await siteImport(file, existing); } catch (e){ return toast(errText(e)); }
   if (!window.XLSX) return toast('No se pudo cargar el lector de Excel.');
   let rows = [];
   try {
@@ -3068,6 +3151,8 @@ async function viewOrg(v){
     <div class="card"><h2>Sumar usuarios</h2>
       <p class="muted" style="margin-top:0">Pasale este código a cada persona de tu equipo. Al crear su cuenta elige “Tengo un código” y lo ingresa.</p>
       <div class="row"><span class="code">${esc(joinCode || '—')}</span><button class="btn sec small" id="b-copy">Copiar</button><button class="btn sec small" id="b-rotate">Generar otro</button></div>
+      <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap"><button class="btn" id="b-invite">✉ Invitar a una persona</button><span class="muted sm">Le llega un link para crear su cuenta, ya con su rol y sus proyectos.</span></div>
+      <div id="inv-list"></div>
       <p class="muted sm" style="margin-bottom:0">Usuarios activos: ${active} de ${org?.seat_limit ?? '—'}.${active >= (org?.seat_limit ?? 0) ? ' El cupo está completo: para sumar a alguien, pedí más usuarios o desactivá uno.' : ''}</p></div>` : ''}
     <div class="card"><h2>Usuarios</h2><div class="tblwrap"><table class="tbl">
       <thead><tr><th>Nombre</th><th class="hide-sm">Email</th><th>Rol</th><th>Estado</th>${isManager() ? '<th>Horas</th>' : ''}<th></th></tr></thead><tbody>
@@ -3089,6 +3174,8 @@ async function viewOrg(v){
     if (error) return toast(errText(error)); await reloadOrg(); toast('Nombre actualizado');
   });
   $('#b-copy')?.addEventListener('click', () => navigator.clipboard.writeText(joinCode || '').then(() => toast('Código copiado')));
+  $('#b-invite')?.addEventListener('click', () => inviteModal());
+  invList();
   $('#b-rotate')?.addEventListener('click', async () => {
     if (!confirm('El código anterior deja de funcionar. ¿Generar uno nuevo?')) return;
     const { error } = await sb.rpc('org_rotate_join_code'); if (error) return toast(errText(error));
