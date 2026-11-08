@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-Z206Cs8kaTmTrCjEx156BCOneJtjzqCsw2EWIBVadsg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-V+lgV6PoEmSGjn1edIP/f6++WUzs7cz9odoMppLUJUo='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -381,6 +381,7 @@ tr.sor-bad td{background:var(--red-bg)}
   <header class="top">
     <div class="brand"><span id="logo-top"></span><div>InspectApp<small id="org-name">—</small></div></div>
     <div class="sp"></div>
+    <button id="b-sos" title="Emergencia: llamar, ubicación, accidente" aria-label="Emergencia" style="font-size:15px;padding:5px 10px;background:#DC2626;color:#fff;border-color:#DC2626;font-weight:700">🆘</button>
     <button id="b-search" title="Buscar (Ctrl+K)" aria-label="Buscar" style="font-size:16px;padding:5px 10px">🔍</button>
     <span id="net" class="netpill hidden" title="Tocar para enviar ahora"></span>
     <button id="b-install" class="hidden">Instalar</button>
@@ -426,11 +427,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.11';
+const APP_VERSION = '5.12';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -1020,6 +1021,7 @@ function searchOpen(){
   $('#sr-scan').onclick = async () => { m.close(); try { await needLib('stock'); } catch (e){ return toast(errText(e)); } stkScan(txt => { const mm = /#\/stock\/a\/([0-9A-Za-z-]{1,40})/.exec(txt); if (mm){ location.hash = '#/stock/a/' + mm[1]; return; } searchOpen(); const i = $('#sr-q'); if (i){ i.value = txt.slice(0, 60); i.dispatchEvent(new Event('input')); } }); };
 }
 $('#b-search').onclick = searchOpen;
+$('#b-sos').onclick = async () => { try { await needLib('hys'); hysSOS(); } catch (e){ modal(`<h2 style="color:#B91C1C;margin-top:0">🆘 Emergencia</h2><div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn danger" href="tel:911">📞 911</a><a class="btn danger" href="tel:107">🚑 107</a><a class="btn danger" href="tel:100">🚒 100</a><button class="btn sec" data-close-modal>Cerrar</button></div>`); } };
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && me){ e.preventDefault(); searchOpen(); } });
 $('#b-logout').onclick = async () => {
   const pend = (await localAll()).filter(r => r._dirty).length;
@@ -1108,6 +1110,8 @@ async function warmCache(){
     ]);
     const ts = await IDB.get('kv', CUR_UID + ':tasks').catch(() => []);
     for (const t of (ts || []).filter(taskOpen)) await IDB.put('kv', t, CUR_UID + ':task:' + t.id).catch(() => {});
+    // seguridad e higiene: contactos de emergencia disponibles sin señal y envío de registros pendientes
+    needLib('hys').then(() => hysBase(true)).then(() => hysSync()).catch(() => {});
   } finally { warming = false; }
 }
 async function reloadOrg(){
@@ -1207,6 +1211,7 @@ async function route(){
     else if (tab === 'sitio' || tab === 'vinc'){ if (isContractor()) { location.hash = '#/tasks'; return; } await needLib('sitios'); if (tab === 'sitio') await viewSite(v, id); else await viewLinks(v); }
     else if (tab === 'invitacion'){ v.innerHTML = '<div class="card"><h2>Invitación</h2><p>Ya ingresaste con una cuenta. La invitación es para crear una cuenta nueva: abrí el link en otro navegador o cerrá la sesión primero.</p><a class="btn" href="#/home">Ir al inicio</a></div>'; }
     else if (tab === 'stock'){ if (isContractor()) { location.hash = '#/tasks'; return; } await needLib('stock'); await viewStock(v, id, id2); }
+    else if (tab === 'hys'){ await needLib('hys'); await viewHys(v, id, id2); }
     else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
     else if (tab === 'tools') await viewTools(v);
@@ -2094,7 +2099,7 @@ const TASK_TYPES = {inspeccion:'Inspección', instalacion:'Instalación', repara
 const PRIORITIES = {normal:'Normal', alta:'Alta', critica:'Crítica'};
 const TASK_ST = {sin_asignar:'Sin asignar', asignada:'Asignada', vista:'Vista', en_curso:'En curso', completada:'Completada', aprobada:'Aprobada', rechazada:'Rechazada', cancelada:'Cancelada'};
 const TASK_PILL = {sin_asignar:'p-pend', asignada:'p-info', vista:'p-info', en_curso:'p-pend', completada:'p-ok', aprobada:'p-ok', rechazada:'p-bad', cancelada:''};
-const TASK_COLS = 'id,ticket_id,staff_ids,promised_date,promise_changes,is_pending,origin_inspection_id,project_id,history,contract,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at';
+const TASK_COLS = 'id,ticket_id,staff_ids,promised_date,promise_changes,is_pending,origin_inspection_id,project_id,history,contract,contractor_id,title,task_type,description,priority,due_date,template_id,sites,status,seen_at,started_at,completed_at,reviewed_at,review_comment,quality,rejections,notified_at,created_at,hys_jobs';
 const taskOpen = t => !['completada','aprobada','cancelada'].includes(t.status);
 const dueDate = d => new Date(d + 'T23:59:59');
 const isOverdue = t => taskOpen(t) && dueDate(t.due_date) < new Date();
@@ -2189,6 +2194,8 @@ async function editTask(t, contrs, preset){
     cached('sites-min2', () => pageAll(() => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name').order('id'))).catch(() => []),
   ]);
   if (!tpls.length) return toast('Primero cargá una plantilla.');
+  try { await needLib('hys'); } catch {}
+  const hysOn = typeof HYS_JOBS !== 'undefined';
   try { if (typeof hhLoadBase === 'function' && !(HHS.staff || []).length) await hhLoadBase(); } catch {}
   const staffOpts = (typeof HHS !== 'undefined' && HHS.staff || []).filter(s => s.active && s.kind !== 'contratista');
   const isNew = !t;
@@ -2210,6 +2217,7 @@ async function editTask(t, contrs, preset){
     <datalist id="nt-sl">${sites.map(s => `<option value="${esc(s.name)}">`).join('')}</datalist>
     <div id="nt-chips" class="row" style="margin-top:8px"></div>
     <label>Indicaciones</label><textarea id="nt-desc" placeholder="Qué hay que hacer, materiales, contacto en sitio…">${esc(t.description || '')}</textarea>
+    ${hysOn ? `<label>🦺 Trabajos de riesgo que incluye <span class="muted sm" style="font-weight:400">(pide charla o permiso antes de empezar)</span></label><div id="nt-hys" class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(HYS_JOBS).map(([k, j]) => `<label class="pill p-info" style="font-weight:400;cursor:pointer;display:inline-flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" class="nt-hj" value="${k}" ${(t.hys_jobs || []).includes(k) ? 'checked' : ''} style="width:auto;margin:0"> ${j.ic} ${esc(j.name)}</label>`).join('')}</div>` : ''}
     <div class="err" id="nt-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="nt-x">Cancelar</button><button class="btn" id="nt-ok">${isNew ? 'Asignar tarea' : 'Guardar'}</button></div>`, {wide:true});
   if (isNew) $('#nt-tpl').value = defaultTpl(t.task_type).id;
@@ -2232,6 +2240,7 @@ async function editTask(t, contrs, preset){
     const row = { title: $('#nt-title').value.trim(), task_type: $('#nt-type').value, priority: $('#nt-pr').value,
       due_date: $('#nt-due').value, template_id: $('#nt-tpl').value, sites: chosen, description: $('#nt-desc').value.trim() || null,
       contract: $('#nt-ct').value.trim() || null,
+      ...(m.el.querySelector('#nt-hys') ? { hys_jobs: [...m.el.querySelectorAll('.nt-hj:checked')].map(c => c.value) } : {}),
       ...(m.el.querySelector('#nt-st') ? { staff_ids: [...m.el.querySelectorAll('.nt-sti:checked')].map(c => c.value) } : {}) };
     if (!row.title) return ($('#nt-err').textContent = 'Poné un título.');
     if (!row.due_date) return ($('#nt-err').textContent = 'Indicá la fecha límite.');
@@ -2318,6 +2327,7 @@ async function viewTask(v, id){
         <div class="sm" style="margin-top:6px">${t.history.map(x => `<div style="padding:4px 0;border-bottom:1px solid var(--line)">${fmtDT(x.at)} · ${esc(x.by || '')}: ${x.from ? esc(x.from) : 'sin asignar'} → <b>${x.to ? esc(x.to) : 'sin asignar'}</b>${x.reason ? ` <span class="muted">(${esc(x.reason)})</span>` : ''}</div>`).join('')}</div></details>` : ''}
       ${t.review_comment || t.quality ? `<div class="banner ${t.status === 'rechazada' ? 'off' : 'trial'}" style="margin:14px 0 0"><span class="dot"></span><div><b>${t.status === 'rechazada' ? 'Rechazada: hay que rehacerla' : 'Revisión del supervisor'}</b>${t.quality ? ` · Calificación ${'★'.repeat(t.quality)}${'☆'.repeat(5 - t.quality)}` : ''}<div>${esc(t.review_comment || '')}</div></div></div>` : ''}
     </div>
+    <div id="t-hys"></div>
     <div id="t-lessons"></div>
     <div class="card"><h2>Sitios</h2>
       ${(t.sites || []).map((s, i) => { const r = forSite(s); return `<div class="item row between">
@@ -2326,8 +2336,11 @@ async function viewTask(v, id){
           ${canRun && !s.done && !(r && r.status === 'borrador') ? `<button class="btn small" data-start="${i}">${r ? 'Volver a hacer' : 'Iniciar'}</button>` : ''}</div></div>`; }).join('')}
     </div>`;
   v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => location.hash = (b.dataset.st === 'completada' ? '#/informe/' : '#/insp/') + b.dataset.open);
+  if ((t.hys_jobs || []).length) needLib('hys').then(() => { const bx = $('#t-hys'); if (bx) bx.innerHTML = hysTaskCard(t); }).catch(() => {});
   v.querySelectorAll('[data-start]').forEach(b => b.onclick = async () => {
     const s = t.sites[Number(b.dataset.start)];
+    // seguridad e higiene: charla o permiso del día antes de empezar (si la tarea tiene trabajos de riesgo)
+    if ((t.hys_jobs || []).length){ try { await needLib('hys'); if (!(await hysGateCheck(t))) return; } catch (e){ toast('No pude verificar la charla / permiso de seguridad: ' + errText(e)); } }
     let tpls = [];
     try { tpls = await cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')); } catch (e){ return toast(errText(e)); }
     const tpl = tpls.find(x => x.id === t.template_id) || tpls[0];

@@ -264,6 +264,8 @@ async function viewTools(v){
   const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   v.innerHTML = `
     <div class="card"><h2 style="margin:0">🧰 Herramientas</h2><p class="muted sm" style="margin:6px 0 0">Funcionan también sin señal con lo que ya está descargado en el teléfono.</p></div>
+    <div class="card" id="tool-hys" style="cursor:pointer;background:linear-gradient(135deg,#065F46,#059669);color:#fff;border:0"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">🦺</div><div><h2 style="margin:0;color:#fff">Seguridad e Higiene</h2>
+      <p class="sm" style="margin:4px 0 0;opacity:.9">Antes de empezar cada trabajo, llamadas de emergencia, qué hacer ante un accidente o un incumplimiento, charlas, permisos de trabajo, EPP y normativa.</p></div></div><span class="btn" style="pointer-events:none;background:#fff;color:#065F46">Abrir →</span></div></div>
     ${isManager() ? `<div class="card" id="tool-donde" style="cursor:pointer;border:2px solid #0F2A4A"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">📍</div><div><h2 style="margin:0">¿Dónde está cada uno?</h2>
       <p class="muted sm" style="margin:4px 0 0">Mapa con cada técnico y contratista sobre la localidad de su tarea: hoy, mañana o la semana. Para repartir mejor las tareas.</p></div></div><span class="btn" style="pointer-events:none">Abrir →</span></div></div>` : ''}
     ${isManager() ? `<div class="card" id="tool-ctl" style="cursor:pointer;border:2px solid #7C3AED"><div class="row between"><div class="row" style="gap:14px;flex-wrap:nowrap"><div style="font-size:34px;line-height:1">📊</div><div><h2 style="margin:0">Control y desempeño</h2>
@@ -292,6 +294,7 @@ async function viewTools(v){
   $('#tool-hh')?.addEventListener('click', () => { location.hash = '#/tools/hh'; });
   $('#tool-veh')?.addEventListener('click', () => { location.hash = '#/tools/veh'; });
   $('#tool-stock')?.addEventListener('click', () => { location.hash = '#/stock'; });
+  $('#tool-hys')?.addEventListener('click', () => { location.hash = '#/hys'; });
   $('#tool-links')?.addEventListener('click', () => { location.hash = '#/vinc'; });
   $('#tool-donde')?.addEventListener('click', () => { location.hash = '#/tools/donde'; });
   $('#tool-shirt')?.addEventListener('click', () => { location.hash = '#/tools/camiseta'; });
