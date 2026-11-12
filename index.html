@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-VM6NzrD57fMDOa8pWFRlF+eIlgWXeQ7+hwT4ggJOLYE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-JgJ0l7PUyCgxqwOpl+qJA9+/8ABF9i357oF/hyb0ZAM='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -144,6 +144,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .thumbs .th{position:relative;width:76px;height:76px;border-radius:8px;overflow:hidden;background:var(--line)}
 .thumbs img{width:100%;height:100%;object-fit:cover}
+.thumbs .th.vid{background:#0F2A4A;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:24px;line-height:1}.thumbs .th.vid small{font-size:11px;margin-top:4px;opacity:.9}
+#report .rp-vid{width:100px;height:100px;background:#0F2A4A;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:26px;text-decoration:none}#report .rp-vid small{font-size:10px;margin-top:4px}
+.vrec video{width:100%;max-height:60vh;background:#000;border-radius:10px;display:block}.vrec .tm{font:700 20px/1 monospace}.vrec .tm.on{color:#DC2626}
 .thumbs .x{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.65);color:#fff;border:0;border-radius:50%;width:30px;height:30px;cursor:pointer;line-height:1;font-size:19px}
 .thumbs img{cursor:zoom-in}.thumbs .gal{position:absolute;left:3px;bottom:3px;background:rgba(255,255,255,.9);border-radius:6px;font-size:13px;padding:0 3px}
 .thumbs .up{display:grid;place-items:center;font-size:11px;color:var(--muted)}
@@ -436,7 +439,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.14';
+const APP_VERSION = '5.15';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], dc: ['qrcode.js', 'datacenter.js'] };
@@ -716,7 +719,7 @@ async function syncNow(){
         const blob = await IDB.get('blobs', p).catch(() => undefined);
         if (!blob || blob._up) continue;
         const { error } = await sb.storage.from('fotos').upload(p, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
-        if (error && !/exist|duplicate/i.test(error.message || '')) throw error;
+        if (error && !/exist|duplicate/i.test(error.message || '')){ if (/\.(mp4|webm|mov)$/.test(p)) throw new Error('No se pudo subir un video (' + (error.message || 'error') + '). Si es la primera vez, falta cargar 32_video_inspecciones.sql en Supabase.'); throw error; }
         await IDB.del('blobs', p);
       }
       let res;
@@ -1654,6 +1657,60 @@ function geoStop(){ if (GEO.wid !== null){ try { navigator.geolocation.clearWatc
 function geoNow(){ const l = GEO.last; return l && Date.now() - l.t < 10 * 60000 ? l : null; }
 function kmBetween(a, b){ const r = Math.PI / 180, d1 = (b.lat - a.lat) * r, d2 = (b.lng - a.lng) * r; const x = Math.sin(d1 / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(d2 / 2) ** 2; return 12742 * Math.asin(Math.min(1, Math.sqrt(x))); }
 /* Foto a pantalla completa: guardar una copia en el teléfono o borrarla */
+/* ---------- video corto: grabador liviano dentro de la app ---------- */
+const VID_MAX_S = 30, VID_MAX_MB = 30;
+const vidDur = s => s == null || isNaN(s) ? 'video' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+const vidMeta = file => new Promise(res => { try { const v = document.createElement('video'), u = URL.createObjectURL(file); v.preload = 'metadata';
+  const end = d => { URL.revokeObjectURL(u); res(d); }; v.onloadedmetadata = () => end(isFinite(v.duration) ? v.duration : null); v.onerror = () => end(null); setTimeout(() => end(null), 4000); v.src = u; } catch { res(null); } });
+// si el teléfono no deja grabar desde la app, se usa la cámara del sistema
+const vidPickNative = () => new Promise(res => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'video/*'; i.capture = 'environment'; i.onchange = () => res(i.files[0] ? { blob: i.files[0], dur: null } : null); i.oncancel = () => res(null); i.click(); });
+async function videoRec(){
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return vidPickNative();
+  let stream = null;
+  const cam = { facingMode: { ideal: 'environment' }, width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 24, max: 30 } };
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: cam, audio: true }); }
+  catch { try { stream = await navigator.mediaDevices.getUserMedia({ video: cam }); } catch (e){ toast('No pude abrir la cámara desde la app: uso la cámara del teléfono.'); return vidPickNative(); } }
+  const mime = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } });
+  return new Promise(res => {
+    const m = modal(`<div class="vrec"><div class="row between" style="margin-bottom:8px"><h2 style="margin:0">🎥 Video corto</h2><span class="tm" id="vr-t">0:00 / ${vidDur(VID_MAX_S)}</span></div>
+      <video id="vr-v" autoplay muted playsinline></video>
+      <p class="muted sm" id="vr-h" style="margin:8px 0">Hasta ${VID_MAX_S} segundos. Se graba en calidad liviana para que se envíe rápido${stream.getAudioTracks().length ? ', con sonido' : ' (sin sonido: no hay permiso de micrófono)'}.</p>
+      <div class="row" style="gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn danger" id="vr-go">⏺ Grabar</button><button class="btn hidden" id="vr-ok">✅ Usar este video</button><button class="btn sec hidden" id="vr-re">↺ Repetir</button><button class="btn sec" id="vr-x">Cancelar</button></div></div>`);
+    const v = $('#vr-v'); v.srcObject = stream;
+    let rec = null, chunks = [], t0 = 0, tick = null, out = null, done = false, url = null;
+    const stopCam = () => { try { stream.getTracks().forEach(t => t.stop()); } catch {} };
+    const fin = r => { if (done) return; done = true; clearInterval(tick); try { if (rec && rec.state !== 'inactive') rec.stop(); } catch {} stopCam(); if (url) URL.revokeObjectURL(url); m.close(); res(r); };
+    const start = () => {
+      chunks = []; out = null;
+      try { rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: 1200000, audioBitsPerSecond: 64000 }); }
+      catch { try { rec = new MediaRecorder(stream); } catch (e){ toast('Este teléfono no deja grabar desde la app.'); return fin(null); } }
+      rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onstop = () => { clearInterval(tick); if (done) return; const dur = (Date.now() - t0) / 1000;
+        out = { blob: new Blob(chunks, { type: (rec.mimeType || mime || 'video/webm').split(';')[0] }), dur };
+        url = URL.createObjectURL(out.blob); v.srcObject = null; v.muted = false; v.controls = true; v.src = url;
+        $('#vr-t').classList.remove('on'); $('#vr-t').textContent = `${vidDur(dur)} · ${(out.blob.size / 1048576).toFixed(1).replace('.', ',')} MB`;
+        $('#vr-go').classList.add('hidden'); $('#vr-ok').classList.remove('hidden'); $('#vr-re').classList.remove('hidden'); $('#vr-h').textContent = 'Miralo antes de guardarlo.'; };
+      rec.start(1000); t0 = Date.now(); $('#vr-t').classList.add('on'); $('#vr-go').textContent = '⏹ Detener';
+      tick = setInterval(() => { const s = (Date.now() - t0) / 1000; $('#vr-t').textContent = `${vidDur(s)} / ${vidDur(VID_MAX_S)}`; if (s >= VID_MAX_S) try { rec.stop(); } catch {} }, 250);
+    };
+    $('#vr-go').onclick = () => { if (rec && rec.state === 'recording'){ try { rec.stop(); } catch {} } else start(); };
+    $('#vr-re').onclick = () => { if (url){ URL.revokeObjectURL(url); url = null; } v.removeAttribute('src'); v.controls = false; v.muted = true; v.srcObject = stream; v.play().catch(() => {});
+      $('#vr-ok').classList.add('hidden'); $('#vr-re').classList.add('hidden'); $('#vr-go').classList.remove('hidden'); $('#vr-go').textContent = '⏺ Grabar'; $('#vr-t').textContent = `0:00 / ${vidDur(VID_MAX_S)}`; $('#vr-h').textContent = `Hasta ${VID_MAX_S} segundos.`; };
+    $('#vr-ok').onclick = () => fin(out);
+    $('#vr-x').onclick = () => fin(null);
+    // si el modal se cierra por otro lado (tecla, toque afuera), se apaga la cámara
+    const mo = new MutationObserver(() => { if (!document.body.contains(v)){ mo.disconnect(); if (!done){ done = true; clearInterval(tick); try { if (rec && rec.state !== 'inactive') rec.stop(); } catch {} stopCam(); res(null); } } });
+    mo.observe($('#modal-root'), { childList: true, subtree: true });
+  });
+}
+async function videoViewer(p){
+  const [u] = await photoURLs([p.path]);
+  if (!u) return toast('El video todavía no está disponible: hace falta conexión.');
+  const m = modal(`<div class="vrec"><div class="row between" style="margin-bottom:8px"><h2 style="margin:0">🎥 Video</h2><button class="btn sec small" data-close-modal>Cerrar</button></div>
+    <video controls playsinline preload="metadata" src="${esc(u)}"></video>
+    <p class="muted sm" style="margin:8px 0 0">${p.ts ? esc(fmtDT(p.ts)) : ''}${p.dur != null ? ' · ' + vidDur(p.dur) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}${p.src === 'galeria' ? ' · de la galería' : ''}
+      · <a href="${esc(u)}" download="video-${esc(String(p.ts || '').slice(0, 19).replace(/[^0-9]/g, ''))}.${esc(p.path.split('.').pop())}">Descargar</a></p></div>`, { wide: true });
+}
 function photoViewer(url, {onDel, name} = {}){
   const m = modal(`<div style="text-align:center"><img id="pv-img" alt="Foto" style="max-width:100%;max-height:68vh;border-radius:8px"></div>
     <div class="row" style="justify-content:space-between;margin-top:12px;gap:8px;flex-wrap:wrap">
@@ -1776,10 +1833,11 @@ async function viewExecute(v, id){
     return `<div class="item ${flagged ? 'flag' : ''}" id="it-${it.id}">
       <div class="q">${esc(it.label)}${req}</div>${ctl}${pendBox}
       ${tools ? `<div id="note-${it.id}" class="${a.note ? '' : 'hidden'}" style="margin-top:8px"><textarea data-note="${it.id}" placeholder="Nota u observación">${esc(a.note || '')}</textarea></div>
-      <div class="thumbs" id="ph-${it.id}">${(a.photos||[]).map((p, i) => `<div class="th"><img data-path="${esc(p.path)}" data-phview="${it.id}" data-idx="${i}" alt="Foto ${i + 1}">${p.src === 'galeria' ? `<span class="gal" title="${p.warn ? esc(p.warn) : 'De la galería'}">${p.warn ? '⚠' : '🖼'}</span>` : ''}<button class="x" data-phdel="${it.id}" data-idx="${i}" title="Borrar foto" aria-label="Borrar foto">×</button></div>`).join('')}</div>
+      <div class="thumbs" id="ph-${it.id}">${(a.photos||[]).map((p, i) => p.kind === 'video' ? `<div class="th vid" data-vidview="${it.id}" data-idx="${i}" title="Ver el video">▶<small>🎥 ${vidDur(p.dur)}</small><button class="x" data-phdel="${it.id}" data-idx="${i}" title="Borrar video" aria-label="Borrar video">×</button></div>` : `<div class="th"><img data-path="${esc(p.path)}" data-phview="${it.id}" data-idx="${i}" alt="Foto ${i + 1}">${p.src === 'galeria' ? `<span class="gal" title="${p.warn ? esc(p.warn) : 'De la galería'}">${p.warn ? '⚠' : '🖼'}</span>` : ''}<button class="x" data-phdel="${it.id}" data-idx="${i}" title="Borrar foto" aria-label="Borrar foto">×</button></div>`).join('')}</div>
       <div class="item-tools"><button type="button" data-notebtn="${it.id}">✎ Nota</button>${pd ? '' : `<button type="button" data-pendadd="${it.id}" class="${flagged ? 'pendbtn' : ''}">⚠ Dejar pendiente</button>`}
         <label>📷 Foto${it.photos || it.type === 'photo' ? ' (recomendada)' : ''}<input type="file" accept="image/*" capture="environment" multiple data-phadd="${it.id}" class="hidden"></label>
-        <label title="Adjuntar fotos sacadas con la cámara del teléfono">🖼️ Galería<input type="file" accept="image/jpeg,image/png,image/webp" multiple data-phadd="${it.id}" data-gal="1" class="hidden"></label>
+        <button type="button" data-vidadd="${it.id}" title="Grabar un video corto (hasta ${VID_MAX_S} segundos)">🎥 Video${it.video ? ' (recomendado)' : ''}</button>
+        <label title="Adjuntar fotos o un video corto ya guardados en el teléfono">🖼️ Galería<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple data-phadd="${it.id}" data-gal="1" class="hidden"></label>
       </div>` : ''}
     </div>`;
   }
@@ -1808,6 +1866,7 @@ async function viewExecute(v, id){
       const t0 = Date.parse(ins.started_at) || Date.now(); let warned = 0;
       for (let k = 0; k < files.length; k++){
         const f = files[k], ph = slots[k];
+        if (/^video\//.test(f.type)){ ph.remove(); await addVideo(itId, f, { gal: true }); continue; }
         try {
           const meta = await jpegMeta(f);
           const blob = await compressImage(f, 1280, 0.72, meta);
@@ -1835,13 +1894,19 @@ async function viewExecute(v, id){
       if (warned) toast(warned === 1 ? 'Una foto de la galería no es de hoy o de este sitio: queda marcada para la oficina.' : `${warned} fotos de la galería no son de hoy o de este sitio: quedan marcadas para la oficina.`);
       rerenderItem(itId);
     });
+    scope.querySelectorAll('[data-vidadd]').forEach(b => b.onclick = async () => {
+      const itId = b.dataset.vidadd; b.disabled = true;
+      try { const r = await videoRec(); if (r) await addVideo(itId, r.blob, { dur: r.dur }); } finally { b.disabled = false; }
+    });
+    scope.querySelectorAll('[data-vidview]').forEach(t => t.onclick = e => { if (e.target.closest('[data-phdel]')) return;
+      const p = answers[t.dataset.vidview]?.photos?.[Number(t.dataset.idx)]; if (p) videoViewer(p); });
     scope.querySelectorAll('[data-phview]').forEach(im => im.onclick = () => {
       const itId = im.dataset.phview, idx = Number(im.dataset.idx); const p = answers[itId]?.photos?.[idx]; if (!p || !im.src) return;
       photoViewer(im.src, { name: 'foto-' + (p.ts || '').slice(0, 19).replace(/[^0-9]/g, ''), onDel: () => scope.querySelector(`[data-phdel="${itId}"][data-idx="${idx}"]`)?.click() });
     });
     scope.querySelectorAll('[data-phdel]').forEach(b => b.onclick = async () => {
-      if (!confirm('¿Borrar esta foto?')) return;
       const itId = b.dataset.phdel, idx = Number(b.dataset.idx);
+      if (!confirm(answers[itId]?.photos?.[idx]?.kind === 'video' ? '¿Borrar este video?' : '¿Borrar esta foto?')) return;
       const [rm] = answers[itId].photos.splice(idx, 1);
       queueSave(); rerenderItem(itId);
       const had = await IDB.get('blobs', rm.path).catch(() => undefined);
@@ -1851,6 +1916,28 @@ async function viewExecute(v, id){
     scope.querySelectorAll('[data-sigclear]').forEach(b => b.onclick = () => { answers[b.dataset.sigclear] = {...answers[b.dataset.sigclear], value: null}; queueSave(); rerenderItem(b.dataset.sigclear); });
     scope.querySelectorAll('[data-pendadd],[data-pendedit]').forEach(b => b.onclick = () => pendingModal(b.dataset.pendadd || b.dataset.pendedit));
     scope.querySelectorAll('[data-pendrm]').forEach(b => b.onclick = () => { if (!confirm('¿Quitar el pendiente de este ítem?')) return; const cur = answers[b.dataset.pendrm]; delete cur.pending; queueSave(); rerenderItem(b.dataset.pendrm); });
+  }
+  /* Video corto como evidencia: se guarda en el teléfono y se envía con la inspección */
+  async function addVideo(itId, file, { gal = false, dur = null } = {}){
+    try {
+      const type = /mp4/i.test(file.type) ? 'video/mp4' : /quicktime/i.test(file.type) ? 'video/quicktime' : /webm/i.test(file.type) ? 'video/webm' : null;
+      if (!type) return toast('Ese formato de video no se admite (usá MP4, MOV o WebM).');
+      if (file.size > VID_MAX_MB * 1048576) return toast(`El video pesa ${(file.size / 1048576).toFixed(0)} MB y el máximo es ${VID_MAX_MB} MB. Grabalo con el botón 🎥 Video, que lo hace liviano.`);
+      if (file.size < 1000) return toast('El video quedó vacío: probá de nuevo.');
+      const all = Object.values(answers).flatMap(a => a?.photos || []).filter(p => p.kind === 'video');
+      if ((answers[itId]?.photos || []).filter(p => p.kind === 'video').length >= 3) return toast('Máximo 3 videos por pregunta.');
+      if (all.length >= 20) return toast('Máximo 20 videos por inspección.');
+      if (dur == null) dur = await vidMeta(file);
+      if (gal && dur != null && dur > VID_MAX_S * 2 + 1) return toast(`El video dura ${vidDur(dur)}: el máximo es ${vidDur(VID_MAX_S * 2)}.`);
+      const blob = new Blob([file], { type });
+      const path = `${ins.org_id}/${id}/${uid()}.${type === 'video/mp4' ? 'mp4' : type === 'video/quicktime' ? 'mov' : 'webm'}`;
+      await IDB.put('blobs', blob, path);
+      const pos = gal ? null : geoNow();
+      const rec = { path, kind: 'video', dur: dur != null ? Math.round(dur) : null, size: blob.size, ts: new Date().toISOString(), lat: pos?.lat ?? null, lng: pos?.lng ?? null, acc: pos?.acc ?? null, ...(gal ? { src: 'galeria' } : {}) };
+      const cur = answers[itId] || {};
+      answers[itId] = { ...cur, photos: [...(cur.photos || []), rec] };
+      queueSave(); rerenderItem(itId); toast(`Video guardado (${(blob.size / 1048576).toFixed(1).replace('.', ',')} MB)`);
+    } catch (e){ toast('No se pudo guardar el video: ' + errText(e)); }
   }
   /* Pendiente: algo que no se pudo resolver en la visita (queda como tarea y en el mapa) */
   function pendingModal(itId){
@@ -1962,7 +2049,7 @@ async function viewReport(v, id){
       if (it.type === 'heading') return `<div class="rp-subh"><span>${esc(it.label)}</span></div>`;
       const a = answers[it.id] || {};
       const longTxt = it.type === 'text' && it.long && a.value ? `<div class="rp-note">${esc(a.value)}</div>` : '';
-      const photos = (a.photos||[]).map(p => { n++; media.push({...p, n}); return `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${n}</figcaption></figure>`; }).join('');
+      const photos = (a.photos||[]).map(p => { n++; media.push({...p, n}); return p.kind === 'video' ? `<figure><a class="rp-vid" href="#" data-vpath="${esc(p.path)}" title="Ver el video">▶<small>${vidDur(p.dur)}</small></a><figcaption>Video ${n}</figcaption></figure>` : `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${n}</figcaption></figure>`; }).join('');
       return `<div class="rp-item"><div class="lb">${esc(it.label)}</div>${ansHTML(it, a)}${longTxt}
         ${a.note ? `<div class="rp-note">${esc(a.note)}</div>` : ''}${a.pending ? `<div class="rp-note" style="color:#C8102E"><b>⚠ Pendiente ${esc((PRIO_TXT[a.pending.priority] || '').toLowerCase())}:</b> ${esc(a.pending.action || '')}${a.pending.material ? ' · Material: ' + esc(a.pending.material) : ''}</div>` : ''}${photos ? `<div class="rp-photos">${photos}</div>` : ''}</div>`;
     }).join('')}`).join('');
@@ -1995,10 +2082,11 @@ async function viewReport(v, id){
         <div class="rp-kv"><b>Apertura / cierre</b><span>${ins.corr?.open_at ? fmtDT(ins.corr.open_at) : '—'} → ${ins.corr?.close_at ? fmtDT(ins.corr.close_at) : '—'}${ins.corr?.ttr_h ? ' · TTR ' + esc(ins.corr.ttr_h) + ' h' : ''}${ins.corr?.afect ? ' · ' + esc(ins.corr.afect) : ''}${ins.corr?.smt ? ' · ' + esc(ins.corr.smt) : ''}</span></div>` : ''}
       ${body}
       ${media.length ? `<div class="rp-sec" style="break-before:page"><span>Resumen de archivos multimedia</span></div>
-        <div class="rp-media">${media.map(p => `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${p.n}${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}${p.src === 'galeria' ? ` · <b${p.warn ? ' style="color:var(--red)"' : ''}>${esc(p.warn || 'De la galería')}</b>` : ''}</figcaption></figure>`).join('')}</div>` : ''}
+        <div class="rp-media">${media.map(p => `<figure>${p.kind === 'video' ? `<a class="rp-vid" href="#" data-vpath="${esc(p.path)}" style="width:100%;height:140px">▶<small>${vidDur(p.dur)} · se ve desde la app</small></a>` : `<img data-path="${esc(p.path)}">`}<figcaption>${p.kind === 'video' ? 'Video' : 'Foto'} ${p.n}${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}${p.src === 'galeria' ? ` · <b${p.warn ? ' style="color:var(--red)"' : ''}>${esc(p.warn || 'De la galería')}</b>` : ''}</figcaption></figure>`).join('')}</div>` : ''}
       <div class="rp-foot"><span>${esc(ins.site_name || '')} · Generado con InspectApp</span><span>${fmtDT(new Date())}</span></div>
     </div>`;
   await hydrate(v);
+  v.querySelectorAll('[data-vpath]').forEach(a => a.onclick = e => { e.preventDefault(); const p = media.find(x => x.path === a.dataset.vpath); if (p) videoViewer(p); });
   const imgs = [...v.querySelectorAll('#report img')];
   $('#b-pdf').onclick = async () => {
     await Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
@@ -3083,7 +3171,7 @@ const xlNum = v => { if (v === '' || v === null || v === undefined) return undef
 function templateToRows(def){
   const rows = [XL_HEAD];
   for (const s of def.sections) for (const it of s.items){
-    rows.push([s.title, it.label, it.type === 'text' && it.long ? 'Texto largo' : (XL_TYPE_OUT[it.type] || it.type), it.required ? 'Sí' : '', it.photos ? 'Sí' : '',
+    rows.push([s.title, it.label, it.type === 'text' && it.long ? 'Texto largo' : (XL_TYPE_OUT[it.type] || it.type), it.required ? 'Sí' : '', it.photos && it.video ? 'Foto y video' : it.video ? 'Video' : it.photos ? 'Sí' : '',
       it.min ?? '', it.max ?? '', it.unit || '', (it.options || []).join(', '), it.type === 'yesno' ? ({no:'No', none:'Ninguna'}[it.good] || '') : '', it.default ?? '']);
   }
   return rows;
@@ -3108,7 +3196,7 @@ function rowsToTemplate(rows){
     const it = { id: cur.id + 'i' + (cur.items.length + 1), type: type === 'textlong' ? 'text' : type, label };
     if (type === 'textlong') it.long = true;
     if (xlYes(get(r, 'req'))) it.required = true;
-    if (xlYes(get(r, 'ph'))) it.photos = true;
+    { const ev = norm(get(r, 'ph')); if (xlYes(ev) || /foto|ambas/.test(ev)) it.photos = true; if (/video|ambas/.test(ev)) it.video = true; }
     if (type === 'number'){ const mn = xlNum(get(r, 'min')), mx = xlNum(get(r, 'max')); if (mn !== undefined) it.min = mn; if (mx !== undefined) it.max = mx; if (String(get(r, 'unit')).trim()) it.unit = String(get(r, 'unit')).trim(); }
     if (type === 'select'){ it.options = String(get(r, 'opts')).split(/[,;|]/).map(x => x.trim()).filter(Boolean); if (!it.options.length) warns.push(`Fila ${hi + i + 2}: "${label}" es de opciones pero no tiene opciones.`); }
     if (type === 'yesno'){ const g = norm(get(r, 'good')); if (g === 'no') it.good = 'no'; else if (g.startsWith('ning')) it.good = 'none'; }
@@ -3256,7 +3344,7 @@ async function viewTemplateEditor(v, id){
               <div class="ops"><button data-imove="${si}.${ii}" data-dir="-1" title="Subir">↑</button><button data-imove="${si}.${ii}" data-dir="1" title="Bajar">↓</button><button data-idel="${si}.${ii}" title="Quitar">✕</button></div>
               ${it.type !== 'heading' ? `<div class="ed-extra">
                 <label><input type="checkbox" data-ireq="${si}.${ii}" ${it.required?'checked':''}> Obligatoria</label>
-                ${it.type !== 'signature' ? `<label><input type="checkbox" data-iph="${si}.${ii}" ${it.photos?'checked':''}> Pedir foto</label>` : ''}
+                ${it.type !== 'signature' ? `<label><input type="checkbox" data-iph="${si}.${ii}" ${it.photos?'checked':''}> Pedir foto</label><label><input type="checkbox" data-ivd="${si}.${ii}" ${it.video?'checked':''}> Pedir video</label>` : ''}
                 ${it.type === 'yesno' ? `<label>Respuesta correcta <select data-igood="${si}.${ii}"><option value="si" ${(it.good||'si')==='si'?'selected':''}>Sí</option><option value="no" ${it.good==='no'?'selected':''}>No</option><option value="none" ${it.good==='none'?'selected':''}>Ninguna (no puntúa)</option></select></label>` : ''}
                 ${it.type === 'number' ? `<label>Mín <input type="number" step="any" data-imin="${si}.${ii}" value="${it.min ?? ''}" style="width:90px"></label><label>Máx <input type="number" step="any" data-imax="${si}.${ii}" value="${it.max ?? ''}" style="width:90px"></label><label>Unidad <input data-iunit="${si}.${ii}" value="${esc(it.unit||'')}" style="width:90px"></label>` : ''}
                 ${it.type === 'select' ? `<label style="flex:1">Opciones (separadas por coma) <input data-iopts="${si}.${ii}" value="${esc((it.options||[]).join(', '))}" style="flex:1;min-width:200px"></label>` : ''}
@@ -3276,6 +3364,7 @@ async function viewTemplateEditor(v, id){
     v.querySelectorAll('[data-itype]').forEach(i => i.onchange = () => { at(i.dataset.itype).type = i.value; render(); });
     v.querySelectorAll('[data-ireq]').forEach(i => i.onchange = () => at(i.dataset.ireq).required = i.checked || undefined);
     v.querySelectorAll('[data-iph]').forEach(i => i.onchange = () => at(i.dataset.iph).photos = i.checked || undefined);
+    v.querySelectorAll('[data-ivd]').forEach(i => i.onchange = () => at(i.dataset.ivd).video = i.checked || undefined);
     v.querySelectorAll('[data-igood]').forEach(i => i.onchange = () => at(i.dataset.igood).good = i.value === 'si' ? undefined : i.value);
     v.querySelectorAll('[data-imin]').forEach(i => i.oninput = () => at(i.dataset.imin).min = num(i.value));
     v.querySelectorAll('[data-imax]').forEach(i => i.oninput = () => at(i.dataset.imax).max = num(i.value));
