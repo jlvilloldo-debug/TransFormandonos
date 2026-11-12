@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-JgJ0l7PUyCgxqwOpl+qJA9+/8ABF9i357oF/hyb0ZAM='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-rEQByXQJxm6sHQzItiN+zQ/Kx+gFRG1XI9QFhpm4UV8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -144,6 +144,14 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .thumbs .th{position:relative;width:76px;height:76px;border-radius:8px;overflow:hidden;background:var(--line)}
 .thumbs img{width:100%;height:100%;object-fit:cover}
+.offready{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-radius:10px;padding:8px 12px;font-size:13px;margin:8px 0}.offready.ok{background:#ECFDF5;border:1px solid #A7F3D0}.offready.old{background:#FFFBEB;border:1px solid #FCD34D}
+.item.miss{border-left:4px solid #DC2626;background:#FEF2F2;padding-left:10px;border-radius:6px}
+.miss-t{color:#B91C1C;font-weight:700;font-size:14px;margin:4px 0 6px}
+.miss-sec{color:#B91C1C;font-weight:700}
+.miss-fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:50;background:#DC2626;color:#fff;border:0;border-radius:24px;padding:12px 18px;font:inherit;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer;white-space:nowrap}
+.req-ban{background:#EEF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:8px 12px;font-size:13px;margin-top:8px}
+.na-on{opacity:.45;pointer-events:none}
+.item-tools button.on{background:#E5E7EB;font-weight:700}
 .thumbs .th.vid{background:#0F2A4A;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:24px;line-height:1}.thumbs .th.vid small{font-size:11px;margin-top:4px;opacity:.9}
 #report .rp-vid{width:100px;height:100px;background:#0F2A4A;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:26px;text-decoration:none}#report .rp-vid small{font-size:10px;margin-top:4px}
 .vrec video{width:100%;max-height:60vh;background:#000;border-radius:10px;display:block}.vrec .tm{font:700 20px/1 monospace}.vrec .tm.on{color:#DC2626}
@@ -439,7 +447,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.15';
+const APP_VERSION = '5.16';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], dc: ['qrcode.js', 'datacenter.js'] };
@@ -723,6 +731,11 @@ async function syncNow(){
         await IDB.del('blobs', p);
       }
       let res;
+      if (r._reopen && r._synced){   // un supervisor la reabrió sin señal: primero se reabre en el servidor
+        const ro = await sb.from('inspections').update({ status: 'borrador', completed_at: null }).eq('id', r.id).select('id');
+        if (ro.error) throw ro.error;
+        if (!ro.data?.length) throw new Error('No se pudo reabrir la inspección (permiso).');
+      }
       if (!r._synced){
         res = await sb.from('inspections').insert(toRow(r)).select('id');
         if (res.error && /duplicate key|23505/i.test((res.error.message || '') + (res.error.code || ''))) res = await sb.from('inspections').update(toRow(r)).eq('id', r.id).select('id');
@@ -730,12 +743,17 @@ async function syncNow(){
         res = await sb.from('inspections').update(toRow(r)).eq('id', r.id).select('id');
       }
       if (res.error){
-        if (/ya fue completada/i.test(res.error.message)) res = { data: [{}] };
+        if (/ya fue completada/i.test(res.error.message)){
+          // la corrección sin señal llegó tarde: la inspección ya estaba completada en el servidor
+          if (r.status === 'borrador'){ const c0 = await localGet(r.id); if (c0){ c0.status = 'completada'; c0.completed_at = c0.completed_at || r.completed_at || new Date().toISOString(); c0._dirty = false; c0._synced = true; delete c0._reopen; await IDB.put('insp', c0); }
+            toast(`"${r.site_name || 'Inspección'}": ya había llegado completada, no se pudo volver a borrador. Pedile a un supervisor que la reabra.`); continue; }
+          res = { data: [{}] };
+        }
         else throw res.error;
       }
       if (!res.data?.length) throw new Error('El servidor no aceptó la inspección (permiso o licencia).');
       const cur = await localGet(r.id);
-      if (cur){ cur._synced = true; if (cur._rev === r._rev) cur._dirty = false; await IDB.put('insp', cur); }
+      if (cur){ cur._synced = true; delete cur._reopen; if (cur._rev === r._rev) cur._dirty = false; await IDB.put('insp', cur); }
     }
     syncErr = null;
     pruneLocal();
@@ -1004,10 +1022,25 @@ function evalItem(it, a){
   }
   return {scored:false};
 }
+// Todas las preguntas son obligatorias: se responden o se marcan N/A (la firma no tiene N/A).
+const itNA = a => !!a && (a.value === 'na' || a.na === true);
+const needPhoto = it => !!it.photos && it.type !== 'photo' && it.type !== 'signature';
+const needVideo = it => !!it.video && it.type !== 'signature';
 function isAnswered(it, a){
   if (!a) return false;
+  if (a.na === true && it.type !== 'signature') return true;
   if (it.type === 'photo') return (a.photos || []).length > 0;
   return a.value !== undefined && a.value !== null && a.value !== '';
+}
+// qué le falta a una pregunta para poder completar la inspección (null = nada)
+function missingWhy(it, a){
+  if (it.type === 'heading') return null;
+  a = a || {};
+  if (!isAnswered(it, a)) return it.type === 'signature' ? 'Falta la firma' : it.type === 'photo' ? 'Falta la foto (o marcá N/A)' : 'Falta responder (o marcá N/A)';
+  if (itNA(a) || a.media_na) return null;
+  const ph = a.photos || [], hasP = ph.some(p => p.kind !== 'video'), hasV = ph.some(p => p.kind === 'video');
+  const fP = needPhoto(it) && !hasP, fV = needVideo(it) && !hasV;
+  return fP && fV ? 'Falta la foto y el video' : fP ? 'Falta la foto' : fV ? 'Falta el video' : null;
 }
 function computeScore(def, answers){
   let score=0, max=0, flagged=0, answered=0, total=0; const bySec = {}, flaggedItems = [];
@@ -1266,8 +1299,22 @@ async function warmCache(){
     for (const t of (ts || []).filter(taskOpen)) await IDB.put('kv', t, CUR_UID + ':task:' + t.id).catch(() => {});
     // seguridad e higiene: contactos de emergencia disponibles sin señal y envío de registros pendientes
     needLib('hys').then(() => hysBase(true)).then(() => hysSync()).catch(() => {});
+    try { localStorage.setItem('ia_warm:' + CUR_UID, String(Date.now())); } catch {}
   } finally { warming = false; }
 }
+// "Listo para trabajar sin señal": cuándo se bajaron por última vez plantillas, sitios y tareas
+function offlineReadyHTML(){
+  let t = 0; try { t = Number(localStorage.getItem('ia_warm:' + CUR_UID)) || 0; } catch {}
+  const h = t ? (Date.now() - t) / 3600000 : null;
+  const ago = h == null ? '' : h < 1 ? 'hace menos de 1 h' : h < 48 ? `hace ${Math.floor(h)} h` : `hace ${Math.floor(h / 24)} días`;
+  const ok = h != null && h < 24;
+  return `<div class="offready ${ok ? 'ok' : 'old'}"><span>${ok ? '✅' : '⚠️'} ${t ? `<b>${ok ? 'Listo para trabajar sin señal' : 'Datos sin señal desactualizados'}</b> · actualizado ${ago}` : '<b>Todavía no se bajaron los datos para trabajar sin señal</b>'}</span>
+    ${online() ? '<button class="btn small sec" data-offready>Actualizar ahora</button>' : ''}</div>`;
+}
+document.addEventListener('click', async e => { const b = e.target.closest('[data-offready]'); if (!b) return;
+  b.disabled = true; b.textContent = 'Bajando…';
+  try { warming = false; await warmCache(); toast('Listo: plantillas, sitios y tareas guardados en el teléfono.'); } catch (er){ toast(errText(er)); }
+  const box = b.closest('.offready'); if (box) box.outerHTML = offlineReadyHTML(); });
 async function reloadOrg(){
   try { org = await cached('org', () => sb.from('organizations').select(ORG_COLS).eq('id', me.org_id).single()); } catch { org = null; }
   $('#org-name').textContent = org ? org.name : 'Sin empresa'; renderLicense();
@@ -1495,7 +1542,8 @@ async function viewHome(v){
 async function viewInspections(v){
   v.innerHTML = `
     <div class="card"><div class="row between"><h2 style="margin:0">Inspecciones</h2>${canWrite() && !isContractor() ? '<button class="btn" id="b-new">+ Nueva inspección</button>' : ''}</div>
-      <div class="row" style="margin-top:12px">
+      ${offlineReadyHTML()}
+      <div class="row" style="margin-top:4px">
         <input id="q" class="grow" placeholder="Buscar sitio, plantilla o técnico">
         <select id="f-kind" style="width:auto"><option value="">Todos los tipos</option><option value="preventivo">Preventivo</option><option value="correctivo">Correctivo</option><option value="otro">Otro</option></select>
         <select id="f-status" style="width:auto"><option value="">Todos los estados</option><option value="borrador">Borrador</option><option value="completada">Completada</option></select>
@@ -1554,7 +1602,7 @@ async function newInspection(){
     <p class="muted sm" style="margin:6px 0 0">Si el sitio no está en la lista, escribí el nombre igual: queda registrado como texto.</p>
     <label>Tipo</label><select id="n-kind"><option value="preventivo">Preventivo</option><option value="correctivo">Correctivo</option><option value="otro">Otro</option></select>
     <div id="n-corr" class="hidden">${stxCorrFields({}, '', sites || [])}</div>
-    ${!online() ? '<p class="sm" style="color:var(--amber)">Sin conexión: la inspección se guarda en el teléfono y se envía sola cuando vuelva la señal.</p>' : ''}
+    ${!online() ? '<p class="sm" style="color:var(--amber)">Sin conexión: la inspección se guarda en el teléfono y se envía sola cuando vuelva la señal.</p>' : ''}${offlineReadyHTML()}
     <div class="err" id="n-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="n-cancel">Cancelar</button><button class="btn" id="n-go">Comenzar</button></div>`);
   const showCorr = () => $('#n-corr').classList.toggle('hidden', $('#n-kind').value !== 'correctivo');
@@ -1778,6 +1826,28 @@ async function viewExecute(v, id){
     const bar = $('#prog'); if (bar) bar.style.width = p + '%';
     const t = $('#prog-t'); if (t) t.textContent = `${sc.answered} de ${sc.total} respondidas · Puntaje ${pct(sc.score, sc.max)}${sc.flagged ? ' · ' + sc.flagged + ' señalados' : ''}`;
     def.sections.forEach(s => { const e = $('#ss-' + s.id); if (e) e.textContent = sc.bySec[s.id].max ? `${fmtPts(sc.bySec[s.id].score)} / ${sc.bySec[s.id].max}` : ''; });
+    if (showMiss) markMissing();
+  }
+  // faltantes: se marcan en rojo después de tocar "Completar" y se van apagando a medida que se responden
+  let showMiss = false;
+  function markMissing(){
+    let tot = 0;
+    def.sections.forEach(s => {
+      let n = 0;
+      s.items.forEach(it => { const why = missingWhy(it, answers[it.id]); const el = $('#it-' + it.id); if (it.type === 'heading') return;
+        if (why) n++;
+        if (el){ el.classList.toggle('miss', !!why); const t = el.querySelector('.miss-t'); if (t){ t.textContent = why ? '⚠ ' + why : ''; t.classList.toggle('hidden', !why); } } });
+      tot += n; const e = $('#sm-' + s.id); if (e) e.textContent = n ? `Faltan ${n}` : '';
+    });
+    const fab = $('#miss-next'); if (fab){ fab.classList.toggle('hidden', !tot); fab.textContent = `⬇ Ir a la que falta (${tot})`; }
+    const fe = $('#fin-err'); if (fe) fe.textContent = tot ? `Faltan completar ${tot} campo${tot === 1 ? '' : 's'}: están marcados en rojo.` : '';
+    return tot;
+  }
+  function goNextMissing(){
+    const els = [...document.querySelectorAll('.item.miss')]; if (!els.length) return;
+    const y = window.scrollY + 140;
+    const nx = els.find(e => e.getBoundingClientRect().top + window.scrollY > y) || els[0];
+    nx.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   v.innerHTML = `
@@ -1786,19 +1856,22 @@ async function viewExecute(v, id){
       <span class="savebar" id="save-st">${ins._dirty ? 'Guardado en el teléfono' : 'Guardado'}</span></div>
       <div class="progress" style="margin-top:8px"><i id="prog" style="width:0"></i></div>
       <div class="muted sm" id="prog-t" style="margin-top:4px"></div>
+      <div class="req-ban">✱ <b>Todas las preguntas son obligatorias.</b> Si alguna no corresponde, marcá <b>N/A</b>. Si pide foto o video y no aplica, tocá <b>🚫 Sin foto/video</b>.</div>
     </div>
     ${def.sections.map((s, si) => `
-      <div class="card sec-card"><div class="sec-title"><span>${si+1}. ${esc(s.title)}</span><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="sm" id="ss-${s.id}"></span>${s.items.some(it => ['yesno','okfail','brm'].includes(it.type)) ? `<button type="button" class="sec-na" data-secna="${si}" title="Marca N/A las preguntas de esta sección que todavía no respondiste">N/A al resto</button>` : ''}</span></div>
+      <div class="card sec-card"><div class="sec-title"><span>${si+1}. ${esc(s.title)}</span><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="sm miss-sec" id="sm-${s.id}"></span><span class="sm" id="ss-${s.id}"></span>${s.items.some(it => !['heading','signature'].includes(it.type)) ? `<button type="button" class="sec-na" data-secna="${si}" title="Marca N/A las preguntas de esta sección que todavía no respondiste">N/A al resto</button>` : ''}</span></div>
         ${s.items.map(it => renderItem(it)).join('')}
       </div>`).join('')}
     <div class="card"><div class="err" id="fin-err"></div>
       <div class="row between"><button class="btn danger small" id="b-del">Borrar borrador</button>
-      <div class="row"><button class="btn sec" id="b-later">Guardar y salir</button><button class="btn" id="b-finish">Completar inspección</button></div></div></div>`;
+      <div class="row"><button class="btn sec" id="b-later">Guardar y salir</button><button class="btn" id="b-finish">Completar inspección</button></div></div></div>
+    <button type="button" class="miss-fab hidden" id="miss-next"></button>`;
 
   function renderItem(it){
     if (it.type === 'heading') return `<div class="sub">${esc(it.label)}</div>`;
     const a = answers[it.id] || {};
-    const req = it.required ? ' <span class="req">*</span>' : '';
+    const req = ' <span class="req">*</span>';
+    const naB = it.type !== 'signature' && !['yesno', 'okfail', 'brm'].includes(it.type) ? `<button type="button" class="opt na ${a.na ? 'on' : ''}" data-na="${it.id}" style="flex:0 0 auto;min-width:80px">N/A</button>` : '';
     let ctl = '';
     if (it.type === 'yesno' || it.type === 'okfail'){
       const opts = it.type === 'okfail' ? [['ok','OK'],['falla','Falla'],['na','N/A']] : [['si','Sí'],['no','No'],['na','N/A']];
@@ -1811,15 +1884,17 @@ async function viewExecute(v, id){
         `<button type="button" class="opt ${cls} ${a.value === val ? 'on' : ''}" data-set="${it.id}" data-val="${val}">${txt}</button>`).join('')}</div>`;
     } else if (it.type === 'number'){
       const rng = (it.min !== undefined || it.max !== undefined) ? `Rango aceptable: ${it.min ?? '—'} a ${it.max ?? '—'} ${esc(it.unit||'')}` : (it.unit ? esc(it.unit) : '');
-      ctl = `<div class="row"><input type="number" inputmode="decimal" step="any" data-num="${it.id}" value="${esc(a.value ?? '')}" style="max-width:180px"><span class="muted sm">${rng}</span></div>`;
+      ctl = `<div class="row" style="flex-wrap:wrap"><span class="row ${a.na ? 'na-on' : ''}" style="flex-wrap:nowrap"><input type="number" inputmode="decimal" step="any" data-num="${it.id}" value="${esc(a.value ?? '')}" style="max-width:180px" ${a.na ? 'disabled' : ''}><span class="muted sm">${rng}</span></span>${naB}</div>`;
     } else if (it.type === 'text'){
-      ctl = it.long ? `<textarea data-txt="${it.id}">${esc(a.value ?? '')}</textarea>` : `<input data-txt="${it.id}" value="${esc(a.value ?? '')}">`;
+      ctl = `<div class="row" style="align-items:flex-start;flex-wrap:nowrap"><div style="flex:1" class="${a.na ? 'na-on' : ''}">${it.long ? `<textarea data-txt="${it.id}" ${a.na ? 'disabled' : ''}>${esc(a.value ?? '')}</textarea>` : `<input data-txt="${it.id}" value="${esc(a.value ?? '')}" ${a.na ? 'disabled' : ''}>`}</div>${naB}</div>`;
     } else if (it.type === 'select'){
-      ctl = `<div class="opts">${(it.options||[]).map(o => `<button type="button" class="opt neutral ${a.value === o ? 'on' : ''}" data-set="${it.id}" data-val="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
+      ctl = `<div class="opts">${(it.options||[]).map(o => `<button type="button" class="opt neutral ${a.value === o && !a.na ? 'on' : ''}" data-set="${it.id}" data-val="${esc(o)}">${esc(o)}</button>`).join('')}${naB}</div>`;
     } else if (it.type === 'date'){
-      ctl = `<input type="date" data-txt="${it.id}" value="${esc(a.value ?? '')}" style="max-width:200px">`;
+      ctl = `<div class="row"><input type="date" data-txt="${it.id}" value="${esc(a.value ?? '')}" style="max-width:200px" class="${a.na ? 'na-on' : ''}" ${a.na ? 'disabled' : ''}>${naB}</div>`;
     } else if (it.type === 'time'){
-      ctl = `<input type="time" data-txt="${it.id}" value="${esc(a.value ?? '')}" style="max-width:160px">`;
+      ctl = `<div class="row"><input type="time" data-txt="${it.id}" value="${esc(a.value ?? '')}" style="max-width:160px" class="${a.na ? 'na-on' : ''}" ${a.na ? 'disabled' : ''}>${naB}</div>`;
+    } else if (it.type === 'photo'){
+      ctl = `<div class="row" style="align-items:center"><span class="muted sm" style="flex:1">${a.na ? 'No aplica.' : 'Sacá al menos una foto con 📷 Foto o 🖼️ Galería.'}</span>${naB}</div>`;
     } else if (it.type === 'signature'){
       ctl = a.value ? `<div class="thumbs"><div class="th" style="width:200px;height:90px;background:#fff"><img data-path="${esc(a.value)}" style="object-fit:contain"></div></div><button class="btn sec small" data-sigclear="${it.id}" style="margin-top:6px">Volver a firmar</button>`
         : `<canvas class="sig" id="sig-${it.id}"></canvas><div class="row" style="margin-top:6px"><button class="btn sec small" data-sigreset="${it.id}">Borrar</button><button class="btn small" data-sigsave="${it.id}">Guardar firma</button></div>`;
@@ -1830,14 +1905,17 @@ async function viewExecute(v, id){
     const pendBox = pd ? `<div class="pend-box ${esc(pd.priority)}">⚠ <b>Pendiente ${esc(PRIO_TXT[pd.priority] || '').toLowerCase()}</b>: ${esc(pd.action || it.label)}${pd.material ? ` · Material: ${esc(pd.material)}` : ''}
       <div class="muted sm">${pd.task_id ? 'Tarea creada.' : online() ? 'Se crea como tarea al guardar.' : 'Se crea como tarea cuando vuelva la señal.'} Queda en el mapa con semáforo ${pd.priority === 'critica' ? 'rojo' : 'ámbar'}.</div>
       ${pd.task_id ? '' : `<button type="button" class="link" data-pendedit="${it.id}">Modificar</button> · <button type="button" class="link" data-pendrm="${it.id}">Quitar</button>`}</div>` : '';
-    return `<div class="item ${flagged ? 'flag' : ''}" id="it-${it.id}">
-      <div class="q">${esc(it.label)}${req}</div>${ctl}${pendBox}
+    const why = showMiss ? missingWhy(it, a) : null;
+    const mNA = itNA(a), askP = needPhoto(it) || it.type === 'photo', askV = needVideo(it);
+    return `<div class="item ${flagged ? 'flag' : ''} ${why ? 'miss' : ''}" id="it-${it.id}">
+      <div class="q">${esc(it.label)}${req}</div><div class="miss-t ${why ? '' : 'hidden'}">${why ? '⚠ ' + why : ''}</div>${ctl}${pendBox}
       ${tools ? `<div id="note-${it.id}" class="${a.note ? '' : 'hidden'}" style="margin-top:8px"><textarea data-note="${it.id}" placeholder="Nota u observación">${esc(a.note || '')}</textarea></div>
       <div class="thumbs" id="ph-${it.id}">${(a.photos||[]).map((p, i) => p.kind === 'video' ? `<div class="th vid" data-vidview="${it.id}" data-idx="${i}" title="Ver el video">▶<small>🎥 ${vidDur(p.dur)}</small><button class="x" data-phdel="${it.id}" data-idx="${i}" title="Borrar video" aria-label="Borrar video">×</button></div>` : `<div class="th"><img data-path="${esc(p.path)}" data-phview="${it.id}" data-idx="${i}" alt="Foto ${i + 1}">${p.src === 'galeria' ? `<span class="gal" title="${p.warn ? esc(p.warn) : 'De la galería'}">${p.warn ? '⚠' : '🖼'}</span>` : ''}<button class="x" data-phdel="${it.id}" data-idx="${i}" title="Borrar foto" aria-label="Borrar foto">×</button></div>`).join('')}</div>
       <div class="item-tools"><button type="button" data-notebtn="${it.id}">✎ Nota</button>${pd ? '' : `<button type="button" data-pendadd="${it.id}" class="${flagged ? 'pendbtn' : ''}">⚠ Dejar pendiente</button>`}
-        <label>📷 Foto${it.photos || it.type === 'photo' ? ' (recomendada)' : ''}<input type="file" accept="image/*" capture="environment" multiple data-phadd="${it.id}" class="hidden"></label>
-        <button type="button" data-vidadd="${it.id}" title="Grabar un video corto (hasta ${VID_MAX_S} segundos)">🎥 Video${it.video ? ' (recomendado)' : ''}</button>
+        <label>📷 Foto${askP && !mNA && !a.media_na ? ' (obligatoria)' : ''}<input type="file" accept="image/*" capture="environment" multiple data-phadd="${it.id}" class="hidden"></label>
+        <button type="button" data-vidadd="${it.id}" title="Grabar un video corto (hasta ${VID_MAX_S} segundos)">🎥 Video${askV && !mNA && !a.media_na ? ' (obligatorio)' : ''}</button>
         <label title="Adjuntar fotos o un video corto ya guardados en el teléfono">🖼️ Galería<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple data-phadd="${it.id}" data-gal="1" class="hidden"></label>
+        ${(needPhoto(it) || askV) && !mNA ? `<button type="button" data-mna="${it.id}" class="${a.media_na ? 'on' : ''}" title="La foto o el video no corresponden en este caso">🚫 Sin foto/video${a.media_na ? ' ✔' : ''}</button>` : ''}
       </div>` : ''}
     </div>`;
   }
@@ -1849,7 +1927,18 @@ async function viewExecute(v, id){
   function bindItems(scope){
     scope.querySelectorAll('[data-set]').forEach(b => b.onclick = () => {
       const itId = b.dataset.set; const cur = answers[itId] || {};
-      answers[itId] = {...cur, value: cur.value === b.dataset.val ? null : b.dataset.val};
+      answers[itId] = {...cur, na: undefined, value: cur.value === b.dataset.val && !cur.na ? null : b.dataset.val};
+      queueSave(); rerenderItem(itId);
+    });
+    scope.querySelectorAll('[data-na]').forEach(b => b.onclick = () => {
+      const itId = b.dataset.na, cur = answers[itId] || {};
+      if (!cur.na && ((cur.value != null && cur.value !== '') || (cur.photos || []).length) && !confirm('Se marca N/A. Lo que habías cargado en el campo se borra (las fotos quedan). ¿Seguir?')) return;
+      answers[itId] = cur.na ? { ...cur, na: undefined } : { ...cur, na: true, value: null };
+      queueSave(); rerenderItem(itId);
+    });
+    scope.querySelectorAll('[data-mna]').forEach(b => b.onclick = () => {
+      const itId = b.dataset.mna, cur = answers[itId] || {};
+      answers[itId] = { ...cur, media_na: cur.media_na ? undefined : true };
       queueSave(); rerenderItem(itId);
     });
     scope.querySelectorAll('[data-num]').forEach(i => i.oninput = () => {
@@ -1987,21 +2076,19 @@ async function viewExecute(v, id){
   $('#x-corr')?.addEventListener('click', () => stxCorrModal(ins, async () => { dirty = true; await save(); viewExecute(v, id); }));
   v.querySelectorAll('[data-secna]').forEach(b => b.onclick = () => {
     const s = def.sections[Number(b.dataset.secna)];
-    const pend = s.items.filter(it => ['yesno','okfail','brm'].includes(it.type) && !isAnswered(it, answers[it.id]));
+    const pend = s.items.filter(it => !['heading', 'signature'].includes(it.type) && !isAnswered(it, answers[it.id]));
     if (!pend.length) return toast('No quedan preguntas sin responder en esta sección.');
     if (!confirm(`Se marcan como N/A ${pend.length} pregunta${pend.length === 1 ? '' : 's'} sin responder de "${s.title}". ¿Continuar?`)) return;
-    pend.forEach(it => { answers[it.id] = {...(answers[it.id] || {}), value: 'na'}; });
+    pend.forEach(it => { answers[it.id] = ['yesno', 'okfail', 'brm'].includes(it.type) ? {...(answers[it.id] || {}), value: 'na'} : {...(answers[it.id] || {}), na: true, value: null}; });
     queueSave(); pend.forEach(it => rerenderItem(it.id));
   });
 
+  $('#miss-next').onclick = goNextMissing;
   $('#b-later').onclick = async () => { await save(); leaveGuard = null; location.hash = '#/insp'; };
   $('#b-del').onclick = async () => { await save(); leaveGuard = null; deleteInspection(ins); };
   $('#b-finish').onclick = async () => {
-    const missing = allItems.filter(it => it.required && it.type !== 'heading' && !isAnswered(it, answers[it.id])).map(it => it.label);
-    if (missing.length){
-      $('#fin-err').textContent = 'Faltan campos obligatorios: ' + missing.slice(0, 4).join(' · ') + (missing.length > 4 ? ` y ${missing.length - 4} más` : '');
-      return;
-    }
+    showMiss = true;
+    if (markMissing()){ await save(); setTimeout(() => { window.scrollTo(0, 0); goNextMissing(); }, 50); toast('Faltan campos por completar: están marcados en rojo.'); return; }
     if (!confirm('Al completarla queda cerrada (solo un supervisor puede reabrirla). ¿Completar?')) return;
     ins.status = 'completada'; ins.completed_at = new Date().toISOString();
     dirty = true; await save(); leaveGuard = null;
@@ -2021,6 +2108,7 @@ async function viewReport(v, id){
   let n = 0; const media = [];
   const ansHTML = (it, a) => {
     const v_ = a?.value;
+    if (a?.na === true) return `<div class="rp-ans a-na">N/A</div>`;
     if (it.type === 'yesno' || it.type === 'okfail'){
       if (!v_) return '<div></div>';
       const txt = {si:'Sí', no:'No', na:'N/A', ok:'OK', falla:'Falla'}[v_];
@@ -2055,12 +2143,15 @@ async function viewReport(v, id){
     }).join('')}`).join('');
 
   const canReopen = isManager() && canWrite() && ins.status === 'completada';
+  // completada pero todavía en el teléfono (no se envió): quien la hizo puede volver a borrador sin señal
+  const canUndo = !canReopen && ins.status === 'completada' && (ins._dirty || !ins._synced) && canWrite() && ins.inspector_id === me.id;
   const canEdit = ins.status === 'borrador' && canWrite() && (ins.inspector_id === me.id || isManager());
   v.innerHTML = `
     <div class="report-bar">
       <button class="btn sec" data-go="back:#/insp">← Volver</button>
       <div class="row">${ins._dirty ? '<span class="pill p-pend">Por enviar</span>' : ''}
       ${canReopen ? '<button class="btn sec" id="b-reopen">Reabrir para editar</button>' : ''}
+      ${canUndo ? '<button class="btn sec" id="b-undo" title="Todavía no se envió: se puede corregir">↩ Corregir (no se envió)</button>' : ''}
       ${canEdit ? `<button class="btn sec" data-go="#/insp/${esc(ins.id)}">Seguir cargando</button>` : ''}
       ${canDelete(ins) ? '<button class="btn danger" id="b-delr">Borrar</button>' : ''}
       <button class="btn" id="b-pdf">Descargar PDF</button></div>
@@ -2095,8 +2186,20 @@ async function viewReport(v, id){
     window.print(); setTimeout(() => document.title = t, 1000);
   };
   $('#b-delr')?.addEventListener('click', async () => { await deleteInspection(ins); });
+  // reabrir en el teléfono (sin señal o antes de enviarla): se aplica en el servidor cuando vuelve la señal
+  const reopenLocal = async (fromServer) => {
+    if (syncing) return toast('Se está enviando en este momento: probá de nuevo en unos segundos.');
+    const cur = (await localGet(id)) || ins;
+    await IDB.put('insp', { ...cur, status: 'borrador', completed_at: null, _dirty: true, _rev: (cur._rev || 0) + 1, ...(fromServer && cur._synced ? { _reopen: true } : {}) });
+    updateNet(); toast(fromServer ? 'Reabierta en el teléfono: se aplica en el servidor cuando vuelva la señal.' : 'Volvió a borrador: corregila y completala de nuevo.');
+    location.hash = '#/insp/' + id;
+  };
+  $('#b-undo')?.addEventListener('click', async () => { if (confirm('La inspección vuelve a borrador para corregirla. ¿Continuar?')) reopenLocal(false); });
   $('#b-reopen')?.addEventListener('click', async () => {
-    if (!needOnline()) return;
+    if (!online() || ins._dirty || !ins._synced){
+      if (!confirm(online() ? 'La inspección vuelve a borrador para poder editarla. ¿Continuar?' : 'No hay señal. Se reabre en el teléfono y el cambio se aplica en el servidor cuando vuelva la señal. ¿Continuar?')) return;
+      return reopenLocal(true);
+    }
     if (!confirm('La inspección vuelve a borrador para poder editarla. ¿Continuar?')) return;
     const { data, error } = await sb.from('inspections').update({ status: 'borrador', completed_at: null }).eq('id', id).select('id');
     if (error) return toast(errText(error));
@@ -3343,7 +3446,7 @@ async function viewTemplateEditor(v, id){
               <select data-itype="${si}.${ii}">${Object.entries(ITEM_TYPES).map(([k,x]) => `<option value="${k}" ${it.type===k?'selected':''}>${x}</option>`).join('')}</select>
               <div class="ops"><button data-imove="${si}.${ii}" data-dir="-1" title="Subir">↑</button><button data-imove="${si}.${ii}" data-dir="1" title="Bajar">↓</button><button data-idel="${si}.${ii}" title="Quitar">✕</button></div>
               ${it.type !== 'heading' ? `<div class="ed-extra">
-                <label><input type="checkbox" data-ireq="${si}.${ii}" ${it.required?'checked':''}> Obligatoria</label>
+
                 ${it.type !== 'signature' ? `<label><input type="checkbox" data-iph="${si}.${ii}" ${it.photos?'checked':''}> Pedir foto</label><label><input type="checkbox" data-ivd="${si}.${ii}" ${it.video?'checked':''}> Pedir video</label>` : ''}
                 ${it.type === 'yesno' ? `<label>Respuesta correcta <select data-igood="${si}.${ii}"><option value="si" ${(it.good||'si')==='si'?'selected':''}>Sí</option><option value="no" ${it.good==='no'?'selected':''}>No</option><option value="none" ${it.good==='none'?'selected':''}>Ninguna (no puntúa)</option></select></label>` : ''}
                 ${it.type === 'number' ? `<label>Mín <input type="number" step="any" data-imin="${si}.${ii}" value="${it.min ?? ''}" style="width:90px"></label><label>Máx <input type="number" step="any" data-imax="${si}.${ii}" value="${it.max ?? ''}" style="width:90px"></label><label>Unidad <input data-iunit="${si}.${ii}" value="${esc(it.unit||'')}" style="width:90px"></label>` : ''}
