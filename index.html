@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ihhGJmOGcNLkMTPGQxHvSpsGPJ0Sl9O/BxzbEZPMfOs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-VM6NzrD57fMDOa8pWFRlF+eIlgWXeQ7+hwT4ggJOLYE='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -436,7 +436,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.13';
+const APP_VERSION = '5.14';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], dc: ['qrcode.js', 'datacenter.js'] };
@@ -582,6 +582,41 @@ async function cachedQuick(key, fetcher){
 }
 const loadSitesAll = () => cachedQuick('sites-all', () => pageAll(() => sb.from('sites').select('*').order('name').order('id')));
 const loadSiteLinks = () => isContractor() ? Promise.resolve([]) : cachedQuick('site-links', () => pageAll(() => sb.from('site_links').select('id,name,kind,status,site_a,site_b,a_lat,a_lng,b_lat,b_lng,geom').order('name').order('id'))).catch(() => []);
+
+/* ---------- vínculos en cualquier mapa: se tocan fácil, se resaltan y ofrecen modificar / corregir / borrar ---------- */
+const LINK_COL = { fo: '#F2A93B', mw: '#7C3AED', radio: '#0E7490', otro: '#0E7490' };
+const LINK_TXT = { fo: '🧵 Fibra óptica', mw: '📡 Microondas', radio: '📶 Radio', otro: '🔗 Vínculo' };
+async function linkAct(id, act){
+  try {
+    await needLib('sitios');
+    const { data: l, error } = await sb.from('site_links').select('*').eq('id', id).maybeSingle(); if (error) throw error;
+    if (!l) return toast('Ese vínculo ya no existe.');
+    if (act === 'del'){
+      if (!confirm(`¿Borrar el vínculo "${l.name}"?${l.fiber_route_id ? '\nLa traza de fibra asociada no se borra.' : ''}`)) return;
+      const r = await sb.from('site_links').delete().eq('id', id); if (r.error) throw r.error;
+      IDB.del('kv', CUR_UID + ':site-links').catch(() => {}); IDB.del('kv', CUR_UID + ':site-links-full').catch(() => {});
+      toast('Vínculo borrado'); route(); return;
+    }
+    linkEditor(l, act === 'fix' ? { manual: true } : {});
+  } catch (e){ toast(errText(e)); }
+}
+function linkLine(layer, l, map){
+  const g = Array.isArray(l.geom) && l.geom.length > 1 ? l.geom : (l.a_lat != null && l.b_lat != null ? [[l.a_lat, l.a_lng], [l.b_lat, l.b_lng]] : null); if (!g) return null;
+  const col = LINK_COL[l.kind] || LINK_COL.otro, w = l.kind === 'fo' ? 4 : 3, off = ['baja', 'fuera_servicio'].includes(l.status);
+  const vis = L.polyline(g, { color: off ? '#9CA3AF' : col, weight: w, opacity: .9, dashArray: l.kind === 'fo' ? null : '8 6', interactive: false }).addTo(layer);
+  const hit = L.polyline(g, { color: col, weight: 22, opacity: 0, lineCap: 'round' }).addTo(layer);   // franja invisible ancha: fácil de tocar con el dedo
+  const manage = isManager() && canWrite() && online();
+  let len = 0; for (let i = 1; i < g.length; i++){ const a = g[i - 1], b = g[i], R = 6371000, dl = (b[0] - a[0]) * Math.PI / 180, dn = (b[1] - a[1]) * Math.PI / 180, x = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dn / 2) ** 2; len += 2 * R * Math.asin(Math.sqrt(x)); }
+  const km = len >= 1000 ? (len / 1000).toFixed(2).replace('.', ',') + ' km' : Math.round(len) + ' m';
+  hit.bindTooltip(`${esc(l.name)} · ${km}`, { sticky: true });
+  hit.on('mouseover', () => vis.setStyle({ weight: w + 3, opacity: 1 })).on('mouseout', () => vis.setStyle({ weight: w, opacity: .9 }));
+  hit.bindPopup(() => `<div class="pp"><b style="font-size:15px">${esc(l.name)}</b><div class="muted sm">${LINK_TXT[l.kind] || LINK_TXT.otro} · ${km}${l.topology === 'ptmp' ? ' · ✳ multipunto' : ''}</div>
+    <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">${manage ? `<button class="btn small" data-lka="edit">✏️ Modificar / mover</button>${l.kind === 'fo' ? '<button class="btn small sec" data-lka="fix">✍ Corregir recorrido</button>' : ''}<button class="btn small sec" data-lka="del" style="color:var(--red)">🗑 Borrar</button>` : '<button class="btn small sec" data-lka="edit">Ver ficha</button>'}</div></div>`, { maxWidth: 300 });
+  hit.on('popupopen', e => { vis.setStyle({ weight: w + 3, opacity: 1 }); e.popup.getElement()?.querySelectorAll('[data-lka]').forEach(b => b.onclick = () => { (map || hit._map)?.closePopup(); linkAct(l.id, b.dataset.lka); }); });
+  hit.on('popupclose', () => vis.setStyle({ weight: w, opacity: .9 }));
+  try { vis.bringToBack(); hit.bringToBack(); } catch {}   // los sitios quedan por encima: se siguen pudiendo tocar
+  return hit;
+}
 
 /* ---------- 🎯 Trabajo con…: proyectos y grupos elegidos (se guarda en este teléfono) ---------- */
 const SCOPE_K = () => 'ia_scope:' + CUR_UID;
@@ -2673,6 +2708,9 @@ ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado d
     mapObj = L.map('map', {preferCanvas:true}).setView([-29.5, -60.3], 7);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap'}).addTo(mapObj);
   } else $('#map').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa.</p>';
+  mapObj?.on('popupopen', e => { const el = e.popup.getElement(); if (!el) return;
+    el.querySelectorAll('[data-spe]').forEach(b => b.onclick = () => { mapObj.closePopup(); editSite(sites.find(x => x.id === b.dataset.spe)); });
+    el.querySelectorAll('[data-spl]').forEach(b => b.onclick = async () => { mapObj.closePopup(); try { await needLib('sitios'); linkEditor(null, { a: b.dataset.spl }); } catch (er){ toast(errText(er)); } }); });
   const sel = new Set(); let shownRows = sites;
   const siteLinks = await loadSiteLinks();
   const render = () => {
@@ -2691,12 +2729,13 @@ ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado d
     if (mapObj){
       if (layer) layer.remove(); layer = L.featureGroup().addTo(mapObj);
       rows.forEach(s => {
-        const pop = `<b>${esc(s.name)}</b><br>${SITE_KINDS[s.kind]}${s.traza ? ' · Traza ' + esc(s.traza) : ''}<br><a href="#/sitio/${s.id}">Ver ficha →</a>`;
+        const pop = `<div class="pp"><b style="font-size:15px">${esc(s.name)}</b><div class="muted sm">${SITE_KINDS[s.kind]}${s.traza ? ' · Traza ' + esc(s.traza) : ''}${s.localidad ? ' · ' + esc(s.localidad) : ''}</div>
+          <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><a class="btn small" href="#/sitio/${s.id}">Ficha</a>${manage ? `<button class="btn small sec" data-spe="${s.id}">✏️ Editar</button><button class="btn small sec" data-spl="${s.id}">🔗 + Vínculo</button>` : ''}${s.lat ? `<a class="btn small sec" target="_blank" rel="noopener noreferrer" href="${mapsLink(s.lat, s.lng)}">🧭 Cómo llegar</a>` : ''}</div></div>`;
         if (s.path?.length > 1) L.polyline(s.path.map(([x, y]) => [y, x]), {color: SITE_COLORS[s.kind], weight: 3, opacity: .8}).bindPopup(pop).addTo(layer);
         else if (s.lat) L.circleMarker([s.lat, s.lng], {radius: 6, color: '#fff', weight: 1.5, fillColor: SITE_COLORS[s.kind], fillOpacity: 1}).bindPopup(pop).addTo(layer);
       });
       const ids = new Set(rows.map(s => s.id));
-      siteLinks.filter(l => ids.has(l.site_a) || ids.has(l.site_b)).forEach(l => L.polyline(l.geom?.length > 1 ? l.geom : [[l.a_lat, l.a_lng], [l.b_lat, l.b_lng]], { color: l.kind === 'fo' ? '#F2A93B' : l.kind === 'mw' ? '#7C3AED' : '#0E7490', weight: 3, opacity: .85, dashArray: l.kind === 'fo' ? null : '8 6' }).bindTooltip(esc(l.name), { sticky: true }).addTo(layer));
+      siteLinks.filter(l => ids.has(l.site_a) || ids.has(l.site_b) || (!l.site_a && !l.site_b && !scope && rows.length === sites.length)).forEach(l => linkLine(layer, l, mapObj));
       if (layer.getLayers().length) mapObj.fitBounds(layer.getBounds(), {padding: [20, 20], maxZoom: 13});
     }
   };

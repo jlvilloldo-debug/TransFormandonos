@@ -236,9 +236,7 @@ async function viewMap(v, preset){
     if (st.lnk && links.length){
       const ids = new Set(data.map(x => x.s.id));
       for (const l of links){ if (!ids.has(l.site_a) && !ids.has(l.site_b)) continue;
-        const g = Array.isArray(l.geom) && l.geom.length > 1 ? l.geom : (l.a_lat != null && l.b_lat != null ? [[l.a_lat, l.a_lng], [l.b_lat, l.b_lng]] : null); if (!g) continue;
-        L.polyline(g, { color: l.kind === 'fo' ? '#F2A93B' : l.kind === 'mw' ? '#7C3AED' : '#0E7490', weight: 3, opacity: .85, dashArray: l.kind === 'fo' ? null : '8 6' })
-          .bindTooltip(`${l.kind === 'fo' ? '🧵' : '📡'} ${esc(l.name)}`, { sticky: true }).on('click', () => { location.hash = '#/vinc'; }).addTo(layer); }
+        linkLine(layer, l, pmap); }
     }
     if (!fitted && withC.length){ fitted = true; pmap.fitBounds(L.latLngBounds(withC.map(x => [Number(x.s.lat), Number(x.s.lng)])), { padding: [30, 30], maxZoom: 12 }); }
     // leyenda con cantidades

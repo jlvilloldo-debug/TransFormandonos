@@ -303,7 +303,7 @@ async function sitTabLinks(box, s){
 }
 function sitLinksTable(links){
   return links.length ? `<div class="tblwrap" style="margin-top:10px"><table class="tbl"><thead><tr><th></th><th>Vínculo</th><th>Largo</th><th>Estado</th><th class="hide-sm">Método</th></tr></thead><tbody>${links.map(l => { const k = LNK_KIND[l.kind] || LNK_KIND.otro, st = LNK_ST[l.status] || LNK_ST.activo;
-    return `<tr class="click" data-l="${l.id}"><td style="font-size:20px">${k[0]}</td><td><b>${esc(l.name)}</b><div class="muted sm">${k[1]}${l.band ? ' · ' + esc(l.band) : ''}${l.capacity ? ' · ' + esc(l.capacity) : ''}${l.traza ? ' · Traza ' + esc(l.traza) : ''}</div></td><td>${sitKm(Number(l.length_m) || 0)}</td>
+    return `<tr class="click" data-l="${l.id}"><td style="font-size:20px">${k[0]}</td><td><b>${esc(l.name)}</b>${l.topology === 'ptmp' ? ` <span class="pill p-info" title="Punto a multipunto">✳ ${esc(l.group_name || 'PtMP')}</span>` : ''}<div class="muted sm">${k[1]}${l.band ? ' · ' + esc(l.band) : ''}${l.capacity ? ' · ' + esc(l.capacity) : ''}${l.traza ? ' · Traza ' + esc(l.traza) : ''}</div></td><td>${sitKm(Number(l.length_m) || 0)}</td>
       <td><span class="pill" style="background:${st[1]}22;color:${st[1]}">${st[0]}</span></td><td class="hide-sm sm">${LNK_METHOD[l.method]?.[0] || ''} ${LNK_METHOD[l.method]?.[1] || ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">Todavía no hay vínculos.</div>';
 }
 function sitBindLinksTable(box, links){ box.querySelectorAll('[data-l]').forEach(tr => tr.onclick = () => linkEditor(links.find(l => l.id === tr.dataset.l))); }
@@ -317,7 +317,7 @@ async function viewLinks(v){
   const [links, sites] = await Promise.all([sitLinks(), loadSitesAll()]);
   const manage = isManager() && canWrite() && online();
   const tot = k => links.filter(l => l.kind === k).reduce((s, l) => s + (Number(l.length_m) || 0), 0);
-  v.innerHTML = `<div class="card"><div class="row between" style="flex-wrap:wrap;gap:8px"><div><h2 style="margin:0">🔗 Vínculos</h2><p class="muted sm" style="margin:4px 0 0">Enlaces entre dos sitios: microondas, fibra óptica y radio. Tocá una línea del mapa para ver su ficha.</p></div>
+  v.innerHTML = `<div class="card"><div class="row between" style="flex-wrap:wrap;gap:8px"><div><h2 style="margin:0">🔗 Vínculos</h2><p class="muted sm" style="margin:4px 0 0">Enlaces entre sitios: microondas, fibra óptica y radio, punto a punto o punto a multipunto (una base con varios remotos). Tocá una línea del mapa para modificarla, corregirla o borrarla.</p></div>
       <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sec" id="lk-kmz">🌍 Exportar KMZ</button><button class="btn sec" id="lk-xls">⬇ Excel</button>${manage ? '<button class="btn" id="lk-new">+ Vínculo</button>' : ''}</div></div>
     <div class="lnk-info">${Object.entries(LNK_KIND).filter(([k]) => links.some(l => l.kind === k) || k === 'mw' || k === 'fo').map(([k, x]) => `<div><span>${x[0]} ${x[1]}</span><b>${links.filter(l => l.kind === k).length}</b><span>${sitKm(tot(k))}</span></div>`).join('')}</div>
     <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><input id="lk-q" placeholder="🔍 Buscar vínculo o sitio" style="max-width:280px"><select id="lk-k" style="width:auto"><option value="">Todos los tipos</option>${Object.entries(LNK_KIND).map(([k, x]) => `<option value="${k}">${x[0]} ${x[1]}</option>`).join('')}</select>
@@ -331,11 +331,11 @@ async function viewLinks(v){
   let shown = links;
   const draw = () => {
     const q = sitN($('#lk-q').value), k = $('#lk-k').value, st = $('#lk-s').value;
-    shown = links.filter(l => (!k || l.kind === k) && (!st || l.status === st) && (!q || sitN([l.name, l.band, l.traza, sById.get(l.site_a)?.name, sById.get(l.site_b)?.name].join(' ')).includes(q)));
+    shown = links.filter(l => (!k || l.kind === k) && (!st || l.status === st) && (!q || sitN([l.name, l.band, l.traza, l.group_name, l.link_ref, sById.get(l.site_a)?.name, sById.get(l.site_b)?.name].join(' ')).includes(q)));
     $('#lk-list').innerHTML = `<h2 style="margin-top:0">${shown.length} vínculo${shown.length === 1 ? '' : 's'}</h2>` + sitLinksTable(shown);
     sitBindLinksTable($('#lk-list'), shown);
     if (lnkMap){ if (layer) layer.remove(); layer = L.featureGroup().addTo(lnkMap);
-      const ends = new Set(); shown.forEach(l => { sitDrawLink(layer, l, x => linkEditor(x)); [l.site_a, l.site_b].forEach(x => x && ends.add(x)); });
+      const ends = new Set(); shown.forEach(l => { linkLine(layer, l, lnkMap); [l.site_a, l.site_b].forEach(x => x && ends.add(x)); });
       ends.forEach(id => { const s = sById.get(id); if (s?.lat != null) L.circleMarker([s.lat, s.lng], { radius: 5, color: '#fff', weight: 1.5, fillColor: SITE_COLORS[s.kind], fillOpacity: 1 }).addTo(layer).bindTooltip(esc(s.name)); });
       if (layer.getLayers().length) lnkMap.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 13 }); }
   };
@@ -352,7 +352,10 @@ async function linkEditor(l, preset = {}){
   const sites = (await loadSitesAll()).filter(s => s.lat != null);
   const sById = new Map(sites.map(s => [s.id, s]));
   const w = isManager() && canWrite() && online(), isNew = !l;
-  const st = { kind: l?.kind || preset.kind || 'mw', method: l?.method || 'recta', A: null, B: null, aSite: l?.site_a || preset.a || null, bSite: l?.site_b || null, pts: l?.geom?.length > 1 ? l.geom.map(p => [p[0], p[1]]) : [], via: [], pick: null };
+  const st = { kind: l?.kind || preset.kind || 'mw', method: l?.method || 'recta', A: null, B: null, aSite: l?.site_a || preset.a || null, bSite: l?.site_b || null, pts: l?.geom?.length > 1 ? l.geom.map(p => [p[0], p[1]]) : [], via: [], pick: null,
+    topo: isNew && preset.ptmp ? 'ptmp' : 'ptp', rem: [], group: preset.group || null };
+  const C0 = l || preset.cfg || {};   // datos de radio de partida (al sumar remotos se copian los del multipunto)
+  const isR = () => ['mw', 'radio'].includes(st.kind), isM = () => isNew && st.topo === 'ptmp' && isR();
   const setEnd = (k, siteId, ll) => { const s = siteId && sById.get(siteId); st[k] = s ? [s.lat, s.lng] : ll || null; st[k === 'A' ? 'aSite' : 'bSite'] = s ? s.id : null; };
   if (l){ st.A = [l.a_lat, l.a_lng]; st.B = [l.b_lat, l.b_lng]; } else { setEnd('A', st.aSite); }
   const siteOpts = cur => `<option value="">— Elegí un sitio —</option>${sites.map(s => `<option value="${s.id}" ${s.id === cur ? 'selected' : ''}>${esc(s.name)}${s.localidad && s.localidad !== s.name ? ' · ' + esc(s.localidad) : ''}</option>`).join('')}`;
@@ -361,14 +364,25 @@ async function linkEditor(l, preset = {}){
     <div class="lnk-grid" style="margin-top:10px"><div><div class="sit-map big" id="le-map"></div><div class="muted sm" id="le-hint" style="margin-top:6px"></div></div>
     <div class="lnk-side">
       <div class="lnk-kinds">${Object.entries(LNK_KIND).map(([k, x]) => `<button type="button" data-k="${k}" ${w ? '' : 'disabled'}><b>${x[0]}</b>${x[1]}</button>`).join('')}</div>
-      <label>Sitio A</label><div class="row" style="gap:6px;flex-wrap:nowrap"><select id="le-a" style="flex:1" ${w ? '' : 'disabled'}>${siteOpts(st.aSite)}</select>${w ? '<button class="btn sec small" id="le-pa" title="Tocar en el mapa" style="margin:0">📍</button>' : ''}</div>
-      <label>Sitio B</label><div class="row" style="gap:6px;flex-wrap:nowrap"><select id="le-b" style="flex:1" ${w ? '' : 'disabled'}>${siteOpts(st.bSite)}</select>${w ? '<button class="btn sec small" id="le-pb" title="Tocar en el mapa" style="margin:0">📍</button>' : ''}</div>
+      ${isNew && w ? `<div class="lnk-kinds le-r" id="le-topo" style="margin-top:8px"><button type="button" data-tp="ptp"><b>↔</b>Punto a punto</button><button type="button" data-tp="ptmp"><b>✳</b>Punto a multipunto</button></div>` : ''}
+      ${!isNew && l.topology === 'ptmp' ? `<div class="banner trial" style="margin:8px 0"><span class="dot"></span><div style="flex:1"><b>✳ Parte del multipunto ${esc(l.group_name || '')}</b><div class="sm">Acá editás este remoto. La base es el Sitio A.</div></div>${w ? '<button class="btn small sec" id="le-more" type="button">+ Remotos</button>' : ''}</div>` : ''}
+      <label id="le-la">Sitio A</label><div class="row" style="gap:6px;flex-wrap:nowrap"><select id="le-a" style="flex:1" ${w ? '' : 'disabled'}>${siteOpts(st.aSite)}</select>${w ? '<button class="btn sec small" id="le-pa" title="Tocar en el mapa" style="margin:0">📍</button>' : ''}</div>
+      <div id="le-bw"><label>Sitio B</label><div class="row" style="gap:6px;flex-wrap:nowrap"><select id="le-b" style="flex:1" ${w ? '' : 'disabled'}>${siteOpts(st.bSite)}</select>${w ? '<button class="btn sec small" id="le-pb" title="Tocar en el mapa" style="margin:0">📍</button>' : ''}</div></div>
+      <div id="le-pm" class="hidden">
+        <label>Remotos <span class="muted" id="le-rc"></span></label>
+        <select id="le-ra"><option value="">+ Agregar un remoto</option>${sites.map(s => `<option value="${s.id}">${esc(s.name)}${s.localidad && s.localidad !== s.name ? ' · ' + esc(s.localidad) : ''}</option>`).join('')}</select>
+        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:nowrap;align-items:center"><span class="sm">o todos los sitios a menos de</span><input id="le-rk" type="number" min="1" max="100" value="10" style="width:74px"><span class="sm">km</span><button class="btn sec small" id="le-rn" type="button" style="margin:0">Agregar</button></div>
+        <p class="muted sm" style="margin:4px 0">También podés tocar un sitio en el mapa para sumarlo o quitarlo.</p>
+        <div id="le-rl" style="max-height:190px;overflow:auto"></div>
+        <label>Nombre del multipunto</label><input id="le-gn" maxlength="200" value="${esc(st.group?.name || '')}" ${st.group ? 'disabled' : ''} placeholder="Se arma con el nombre de la base">
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:0 8px;align-items:end"><div><label>Azimut del sector (°)</label><input id="le-saz" type="number" min="0" max="360" value="${C0.sector_az ?? ''}"></div><div><label>Apertura (°)</label><input id="le-sbw" type="number" min="1" max="360" value="${C0.sector_bw ?? ''}"></div><button class="btn sec small" id="le-sauto" type="button" title="Calcula el sector que cubre a todos los remotos" style="margin-bottom:10px">Calcular</button></div>
+      </div>
       <div id="le-mw" class="lnk-info"></div>
-      ${w ? `<label>Cómo se dibuja</label><div class="lnk-kinds" id="le-meths">${Object.entries(LNK_METHOD).map(([k, x]) => `<button type="button" data-m="${k}"><b>${x[0]}</b>${x[1]}</button>`).join('')}</div>
+      ${w ? `<div id="le-mwrap"><label>Cómo se dibuja</label><div class="lnk-kinds" id="le-meths">${Object.entries(LNK_METHOD).map(([k, x]) => `<button type="button" data-m="${k}"><b>${x[0]}</b>${x[1]}</button>`).join('')}</div>
         <div id="le-ruta" class="hidden"><label>Pasar por <span class="muted">(opcional, en orden)</span></label><select id="le-via"><option value="">+ Agregar sitio intermedio</option>${sites.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><div id="le-vias" class="sm" style="margin:4px 0"></div>
           <button class="btn small" id="le-go" type="button">🛣 Calcular ruta</button> <span class="sm muted">Después la podés ajustar con ✍ Punto a punto.</span></div>
         <div id="le-man" class="hidden"><div class="row" style="gap:6px;margin-top:6px"><button class="btn sec small" id="le-undo" type="button">↶ Deshacer punto</button><button class="btn sec small" id="le-clr" type="button">🗑 Borrar puntos</button></div></div>
-        <div id="le-kmzw" class="hidden"><label class="btn sec small" style="margin-top:6px;display:inline-block">🌍 Elegir KMZ / KML<input type="file" id="le-kmz" accept=".kmz,.kml" class="hidden"></label><p class="muted sm">En Google Earth: Agregar → Ruta, y después clic derecho → Guardar lugar como… KMZ.</p></div>` : ''}
+        <div id="le-kmzw" class="hidden"><label class="btn sec small" style="margin-top:6px;display:inline-block">🌍 Elegir KMZ / KML<input type="file" id="le-kmz" accept=".kmz,.kml" class="hidden"></label><p class="muted sm">En Google Earth: Agregar → Ruta, y después clic derecho → Guardar lugar como… KMZ.</p></div></div>` : ''}
       <label>Nombre</label><input id="le-n" maxlength="200" value="${esc(l?.name || '')}" placeholder="Se arma con Sitio A ↔ Sitio B" ${w ? '' : 'disabled'}>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">
         <div><label>Estado</label><select id="le-st" ${w ? '' : 'disabled'}>${Object.entries(LNK_ST).map(([k, x]) => `<option value="${k}" ${k === (l?.status || 'activo') ? 'selected' : ''}>${x[0]}</option>`).join('')}</select></div>
@@ -377,6 +391,17 @@ async function linkEditor(l, preset = {}){
         <div class="le-r"><label>Frecuencia (MHz)</label><input id="le-f" type="number" min="1" max="300000" value="${l?.freq_mhz ?? ''}" ${w ? '' : 'disabled'}></div>
         <div><label>Capacidad</label><input id="le-cap" maxlength="60" value="${esc(l?.capacity || '')}" placeholder="Ej.: 1 Gbps · 48 FO" ${w ? '' : 'disabled'}></div>
         <div class="le-r"><label>Alt. antena A / B (m)</label><div class="row" style="gap:4px;flex-wrap:nowrap"><input id="le-ha" type="number" min="0" max="500" value="${l?.h_a ?? 30}" ${w ? '' : 'disabled'}><input id="le-hb" type="number" min="0" max="500" value="${l?.h_b ?? 30}" ${w ? '' : 'disabled'}></div></div></div>
+      <details class="le-r" id="le-cfg" style="margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px" ${['bw_mhz', 'polar', 'tx_dbm', 'gain_a', 'gain_b', 'rssi_a', 'rssi_b', 'link_ref'].some(k => C0[k] != null && C0[k] !== '') ? 'open' : ''}><summary style="cursor:pointer;font-weight:600">⚙️ Configuración de radio</summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">
+          <div><label>Ancho de canal (MHz)</label><input id="le-bwm" type="number" min="0.1" max="5000" step="any" value="${C0.bw_mhz ?? ''}" placeholder="Ej.: 20, 40, 80" ${w ? '' : 'disabled'}></div>
+          <div><label>Polarización</label><select id="le-pol" ${w ? '' : 'disabled'}><option value="">—</option>${[['H', 'Horizontal'], ['V', 'Vertical'], ['dual', 'Dual (H+V)'], ['circular', 'Circular']].map(([k, t]) => `<option value="${k}" ${C0.polar === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+          <div><label>Potencia TX (dBm)</label><input id="le-tx" type="number" min="-30" max="60" step="any" value="${C0.tx_dbm ?? ''}" ${w ? '' : 'disabled'}></div>
+          <div><label>ID / SSID del enlace</label><input id="le-ref" maxlength="80" value="${esc(C0.link_ref || '')}" placeholder="Sin contraseñas" ${w ? '' : 'disabled'}></div>
+          <div><label id="le-lga">Ganancia antena A (dBi)</label><input id="le-ga" type="number" min="0" max="70" step="any" value="${C0.gain_a ?? ''}" ${w ? '' : 'disabled'}></div>
+          <div><label id="le-lgb">Ganancia antena B (dBi)</label><input id="le-gb" type="number" min="0" max="70" step="any" value="${C0.gain_b ?? ''}" ${w ? '' : 'disabled'}></div>
+          <div class="le-p2p"><label>Nivel medido en A (dBm)</label><input id="le-ra1" type="number" min="-130" max="0" step="any" value="${l?.rssi_a ?? ''}" ${w ? '' : 'disabled'}></div>
+          <div class="le-p2p"><label>Nivel medido en B (dBm)</label><input id="le-rb1" type="number" min="-130" max="0" step="any" value="${l?.rssi_b ?? ''}" ${w ? '' : 'disabled'}></div></div>
+        <p class="muted sm" style="margin:4px 0 0">Con frecuencia, potencia y ganancias, la app estima el nivel de recepción (espacio libre, sin pérdidas de cables ni lluvia).</p></details>
       <label>Notas</label><textarea id="le-no" maxlength="2000" ${w ? '' : 'disabled'}>${esc(l?.notes || '')}</textarea>
       <div class="le-r" style="margin-top:8px"><button class="btn sec small" id="le-prof" type="button">⛰ Perfil del terreno</button></div><div id="le-pw" class="lnk-prof" style="margin-top:8px"></div>
       ${w ? `<div id="le-fow" class="hidden" style="margin-top:8px">${l?.fiber_route_id ? `<a class="btn sec small" href="#/tools/${l.fiber_route_id}">🧵 Abrir la traza de fibra</a>` : `<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="le-fr" style="width:auto"> Guardar también como <b>traza de fibra</b> (para mediciones OTDR y empalmes)</label>
@@ -391,17 +416,67 @@ async function linkEditor(l, preset = {}){
   let map = null, g = null;
   if (window.L){ map = L.map('le-map'); L.tileLayer(SITE_TILE, { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map); g = L.featureGroup().addTo(map); map.setView(st.A || [-31, -61], st.A ? 10 : 6); setTimeout(() => map.invalidateSize(), 200); }
   const pathPts = () => st.method === 'recta' || st.pts.length < 2 ? (st.A && st.B ? [st.A, st.B] : []) : st.pts;
+  const numv = id => { const x = $(id)?.value; return x === '' || x == null || isNaN(Number(x)) ? null : Number(x); };
+  // nivel de recepción estimado (pérdida en espacio libre): TX + ganancias − (32,44 + 20·log f[MHz] + 20·log d[km])
+  const rxEst = dM => { const f = numv('#le-f'), tx = numv('#le-tx'), ga = numv('#le-ga'), gb = numv('#le-gb'); if (!f || tx == null || ga == null || gb == null || !(dM > 0)) return null; return tx + ga + gb - (32.44 + 20 * Math.log10(f) + 20 * Math.log10(dM / 1000)); };
+  const rxTxt = v => v == null ? '' : `${v.toFixed(1).replace('.', ',')} dBm`;
+  const rxCol = v => v == null ? 'inherit' : v >= -65 ? '#059669' : v >= -75 ? '#D97706' : '#DC2626';
+  const remS = () => st.rem.map(id => sById.get(id)).filter(Boolean);
+  const sectorAuto = () => { const R = remS(); if (!st.A || !R.length) return null; const az = R.map(x => sitAz(st.A, [x.lat, x.lng])).sort((a, b) => a - b);
+    if (az.length === 1) return [Math.round(az[0]), 60];
+    let gap = -1, gi = 0; for (let i = 0; i < az.length; i++){ const d = (az[(i + 1) % az.length] - az[i] + 360) % 360 || 360; if (d > gap){ gap = d; gi = i; } }
+    const from = az[(gi + 1) % az.length], span = 360 - gap; return [Math.round((from + span / 2) % 360), Math.max(10, Math.min(360, Math.ceil(span + 10)))]; };
+  const dest = (p, azDeg, dM) => { const R = 6371000, a = azDeg * Math.PI / 180, la = p[0] * Math.PI / 180, lo = p[1] * Math.PI / 180, dr = dM / R;
+    const la2 = Math.asin(Math.sin(la) * Math.cos(dr) + Math.cos(la) * Math.sin(dr) * Math.cos(a)); const lo2 = lo + Math.atan2(Math.sin(a) * Math.sin(dr) * Math.cos(la), Math.cos(dr) - Math.sin(la) * Math.sin(la2)); return [la2 * 180 / Math.PI, lo2 * 180 / Math.PI]; };
+  const toggleRem = id => { const i = st.rem.indexOf(id); if (i >= 0) st.rem.splice(i, 1); else { if (id === st.aSite) return toast('Ese sitio es la base.'); if (st.rem.length >= 60) return toast('Máximo 60 remotos por multipunto.'); st.rem.push(id); } redraw(); };
+  const redrawM = (fit) => {
+    const k = LNK_KIND[st.kind], R = remS();
+    $('#le-rc').textContent = R.length ? `(${R.length})` : '';
+    $('#le-gn').placeholder = st.aSite ? `PtMP ${sById.get(st.aSite)?.name || ''}` : 'Se arma con el nombre de la base';
+    $('#le-rl').innerHTML = !st.A ? '<p class="muted sm">Primero elegí la base.</p>' : R.length ? `<table class="tbl" style="font-size:13px"><thead><tr><th>Remoto</th><th>Dist.</th><th>Azimut</th><th>RX est.</th><th></th></tr></thead><tbody>${R.map(x => { const d = sitDist(st.A, [x.lat, x.lng]), rx = rxEst(d);
+      return `<tr><td><b>${esc(x.name)}</b></td><td>${sitKm(d)}</td><td>${sitAzTxt(sitAz(st.A, [x.lat, x.lng]))}</td><td style="color:${rxCol(rx)};font-weight:600">${rxTxt(rx) || '—'}</td><td><button class="link" data-rrm="${x.id}" type="button">✕</button></td></tr>`; }).join('')}</tbody></table>` : '<p class="muted sm">Todavía no hay remotos.</p>';
+    m.el.querySelectorAll('[data-rrm]').forEach(b => b.onclick = () => toggleRem(b.dataset.rrm));
+    const far = R.length ? Math.max(...R.map(x => sitDist(st.A, [x.lat, x.lng]))) : 0;
+    $('#le-mw').innerHTML = st.A ? `<div><span>Remotos</span><b>${R.length}</b></div><div><span>El más lejano</span><b>${R.length ? sitKm(far) : '—'}</b></div><div><span>Suma de enlaces</span><b>${sitKm(R.reduce((a, x) => a + sitDist(st.A, [x.lat, x.lng]), 0))}</b></div>` : '<div><span>Elegí la base</span><b>—</b></div>';
+    $('#le-hint').textContent = st.pick ? 'Tocá el mapa para ubicar la base.' : 'Tocá un sitio del mapa para sumarlo como remoto (o quitarlo).';
+    if (!g) return; g.clearLayers();
+    // sector de la base
+    const saz = numv('#le-saz'), sbw = numv('#le-sbw');
+    if (st.A && saz != null && sbw != null && far > 0){ const rad = far * 1.12, pts = sbw >= 360 ? [] : [st.A];
+      for (let a = saz - sbw / 2; a <= saz + sbw / 2 + .01; a += Math.max(2, sbw / 40)) pts.push(dest(st.A, a, rad));
+      L.polygon(pts, { color: k[2], weight: 1, fillColor: k[2], fillOpacity: .08, interactive: false }).addTo(g); }
+    // sitios cercanos para elegir con un toque
+    if (st.A){ const lim = Math.max(30000, far * 1.6); sites.forEach(x => { if (x.id === st.aSite || st.rem.includes(x.id)) return; if (sitDist(st.A, [x.lat, x.lng]) > lim) return;
+      L.circleMarker([x.lat, x.lng], { radius: 6, color: '#fff', weight: 1.5, fillColor: '#94A3B8', fillOpacity: 1 }).addTo(g).bindTooltip(esc(x.name)).on('click', e => { L.DomEvent.stopPropagation(e); toggleRem(x.id); }); }); }
+    R.forEach((x, i) => { const p = [x.lat, x.lng], rx = rxEst(sitDist(st.A, p));
+      L.polyline([st.A, p], { color: k[2], weight: 3, dashArray: k[3] }).addTo(g);
+      L.marker(p, { icon: L.divIcon({ className: '', html: `<div style="width:22px;height:22px;border-radius:50%;background:#fff;color:${k[2]};border:3px solid ${k[2]};box-shadow:0 1px 4px rgba(0,0,0,.4);display:grid;place-items:center;font:700 11px sans-serif">${i + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(g)
+        .bindTooltip(`${esc(x.name)} · ${sitKm(sitDist(st.A, p))}${rx != null ? ' · ' + rxTxt(rx) : ''}`).on('click', e => { L.DomEvent.stopPropagation(e); toggleRem(x.id); }); });
+    if (st.A) L.marker(st.A, { icon: L.divIcon({ className: '', html: `<div style="width:30px;height:30px;border-radius:50%;background:${k[2]};color:#fff;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);display:grid;place-items:center;font:700 9px sans-serif">BASE</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(g).bindTooltip(esc(sById.get(st.aSite)?.name || 'Base'));
+    if (fit && st.A){ const b = L.latLngBounds([st.A, ...R.map(x => [x.lat, x.lng])]); R.length ? map.fitBounds(b, { padding: [50, 50], maxZoom: 14 }) : map.setView(st.A, 12); }
+  };
   const redraw = (fit) => {
     const k = LNK_KIND[st.kind];
+    if (st.topo === 'ptmp' && !isR()) st.topo = 'ptp';
+    const M = isM();
+    m.el.querySelectorAll('[data-tp]').forEach(b => b.classList.toggle('on', b.dataset.tp === st.topo));
+    $('#le-la').textContent = M ? 'Base (nodo central)' : 'Sitio A';
+    $('#le-bw').classList.toggle('hidden', M); $('#le-pm').classList.toggle('hidden', !M); $('#le-mwrap')?.classList.toggle('hidden', M);
+    $('#le-lga').textContent = M ? 'Ganancia antena base (dBi)' : 'Ganancia antena A (dBi)'; $('#le-lgb').textContent = M ? 'Ganancia antena remotos (dBi)' : 'Ganancia antena B (dBi)';
+    $('#le-ok') && ($('#le-ok').textContent = !isNew ? 'Guardar' : M ? `Crear multipunto${st.rem.length ? ` (${st.rem.length} enlaces)` : ''}` : 'Crear vínculo');
     m.el.querySelectorAll('[data-k]').forEach(b => b.classList.toggle('on', b.dataset.k === st.kind));
     m.el.querySelectorAll('[data-m]').forEach(b => b.classList.toggle('on', b.dataset.m === st.method));
-    m.el.querySelectorAll('.le-r').forEach(e => e.classList.toggle('hidden', !['mw', 'radio'].includes(st.kind)));
+    m.el.querySelectorAll('.le-r').forEach(e => e.classList.toggle('hidden', !isR()));
+    m.el.querySelectorAll('.le-p2p').forEach(e => e.classList.toggle('hidden', M));
+    $('#le-prof')?.classList.toggle('hidden', M);
+    if (M){ $('#le-n').disabled = true; $('#le-n').placeholder = 'Cada enlace se nombra Base → Remoto'; return redrawM(fit); }
+    if (isNew && w){ $('#le-n').disabled = false; $('#le-n').placeholder = 'Se arma con Sitio A ↔ Sitio B'; }
     $('#le-fow')?.classList.toggle('hidden', st.kind !== 'fo');
     $('#le-ruta')?.classList.toggle('hidden', st.method !== 'ruta'); $('#le-man')?.classList.toggle('hidden', st.method !== 'manual'); $('#le-kmzw')?.classList.toggle('hidden', st.method !== 'kmz');
     $('#le-vias') && ($('#le-vias').innerHTML = st.via.map((id, i) => `<span class="pill" style="margin:2px">${i + 1}. ${esc(sById.get(id)?.name || '')} <button class="link" data-vrm="${i}" type="button">✕</button></span>`).join(''));
     m.el.querySelectorAll('[data-vrm]').forEach(b => b.onclick = () => { st.via.splice(Number(b.dataset.vrm), 1); redraw(); });
     const P = pathPts(), len = sitLen(P);
-    $('#le-mw').innerHTML = st.A && st.B ? `<div><span>Largo</span><b>${sitKm(len)}</b></div>${['mw', 'radio'].includes(st.kind) ? `<div><span>Azimut A → B</span><b>${sitAzTxt(sitAz(st.A, st.B))}</b></div><div><span>Azimut B → A</span><b>${sitAzTxt(sitAz(st.B, st.A))}</b></div>` : `<div><span>En línea recta</span><b>${sitKm(sitDist(st.A, st.B))}</b></div>`}` : '<div><span>Elegí los dos extremos</span><b>—</b></div>';
+    $('#le-mw').innerHTML = st.A && st.B ? `<div><span>Largo</span><b>${sitKm(len)}</b></div>${['mw', 'radio'].includes(st.kind) ? `<div><span>Azimut A → B</span><b>${sitAzTxt(sitAz(st.A, st.B))}</b></div><div><span>Azimut B → A</span><b>${sitAzTxt(sitAz(st.B, st.A))}</b></div>${rxEst(len) != null ? `<div><span>Nivel RX estimado</span><b style="color:${rxCol(rxEst(len))}">${rxTxt(rxEst(len))}</b></div>` : ''}` : `<div><span>En línea recta</span><b>${sitKm(sitDist(st.A, st.B))}</b></div>`}` : '<div><span>Elegí los dos extremos</span><b>—</b></div>';
     $('#le-hint').textContent = st.pick ? `Tocá el mapa para ubicar el extremo ${st.pick}.` : st.method === 'manual' && w ? 'Tocá el mapa para agregar puntos; arrastralos para moverlos.' : st.method === 'ruta' ? 'La ruta sale del servicio de rutas: revisala y ajustala.' : '';
     if (!g) return; g.clearLayers();
     if (P.length > 1) L.polyline(P, { color: k[2], weight: st.kind === 'fo' ? 4 : 3, dashArray: k[3] }).addTo(g);
@@ -419,7 +494,15 @@ async function linkEditor(l, preset = {}){
   m.el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { const was = st.method; st.method = b.dataset.m;
     if (st.method === 'manual'){ if (st.pts.length > 400){ st.pts = sitSimplify(st.pts, 15); toast(`Simplifiqué el recorrido a ${st.pts.length} puntos para poder editarlo.`); } anchorEnds(); }
     if (st.method === 'recta') st.pts = []; if (was === 'recta' && st.method === 'ruta') st.pts = []; redraw(); });
-  $('#le-a')?.addEventListener('change', e => { setEnd('A', e.target.value); anchorEnds(); autoName(); redraw(true); });
+  m.el.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { st.topo = b.dataset.tp; if (st.topo === 'ptmp'){ st.method = 'recta'; st.pts = []; if (st.bSite && !st.rem.includes(st.bSite)) st.rem.push(st.bSite); } redraw(true); });
+  $('#le-ra')?.addEventListener('change', e => { const id = e.target.value; e.target.value = ''; if (!id) return; if (!st.A) return toast('Primero elegí la base.'); if (!st.rem.includes(id)) toggleRem(id); redraw(true); });
+  $('#le-rn')?.addEventListener('click', () => { if (!st.A) return toast('Primero elegí la base.'); const km = Math.max(1, Math.min(100, Number($('#le-rk').value) || 10)); let n = 0;
+    sites.map(x => [x, sitDist(st.A, [x.lat, x.lng])]).filter(([x, d]) => x.id !== st.aSite && d <= km * 1000 && !st.rem.includes(x.id)).sort((a, b) => a[1] - b[1]).forEach(([x]) => { if (st.rem.length < 60){ st.rem.push(x.id); n++; } });
+    toast(n ? `${n} remoto${n === 1 ? '' : 's'} agregado${n === 1 ? '' : 's'}` : `No hay más sitios a menos de ${km} km.`); redraw(true); });
+  $('#le-sauto')?.addEventListener('click', () => { const r = sectorAuto(); if (!r) return toast('Elegí la base y al menos un remoto.'); $('#le-saz').value = r[0]; $('#le-sbw').value = r[1]; redraw(); });
+  ['#le-saz', '#le-sbw', '#le-f', '#le-tx', '#le-ga', '#le-gb'].forEach(id => $(id)?.addEventListener('input', () => redraw()));
+  $('#le-more')?.addEventListener('click', () => { close(); linkEditor(null, { a: l.site_a, kind: l.kind, ptmp: true, group: { id: l.group_id, name: l.group_name }, cfg: { ...l, rssi_a: null, rssi_b: null } }); });
+  $('#le-a')?.addEventListener('change', e => { setEnd('A', e.target.value); st.rem = st.rem.filter(id => id !== st.aSite); anchorEnds(); autoName(); redraw(true); });
   $('#le-b')?.addEventListener('change', e => { setEnd('B', e.target.value); anchorEnds(); autoName(); redraw(true); });
   $('#le-pa')?.addEventListener('click', () => { st.pick = 'A'; redraw(); }); $('#le-pb')?.addEventListener('click', () => { st.pick = 'B'; redraw(); });
   $('#le-via')?.addEventListener('change', e => { if (e.target.value && st.via.length < 20) st.via.push(e.target.value); e.target.value = ''; redraw(); });
@@ -461,9 +544,25 @@ async function linkEditor(l, preset = {}){
   $('#le-prof')?.addEventListener('click', () => linkProfile(st, $('#le-pw')));
   $('#le-del')?.addEventListener('click', async () => { if (!confirm('¿Borrar este vínculo? La traza de fibra asociada (si hay) no se borra.')) return;
     const { error } = await sb.from('site_links').delete().eq('id', l.id); if (error) return void ($('#le-err').textContent = errText(error));
-    IDB.del('kv', CUR_UID + ':site-links').catch(() => {}); close(); toast('Vínculo borrado'); route(); });
+    IDB.del('kv', CUR_UID + ':site-links').catch(() => {}); IDB.del('kv', CUR_UID + ':site-links-full').catch(() => {}); close(); toast('Vínculo borrado'); route(); });
   $('#le-ok')?.addEventListener('click', async () => {
     const err = $('#le-err'); err.textContent = '';
+    const radio = () => isR() ? { bw_mhz: numv('#le-bwm'), polar: $('#le-pol').value || null, tx_dbm: numv('#le-tx'), gain_a: numv('#le-ga'), gain_b: numv('#le-gb'), link_ref: $('#le-ref').value.trim() || null }
+      : { bw_mhz: null, polar: null, tx_dbm: null, gain_a: null, gain_b: null, link_ref: null };
+    const sqlMiss = e => /column|schema cache|PGRST204|42703/i.test((e.message || '') + (e.code || '')) ? 'Falta cargar 31_vinculos_multipunto.sql en Supabase (ver LEEME).' : null;
+    if (isM()){
+      if (!st.aSite) return void (err.textContent = 'La base tiene que ser un sitio.');
+      const R = remS(); if (!R.length) return void (err.textContent = 'Agregá al menos un remoto.');
+      const base = sById.get(st.aSite), gname = (st.group?.name || $('#le-gn').value.trim() || `PtMP ${base.name}`).slice(0, 200), gid = st.group?.id || uid();
+      const num = id => numv(id);
+      const rows = R.map(x => ({ org_id: me.org_id, kind: st.kind, topology: 'ptmp', group_id: gid, group_name: gname, name: `${base.name} → ${x.name}`.slice(0, 200), site_a: base.id, site_b: x.id, a_lat: base.lat, a_lng: base.lng, b_lat: x.lat, b_lng: x.lng, method: 'recta', geom: [],
+        status: $('#le-st').value, traza: $('#le-tz').value.trim() || null, capacity: $('#le-cap').value.trim() || null, notes: $('#le-no').value.trim() || null,
+        band: $('#le-band').value.trim() || null, freq_mhz: num('#le-f'), h_a: num('#le-ha'), h_b: num('#le-hb'), sector_az: num('#le-saz'), sector_bw: num('#le-sbw'), ...radio() }));
+      $('#le-ok').disabled = true;
+      const r = await sb.from('site_links').insert(rows);
+      if (r.error){ err.textContent = sqlMiss(r.error) || errText(r.error); $('#le-ok').disabled = false; return; }
+      IDB.del('kv', CUR_UID + ':site-links').catch(() => {}); IDB.del('kv', CUR_UID + ':site-links-full').catch(() => {}); close(); toast(`Multipunto creado: ${rows.length} enlace${rows.length === 1 ? '' : 's'}`); route(); return;
+    }
     if (!st.A || !st.B) return void (err.textContent = 'Elegí los dos extremos (sitio o punto en el mapa).');
     if (st.method !== 'recta' && st.pts.length < 2) return void (err.textContent = st.method === 'ruta' ? 'Calculá la ruta o elegí otra forma de dibujarlo.' : 'Falta el recorrido.');
     const a = sById.get(st.aSite)?.name, b = sById.get(st.bSite)?.name;
@@ -472,6 +571,9 @@ async function linkEditor(l, preset = {}){
     const row = { kind: st.kind, name, site_a: st.aSite, site_b: st.bSite, a_lat: st.A[0], a_lng: st.A[1], b_lat: st.B[0], b_lng: st.B[1], method: st.method, geom: st.method === 'recta' ? [] : st.pts,
       status: $('#le-st').value, traza: $('#le-tz').value.trim() || null, capacity: $('#le-cap').value.trim() || null, notes: $('#le-no').value.trim() || null,
       band: ['mw', 'radio'].includes(st.kind) ? ($('#le-band').value.trim() || null) : null, freq_mhz: ['mw', 'radio'].includes(st.kind) ? num('#le-f') : null, h_a: ['mw', 'radio'].includes(st.kind) ? num('#le-ha') : null, h_b: ['mw', 'radio'].includes(st.kind) ? num('#le-hb') : null };
+    // los datos de radio solo se mandan si se cargó alguno (así la app sigue andando aunque falte el SQL 31)
+    const rc = { ...radio(), rssi_a: isR() ? numv('#le-ra1') : null, rssi_b: isR() ? numv('#le-rb1') : null };
+    if (Object.values(rc).some(x => x != null) || (l && ['bw_mhz', 'polar', 'tx_dbm', 'gain_a', 'gain_b', 'rssi_a', 'rssi_b', 'link_ref'].some(k => l[k] != null))) Object.assign(row, rc);
     $('#le-ok').disabled = true;
     try {
       const r = isNew ? await sb.from('site_links').insert({ ...row, org_id: me.org_id }).select('*').single() : await sb.from('site_links').update(row).eq('id', l.id).select('*').single();
@@ -484,10 +586,11 @@ async function linkEditor(l, preset = {}){
         if (f.error) toast('El vínculo se guardó, pero no la traza de fibra: ' + (/duplicate|unique/i.test(f.error.message) ? 'ya existe una traza con ese nombre.' : errText(f.error)));
         else { await sb.from('site_links').update({ fiber_route_id: f.data.id }).eq('id', r.data.id); IDB.del('kv', CUR_UID + ':fr-list').catch(() => {}); }
       }
-      IDB.del('kv', CUR_UID + ':site-links').catch(() => {}); close(); toast(isNew ? 'Vínculo creado' : 'Cambios guardados'); route();
-    } catch (e){ err.textContent = /duplicate|unique/i.test(e.message || '') ? 'Ya existe un vínculo con ese nombre.' : errText(e); $('#le-ok').disabled = false; }
+      IDB.del('kv', CUR_UID + ':site-links').catch(() => {}); IDB.del('kv', CUR_UID + ':site-links-full').catch(() => {}); close(); toast(isNew ? 'Vínculo creado' : 'Cambios guardados'); route();
+    } catch (e){ err.textContent = /duplicate|unique/i.test(e.message || '') ? 'Ya existe un vínculo con ese nombre.' : sqlMiss(e) || errText(e); $('#le-ok').disabled = false; }
   });
   autoName(); redraw(true);
+  if (l && preset.manual && w) m.el.querySelector('[data-m="manual"]')?.click();
 }
 
 /* ---------- perfil del terreno (microondas): curvatura de la tierra y zona de Fresnel ---------- */
