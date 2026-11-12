@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-V+lgV6PoEmSGjn1edIP/f6++WUzs7cz9odoMppLUJUo='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ihhGJmOGcNLkMTPGQxHvSpsGPJ0Sl9O/BxzbEZPMfOs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -235,6 +235,14 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .clu.c-green{background:#16A34A} .clu.c-green i{color:#16A34A}
 .mk{position:absolute;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;box-sizing:border-box;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:pointer}
 .mk-red{background:#DC2626} .mk-amber{background:#F59E0B} .mk-blue{background:#2a78d6} .mk-green{background:#16A34A}
+.scope-ban{background:#EEF6FF;border:1px solid #BFDBFE;margin-bottom:12px;align-items:center;flex-wrap:wrap}.scope-ban .dot{background:#2563EB}
+#b-scope{font-size:13px;padding:5px 10px;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#b-scope.scope-on{background:#2563EB;border-color:#2563EB;color:#fff}
+@media(max-width:640px){#b-scope .scope-lbl{display:none}}
+.scope-pick{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font:inherit;font-size:15px;cursor:pointer;color:var(--text);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:inline-flex;gap:8px;align-items:center}
+.scope-pick.on{background:#EEF6FF;border-color:#2563EB;color:#1E40AF;font-weight:600}.scope-pick span{opacity:.6}
+.sc-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:6px}
+.sc-it{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-weight:400;cursor:pointer;background:#fff}
+.sc-it input{width:auto;margin:0}.sc-it span{flex:1}.sc-it small{color:var(--muted);white-space:nowrap}.sc-it:has(input:checked){background:#EEF6FF;border-color:#2563EB}
 .mk-gray{width:16px;height:16px;background:#fff;border:3.5px solid #1A3A6B;box-shadow:0 1px 3px rgba(0,0,0,.45)}
 .mk-none{width:10px;height:10px;background:#fff;border:2px solid #5B6878;box-shadow:0 1px 2px rgba(0,0,0,.35)}
 .mk-pin{position:absolute;width:26px;height:26px;transform:translate(-50%,-100%) rotate(-45deg);transform-origin:center;margin-top:-4px;border-radius:50% 50% 50% 0;background:#DC2626;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.5),0 0 0 5px rgba(220,38,38,.25);display:grid;place-items:center;cursor:pointer}
@@ -381,6 +389,7 @@ tr.sor-bad td{background:var(--red-bg)}
   <header class="top">
     <div class="brand"><span id="logo-top"></span><div>InspectApp<small id="org-name">—</small></div></div>
     <div class="sp"></div>
+    <button id="b-scope" class="hidden" title="Elegí con qué proyectos o grupos trabajás">🎯</button>
     <button id="b-sos" title="Emergencia: llamar, ubicación, accidente" aria-label="Emergencia" style="font-size:15px;padding:5px 10px;background:#DC2626;color:#fff;border-color:#DC2626;font-weight:700">🆘</button>
     <button id="b-search" title="Buscar (Ctrl+K)" aria-label="Buscar" style="font-size:16px;padding:5px 10px">🔍</button>
     <span id="net" class="netpill hidden" title="Tocar para enviar ahora"></span>
@@ -427,7 +436,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.12';
+const APP_VERSION = '5.13';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], dc: ['qrcode.js', 'datacenter.js'] };
@@ -542,6 +551,108 @@ async function cached(key, fetcher){
   if (v === undefined) throw new Error('OFFLINE_NODATA');
   return v;
 }
+/* ---------- datos rápidos: muestra lo que ya está en el teléfono y actualiza por detrás ---------- */
+// después de guardar algo (insert/update/delete) se espera al servidor 30 s, para no mostrar datos viejos
+let WRITE_AT = 0;
+(() => { const f = sb.from.bind(sb); sb.from = t => { const q = f(t);
+  for (const m of ['insert', 'update', 'upsert', 'delete']) if (typeof q[m] === 'function'){ const o = q[m]; q[m] = (...a) => { WRITE_AT = Date.now(); return o.apply(q, a); }; }
+  return q; }; })();
+const SWR_RUN = new Map();
+const swrSig = d => { try { const x = JSON.stringify(d) || ''; let h = 0; for (let i = 0; i < x.length; i++) h = (h * 31 + x.charCodeAt(i)) | 0; return x.length + ':' + h; } catch { return String(Math.random()); } };
+let swrT = null;
+function swrRerender(h0){
+  clearTimeout(swrT);
+  swrT = setTimeout(() => {
+    if (location.hash !== h0 || document.querySelector('#modal-root .modal')) return;
+    const a = document.activeElement; if (a && a.closest && a.closest('#view') && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
+    route();
+  }, 700);
+}
+async function cachedQuick(key, fetcher){
+  const k = CUR_UID + ':' + key;
+  if (!online() || Date.now() - WRITE_AT < 30000) return cached(key, fetcher);
+  const v = await IDB.get('kv', k).catch(() => undefined);
+  if (v === undefined) return cached(key, fetcher);
+  if (Date.now() - (SWR_RUN.get(key) || 0) > 8000){
+    SWR_RUN.set(key, Date.now());
+    const h0 = location.hash, sig0 = swrSig(v);
+    Promise.resolve().then(fetcher).then(r => { if (r.error) throw r.error; IDB.put('kv', r.data, k).catch(() => {}); if (swrSig(r.data) !== sig0) swrRerender(h0); }).catch(() => {});
+  }
+  return v;
+}
+const loadSitesAll = () => cachedQuick('sites-all', () => pageAll(() => sb.from('sites').select('*').order('name').order('id')));
+const loadSiteLinks = () => isContractor() ? Promise.resolve([]) : cachedQuick('site-links', () => pageAll(() => sb.from('site_links').select('id,name,kind,status,site_a,site_b,a_lat,a_lng,b_lat,b_lng,geom').order('name').order('id'))).catch(() => []);
+
+/* ---------- 🎯 Trabajo con…: proyectos y grupos elegidos (se guarda en este teléfono) ---------- */
+const SCOPE_K = () => 'ia_scope:' + CUR_UID;
+function scopeGet(){
+  if (!me || isContractor()) return null;
+  try { const x = JSON.parse(localStorage.getItem(SCOPE_K()) || 'null'); if (x && ((x.p || []).length || (x.g || []).length)) return { p: (x.p || []).map(String), g: (x.g || []).map(String), loose: x.loose !== false, names: x.names || {} }; } catch {}
+  return null;
+}
+function scopeLabel(x){
+  const n = [...x.p.map(id => x.names[id] || 'Proyecto'), ...x.g];
+  return n.length <= 2 ? n.join(' · ') : `${n.length} elegidos`;
+}
+function scopeBtn(){
+  const b = $('#b-scope'); if (!b) return;
+  b.classList.toggle('hidden', !me || isContractor());
+  const x = scopeGet();
+  b.innerHTML = `🎯 <span class="scope-lbl">${x ? esc(scopeLabel(x)) : 'Todos'}</span>`;
+  b.classList.toggle('scope-on', !!x);
+  b.title = x ? 'Trabajando con: ' + scopeLabel(x) + ' (tocá para cambiar)' : 'Elegí con qué proyectos o grupos trabajás';
+}
+// ids de los sitios dentro del alcance; null = sin filtro
+function scopeSiteSet(sites, psAll){
+  const x = scopeGet(); if (!x) return null;
+  const P = new Set(x.p), G = new Set(x.g), inAny = new Set((psAll || []).map(r => r.site_id));
+  const inSel = new Set((psAll || []).filter(r => P.has(r.project_id)).map(r => r.site_id));
+  return new Set((sites || []).filter(t => inSel.has(t.id) || (t.grupo && G.has(t.grupo)) || (x.loose && !inAny.has(t.id) && !t.grupo)).map(t => t.id));
+}
+function scopeTaskOk(t, set){
+  const x = scopeGet(); if (!x) return true;
+  if (t.project_id && x.p.includes(t.project_id)) return true;
+  const ids = (t.sites || []).map(r => r.site_id).filter(Boolean);
+  if (ids.some(i => set && set.has(i))) return true;
+  if (t.contract && x.g.includes(t.contract)) return true;
+  return x.loose && !t.project_id && !ids.length;
+}
+function scopeBanner(shown, total, what = 'sitios'){
+  const x = scopeGet(); if (!x) return '';
+  return `<div class="banner scope-ban"><span class="dot"></span><div style="flex:1"><b>🎯 Trabajando con: ${esc(scopeLabel(x))}</b><div class="sm">Se muestran ${shown} de ${total} ${what}.</div></div>
+    <div class="row" style="gap:6px"><button class="btn small sec" data-scope-pick>Cambiar</button><button class="btn small sec" data-scope-all>Ver todo</button></div></div>`;
+}
+async function scopeModal(){
+  if (!me || isContractor()) return;
+  let projects = [], sites = [], psAll = [];
+  try { [projects, sites, psAll] = await Promise.all([loadProjects().catch(() => []), loadSitesMap().catch(() => []), loadPS().catch(() => [])]); } catch {}
+  const x = scopeGet() || { p: [], g: [], loose: true, names: {} };
+  const cntP = id => psAll.filter(r => r.project_id === id).length;
+  const grupos = [...new Set(sites.map(t => t.grupo).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const cntG = g => sites.filter(t => t.grupo === g).length;
+  const inAny = new Set(psAll.map(r => r.site_id)); const loose = sites.filter(t => !inAny.has(t.id) && !t.grupo).length;
+  const act = projects.filter(p => p.active !== false);
+  const m = modal(`<h2 style="margin-top:0">🎯 ¿Con qué vas a trabajar?</h2>
+    <p class="muted sm" style="margin-top:-6px">La app muestra solo los sitios, tareas, inspecciones y el mapa de lo que elijas, y abre más rápido. Se guarda en este teléfono; lo cambiás cuando quieras.</p>
+    <input id="sc-q" placeholder="Buscar proyecto o grupo" style="margin-bottom:8px">
+    ${act.length ? `<h3 style="margin:8px 0 4px">📁 Proyectos</h3><div class="sc-list">${act.map(p => `<label class="sc-it" data-n="${esc(norm(p.name))}"><input type="checkbox" class="sc-p" value="${esc(p.id)}" ${x.p.includes(p.id) ? 'checked' : ''}><span>${esc(p.name)}</span><small>${cntP(p.id)} sitios</small></label>`).join('')}</div>` : ''}
+    ${grupos.length ? `<h3 style="margin:12px 0 4px">🗂 Grupos de sitios</h3><div class="sc-list">${grupos.map(g => `<label class="sc-it" data-n="${esc(norm(g))}"><input type="checkbox" class="sc-g" value="${esc(g)}" ${x.g.includes(g) ? 'checked' : ''}><span>${esc(g)}</span><small>${cntG(g)} sitios</small></label>`).join('')}</div>` : ''}
+    <label class="sc-it" style="margin-top:10px;border-style:dashed"><input type="checkbox" id="sc-l" ${x.loose ? 'checked' : ''}><span>Incluir también los sitios sin proyecto ni grupo</span><small>${loose} sitios</small></label>
+    <div class="row between" style="margin-top:14px;gap:8px;flex-wrap:wrap"><button class="btn sec" id="sc-all">Ver todo (sin filtro)</button><div class="row" style="gap:6px"><button class="btn sec" data-close-modal>Cancelar</button><button class="btn" id="sc-ok">Aplicar</button></div></div>`, { wide: true });
+  $('#sc-q').oninput = () => { const q = norm($('#sc-q').value); m.el.querySelectorAll('.sc-it[data-n]').forEach(l => l.style.display = !q || l.dataset.n.includes(q) ? '' : 'none'); };
+  $('#sc-all').onclick = () => { try { localStorage.removeItem(SCOPE_K()); } catch {} m.close(); scopeBtn(); toast('Mostrando todo'); route(); };
+  $('#sc-ok').onclick = () => {
+    const p = [...m.el.querySelectorAll('.sc-p:checked')].map(c => c.value), g = [...m.el.querySelectorAll('.sc-g:checked')].map(c => c.value);
+    if (!p.length && !g.length){ try { localStorage.removeItem(SCOPE_K()); } catch {} }
+    else { const names = Object.fromEntries(p.map(id => [id, (projects.find(z => z.id === id) || {}).name || 'Proyecto'])); try { localStorage.setItem(SCOPE_K(), JSON.stringify({ p, g, loose: $('#sc-l').checked, names })); } catch {} }
+    m.close(); scopeBtn(); route();
+  };
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-scope-pick]')) scopeModal();
+  else if (e.target.closest('[data-scope-all]')){ try { localStorage.removeItem(SCOPE_K()); } catch {} scopeBtn(); route(); }
+});
+
 function storedUid(){ try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null')?.user?.id || null; } catch { return null; } }
 
 /* ---------- inspecciones locales y envío ---------- */
@@ -1021,6 +1132,7 @@ function searchOpen(){
   $('#sr-scan').onclick = async () => { m.close(); try { await needLib('stock'); } catch (e){ return toast(errText(e)); } stkScan(txt => { const mm = /#\/stock\/a\/([0-9A-Za-z-]{1,40})/.exec(txt); if (mm){ location.hash = '#/stock/a/' + mm[1]; return; } searchOpen(); const i = $('#sr-q'); if (i){ i.value = txt.slice(0, 60); i.dispatchEvent(new Event('input')); } }); };
 }
 $('#b-search').onclick = searchOpen;
+$('#b-scope').onclick = () => scopeModal();
 $('#b-sos').onclick = async () => { try { await needLib('hys'); hysSOS(); } catch (e){ modal(`<h2 style="color:#B91C1C;margin-top:0">🆘 Emergencia</h2><div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn danger" href="tel:911">📞 911</a><a class="btn danger" href="tel:107">🚑 107</a><a class="btn danger" href="tel:100">🚒 100</a><button class="btn sec" data-close-modal>Cerrar</button></div>`); } };
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && me){ e.preventDefault(); searchOpen(); } });
 $('#b-logout').onclick = async () => {
@@ -1061,6 +1173,9 @@ async function boot(){
   const uidv = session?.user?.id || (!online() ? storedUid() : null);
   if (!uidv){ showLogin(); return; }
   if (booted) return;
+  // el perfil se pide en paralelo con la verificación en dos pasos
+  CUR_UID = uidv;
+  const profP = cached('profile', () => sb.from('profiles').select('*').eq('id', uidv).single()).then(d => ({ d }), e => ({ e }));
   // verificación en dos pasos: si el usuario la activó, se pide el código antes de entrar
   if (session && online()){
     try {
@@ -1069,32 +1184,34 @@ async function boot(){
     } catch {}
   }
   booted = true; CUR_UID = uidv;
-  try { me = await cached('profile', () => sb.from('profiles').select('*').eq('id', uidv).single()); }
+  const pr = await profP;
+  try { if (pr.e) throw pr.e; me = pr.d; }
   catch (e){
     booted = false;
     if (e.message === 'OFFLINE_NODATA'){ showLogin('Sin conexión: ingresá una vez con internet para usar la app en este dispositivo.'); return; }
     toast('No se encontró tu perfil. Avisá al administrador.'); await sb.auth.signOut().catch(() => {}); showLogin(); return;
   }
   if (!me.active){ alert('Tu usuario fue desactivado por el administrador de la empresa.'); booted = false; await sb.auth.signOut().catch(() => {}); showLogin(); return; }
-  await reloadOrg();
+  await Promise.all([reloadOrg(), permLoad()]);
   $('#v-auth').classList.add('hidden'); $('#v-app').classList.remove('hidden');
   $('#user-email').textContent = me.email;
   $('#tab-admin').classList.toggle('hidden', !me.is_superadmin);
   const contr = isContractor();
   ['stats','sites','tpl','org'].forEach(t => $(`#tabs [data-tab="${t}"]`).classList.toggle('hidden', contr));
   $('#tab-mesa').classList.toggle('hidden', !isManager());
-  await permLoad(); permApplyTabs();
+  permApplyTabs(); scopeBtn();
   // horas para todos: vincula al usuario con su Recurso (por email o nombre; si no hay, lo crea). Una vez por sesión.
   if (online() && me.hh_enabled !== false && typeof can === 'function' && can('horas', 2)){
     const k = 'hhlink:' + CUR_UID;
-    try { if (!sessionStorage.getItem(k)){ const { data } = await sb.rpc('hh_auto_link'); if (data){ sessionStorage.setItem(k, '1'); await IDB.del('kv', CUR_UID + ':hh-staff').catch(() => {}); } } } catch {}
+    if (!sessionStorage.getItem(k)) sb.rpc('hh_auto_link').then(({ data }) => { if (data){ sessionStorage.setItem(k, '1'); IDB.del('kv', CUR_UID + ':hh-staff').catch(() => {}); } }).catch(() => {});
   }
   if (isManager() && typeof stxLoadCfg === 'function') stxLoadCfg().catch(() => {});
   if (typeof navBuild === 'function') navBuild();
   $('#tab-tasks').textContent = contr ? 'Mis tareas' : 'Tareas';
   if (installPrompt) $('#b-install').classList.remove('hidden');
-  updateNet(); syncNow(); warmCache();
+  updateNet(); syncNow();
   route();
+  setTimeout(warmCache, 2500);   // lo que se baja para trabajar sin señal, después de mostrar la primera pantalla
 }
 /* Al tener señal, deja en el teléfono lo necesario para trabajar sin conexión */
 let warming = false;
@@ -1103,10 +1220,9 @@ async function warmCache(){
   try {
     await Promise.allSettled([
       cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')),
-      cached('sites-min2', () => pageAll(() => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name').order('id'))),
       cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', {ascending: true}).limit(500)),
       cached('contractors', () => sb.from('contractors').select('*').order('name')),
-      loadSitesMap().then(rememberCoords), loadProjects(), loadPS(),
+      loadSitesMap().then(s => { rememberCoords(s); return IDB.put('kv', (s || []).map(({ id, name, kind, traza, address, grupo }) => ({ id, name, kind, traza, address, grupo })), CUR_UID + ':sites-min2'); }), loadProjects(), loadPS(),
     ]);
     const ts = await IDB.get('kv', CUR_UID + ':tasks').catch(() => []);
     for (const t of (ts || []).filter(taskOpen)) await IDB.put('kv', t, CUR_UID + ':task:' + t.id).catch(() => {});
@@ -1234,7 +1350,7 @@ async function route(){
 /* =========================================================
    LISTADOS DE INSPECCIONES (servidor + dispositivo)
    ========================================================= */
-const LIST_COLS = 'id,template_name,site_name,status,started_at,score,max_score,flagged,inspector_name,inspector_id,kind,dist_m';
+const LIST_COLS = 'id,site_id,template_name,site_name,status,started_at,score,max_score,flagged,inspector_name,inspector_id,kind,dist_m';
 async function mergeLocal(rows){
   const map = new Map((rows || []).map(r => [r.id, r]));
   for (const l of await localAll()){
@@ -1363,12 +1479,15 @@ async function viewInspections(v){
       });
     } catch (e){ if (e.message !== 'OFFLINE_NODATA') return toast(errText(e)); }
     const t = $('#q').value.trim().toLowerCase();
-    const rows = (await mergeLocal(server)).filter(r =>
+    let scSet = null;
+    if (scopeGet()){ const [a, b] = await Promise.all([loadSitesMap().catch(() => []), loadPS().catch(() => [])]); scSet = scopeSiteSet(a, b); }
+    const all = await mergeLocal(server);
+    const rows = all.filter(r => (!scSet || (r.site_id ? scSet.has(r.site_id) : scopeGet().loose)) &&
       (!f.kind || r.kind === f.kind) && (!f.status || r.status === f.status) &&
       (!f.from || r.started_at >= new Date(f.from + 'T00:00:00').toISOString()) &&
       (!f.to || r.started_at <= new Date(f.to + 'T23:59:59').toISOString()) &&
       (!t || [r.site_name, r.template_name, r.inspector_name].join(' ').toLowerCase().includes(t)));
-    $('#list').innerHTML = inspTable(rows) + (server.length >= 300 ? '<p class="muted sm">Se muestran las 300 más recientes. Usá los filtros de fecha para ver anteriores.</p>' : '') + (!online() ? '<p class="muted sm">Sin conexión: se muestra lo último descargado en este dispositivo.</p>' : '');
+    $('#list').innerHTML = (scSet ? scopeBanner(rows.length, all.length, 'inspecciones') : '') + inspTable(rows) + (server.length >= 300 ? '<p class="muted sm">Se muestran las 300 más recientes. Usá los filtros de fecha para ver anteriores.</p>' : '') + (!online() ? '<p class="muted sm">Sin conexión: se muestra lo último descargado en este dispositivo.</p>' : '');
     bindInspRows($('#list'), rows);
   };
   ['#f-kind','#f-status','#f-from','#f-to'].forEach(s => $(s).onchange = load);
@@ -2143,13 +2262,16 @@ function taskTable(rows, contrs){
 }
 
 async function viewTasks(v){
-  const [tasks, contrs] = await Promise.all([
-    cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', {ascending: true}).limit(500)),
+  const [allTasks, contrs, scSites, scPS] = await Promise.all([
+    cachedQuick('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', {ascending: true}).limit(500)),
     loadContractors().catch(() => []),
+    scopeGet() ? loadSitesMap().catch(() => []) : [], scopeGet() ? loadPS().catch(() => []) : [],
   ]);
+  const scSet = scopeSiteSet(scSites, scPS);
+  const tasks = scopeGet() ? allTasks.filter(t => scopeTaskOk(t, scSet)) : allTasks;
   const manage = isManager() && canWrite();
   const pending = tasks.filter(taskOpen), overdue = tasks.filter(isOverdue);
-  v.innerHTML = `
+  v.innerHTML = `${scopeBanner(tasks.length, allTasks.length, 'tareas')}
     <div class="card"><div class="row between"><h2 style="margin:0">${isContractor() ? 'Mis tareas' : 'Tareas'}</h2>
       ${manage ? `<div class="row"><button class="btn sec" data-go="#/tasks/contratistas">Contratistas</button><button class="btn" id="b-newtask">+ Nueva tarea</button></div>` : ''}</div>
       <div class="stats" style="margin-top:14px">
@@ -2525,11 +2647,13 @@ function perfSection(perf){
    ========================================================= */
 let mapObj = null;
 async function viewSites(v){
-  const sites = await cached('sites-all', () => pageAll(() => sb.from('sites').select('*').order('name').order('id')));
+  const [allSites, psAll] = await Promise.all([loadSitesAll(), loadPS().catch(() => [])]);
+  const scope = scopeSiteSet(allSites, psAll);
+  const sites = scope ? allSites.filter(t => scope.has(t.id)) : allSites;
   const manage = isManager() && canWrite() && online();
   const trazas = [...new Set(sites.map(s => s.traza).filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), 'es', {numeric:true}));
   const grupos = [...new Set(sites.map(s => s.grupo).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'es'));
-  v.innerHTML = `
+  v.innerHTML = `${scopeBanner(sites.length, allSites.length)}
     <div class="card"><div class="row between"><h2 style="margin:0">Sitios <span class="muted sm">(${sites.length})</span></h2>
       <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn sec" id="b-sx" style="margin:0">⬇ Excel</button><button class="btn sec" id="b-sk" style="margin:0" title="Para abrir en Google Earth">🌍 KMZ</button>${!isContractor() ? '<a class="btn sec" href="#/vinc" style="margin:0">🔗 Vínculos</a>' : ''}</div>
       ${manage ? `<div class="row"><label class="btn sec" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="sxl" class="hidden"></label><label class="btn sec" style="margin:0">Importar KMZ / KML<input type="file" accept=".kmz,.kml" id="kmz" class="hidden"></label><button class="btn" id="b-add">+ Sitio</button></div>` : ''}</div>
@@ -2539,7 +2663,7 @@ ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado d
         <input id="q" class="grow" placeholder="Buscar sitio">
         <select id="f-k" style="width:auto"><option value="">Todos los tipos</option>${Object.entries(SITE_KINDS).map(([k,t]) => `<option value="${k}">${t}</option>`).join('')}</select>
         <select id="f-t" style="width:auto"><option value="">Todas las trazas</option>${trazas.map(t => `<option>${esc(t)}</option>`).join('')}</select>
-        ${grupos.length ? `<select id="f-g" style="width:auto"><option value="">Todos los grupos</option>${grupos.map(g => `<option>${esc(g)}</option>`).join('')}</select>` : ''}
+        ${isContractor() ? (grupos.length ? `<select id="f-g" style="width:auto"><option value="">Todos los grupos</option>${grupos.map(g => `<option>${esc(g)}</option>`).join('')}</select>` : '') : `<button type="button" class="scope-pick ${scopeGet() ? 'on' : ''}" data-scope-pick title="Elegí uno o varios proyectos y grupos">🎯 ${scopeGet() ? esc(scopeLabel(scopeGet())) : 'Todos los proyectos y grupos'} <span>▾</span></button>`}
       </div></div>
     <div class="card"><div id="map"></div><div class="row sm muted" style="margin-top:8px">${Object.entries(SITE_KINDS).filter(([k]) => k !== 'radioenlace').map(([k,t]) => `<span><span class="kind-dot" style="background:${SITE_COLORS[k]}"></span>${k === 'repetidora' ? 'Repetidora / radioenlace' : t}</span>`).join('')}</div></div>
     <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr>${manage ? '<th style="width:28px"><input type="checkbox" id="s-all" aria-label="Elegir todos"></th>' : ''}<th>Nombre</th><th>Tipo</th><th>Traza</th><th class="hide-sm">Grupo</th><th class="hide-sm">Coordenadas</th><th></th></tr></thead><tbody id="rows"></tbody></table></div><div id="s-bulk" style="position:sticky;bottom:80px;z-index:20;background:var(--navy);color:#fff;border-radius:12px;padding:10px 12px;display:none;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"></div></div>`;
@@ -2550,7 +2674,7 @@ ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado d
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '© OpenStreetMap'}).addTo(mapObj);
   } else $('#map').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa.</p>';
   const sel = new Set(); let shownRows = sites;
-  const siteLinks = isContractor() ? [] : await cached('site-links', () => pageAll(() => sb.from('site_links').select('id,name,kind,status,site_a,site_b,a_lat,a_lng,b_lat,b_lng,geom').order('name').order('id'))).catch(() => []);
+  const siteLinks = await loadSiteLinks();
   const render = () => {
     const q = $('#q').value.trim().toLowerCase(), k = $('#f-k').value, t = $('#f-t').value, g = $('#f-g')?.value || '';
     const rows = sites.filter(s => (!g || s.grupo === g) && (!q || (s.name + ' ' + (s.aliases||[]).join(' ') + ' ' + (s.address || '') + ' ' + (s.localidad || '') + ' ' + (s.provincia || '') + ' ' + (s.grupo || '')).toLowerCase().includes(q)) && (!k || s.kind === k) && (!t || s.traza === t));
@@ -2589,9 +2713,9 @@ ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado d
   $('#b-sx').onclick = async () => { try { await needLib('sitios'); siteExportXlsx(shownRows); } catch (e){ toast(errText(e)); } };
   $('#b-sk').onclick = async () => { try { await needLib('sitios'); siteExportKmz(shownRows, siteLinks.filter(l => shownRows.some(s => s.id === l.site_a || s.id === l.site_b))); } catch (e){ toast(errText(e)); } };
   $('#b-smodel')?.addEventListener('click', downloadSitesModel);
-  $('#sxl')?.addEventListener('change', e => importSitesExcel(e.target.files[0], sites));
+  $('#sxl')?.addEventListener('change', e => { importSitesExcel(e.target.files[0], allSites); e.target.value = ''; });
   $('#b-coord')?.addEventListener('click', () => coordReview(sites));
-  $('#kmz')?.addEventListener('change', e => importKMZ(e.target.files[0], sites));
+  $('#kmz')?.addEventListener('change', e => { importKMZ(e.target.files[0], allSites); e.target.value = ''; });
 }
 /* ---------- invitaciones: link de un solo uso con rol y proyectos ya asignados ---------- */
 const inviteLink = t => `${location.origin}${location.pathname}#/invitacion/${t}`;

@@ -54,10 +54,10 @@ async function pageAll(mk, max = 20000){
 }
 const PS_COLS = 'id,project_id,site_id,stage,planned,done,start_date,end_date,proposed_start,proposed_end,proposal_note,proposed_at,contractor_id,blocked,block_reason,notes,history,last_inspection_id,updated_at,created_at';
 const SITE_MAP_COLS = 'id,name,kind,traza,grupo,lat,lng,localidad,provincia,address,aliases';
-const loadProjects = () => cached('projects', () => sb.from('projects').select('*').order('name'));
-const loadPS = () => cached('ps-all', () => pageAll(() => sb.from('project_sites').select(PS_COLS).order('id')));
-const loadSitesMap = () => cached('sites-map', () => pageAll(() => sb.from('sites').select(SITE_MAP_COLS).eq('active', true).order('name').order('id')));
-const loadAllTasks = () => cached('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', { ascending: true }).limit(1000));
+const loadProjects = () => cachedQuick('projects', () => sb.from('projects').select('*').order('name'));
+const loadPS = () => cachedQuick('ps-all', () => pageAll(() => sb.from('project_sites').select(PS_COLS).order('id')));
+const loadSitesMap = () => cachedQuick('sites-map', () => pageAll(() => sb.from('sites').select(SITE_MAP_COLS).eq('active', true).order('name').order('id')));
+const loadAllTasks = () => cachedQuick('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', { ascending: true }).limit(1000));
 let SITE_COORDS = new Map();
 function rememberCoords(sites){ SITE_COORDS = new Map((sites || []).filter(s => s.lat !== null && s.lat !== undefined).map(s => [s.id, [Number(s.lat), Number(s.lng)]])); }
 const mapsLink = (lat, lng) => `https://www.google.com/maps/dir/?api=1&destination=${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
@@ -110,34 +110,34 @@ const LAYERS = { prev: '🛠 Preventivos', corr: '⚡ Correctivos', pend: '⚠ P
 let pmap = null;
 async function viewMap(v, preset){
   let saved = {}; try { saved = JSON.parse(localStorage.getItem('ia_map') || '{}'); } catch {}
-  const st = { project: saved.project || '', per: saved.per || '30', layers: saved.layers || { prev: true, corr: true, pend: true, inst: true } };
+  const st = { project: saved.project || '', per: saved.per || '30', layers: saved.layers || { prev: true, corr: true, pend: true, inst: true }, lnk: saved.lnk !== false, kindc: !!saved.kindc };
   if (preset === 'pend') st.layers = { prev: false, corr: false, pend: true, inst: false };
   if (preset === 'inst') st.layers = { prev: false, corr: false, pend: false, inst: true };
-  const [sites, projects, psAll, tasks, contrs] = await Promise.all([
-    loadSitesMap(), loadProjects().catch(() => []), loadPS().catch(() => []), loadAllTasks().catch(() => []), loadContractors().catch(() => [])]);
-  rememberCoords(sites);
+  const inspQ = per => cachedQuick('map-insp:' + per, () => pageAll(() => sb.from('inspections').select('id,site_id,site_name,kind,started_at,flagged').eq('status', 'completada').gte('started_at', new Date(Date.now() - Number(per) * 86400000).toISOString()).order('started_at').order('id'), 10000)).catch(() => []);
+  const [allSites, projects, psAll, tasks, contrs, links, insp0] = await Promise.all([
+    loadSitesMap(), loadProjects().catch(() => []), loadPS().catch(() => []), loadAllTasks().catch(() => []), loadContractors().catch(() => []), loadSiteLinks(), inspQ(st.per)]);
+  rememberCoords(allSites);
+  const scope = scopeSiteSet(allSites, psAll);
+  const sites = scope ? allSites.filter(t => scope.has(t.id)) : allSites;
   if (st.project && !projects.some(p => p.id === st.project)) st.project = '';
-  v.innerHTML = `
+  v.innerHTML = `${scopeBanner(sites.length, allSites.length)}
     <div class="card"><div class="row between"><h2 style="margin:0">Mapa</h2><span class="muted sm" id="mp-note"></span></div>
       <div class="row" style="margin-top:10px">
         <select id="mp-proj" style="width:auto"><option value="">Todos los proyectos y sitios</option>${projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
         <select id="mp-per" style="width:auto" title="Período para preventivos y correctivos"><option value="30">Visitas: últimos 30 días</option><option value="60">Últimos 60 días</option><option value="90">Últimos 90 días</option><option value="180">Últimos 6 meses</option></select>
+        ${isContractor() ? '' : `<button type="button" class="scope-pick ${scopeGet() ? 'on' : ''}" data-scope-pick title="Elegí uno o varios proyectos y grupos">🎯 ${scopeGet() ? esc(scopeLabel(scopeGet())) : 'Todos los proyectos y grupos'} <span>▾</span></button>`}
         <input id="mp-q" class="grow" placeholder="Buscar sitio o localidad">
       </div>
-      <div class="layerbar" id="mp-layers">${Object.entries(LAYERS).map(([k, t]) => `<button type="button" data-ly="${k}" class="${st.layers[k] ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="layerbar" id="mp-layers">${Object.entries(LAYERS).map(([k, t]) => `<button type="button" data-ly="${k}" class="${st.layers[k] ? 'on' : ''}">${t}</button>`).join('')}
+        ${isContractor() ? '' : `<button type="button" id="mp-lnk" class="${st.lnk ? 'on' : ''}" title="Radioenlaces y tramos de fibra cargados en Sitios → Vínculos">🔗 Vínculos</button>`}<button type="button" id="mp-kc" class="${st.kindc ? 'on' : ''}" title="Pintar cada sitio con el color de su tipo, como en Sitios">🎨 Color por tipo</button></div>
     </div>
     <div class="card" style="padding:10px"><div id="pmap"></div>
       <div class="sem-legend" id="mp-legend"></div></div>
     <div class="card" id="mp-list"></div>`;
   $('#mp-proj').value = st.project; $('#mp-per').value = st.per;
   const save = () => { try { localStorage.setItem('ia_map', JSON.stringify(st)); } catch {} };
-  let insp = [];
-  const loadInsp = async () => {
-    const from = new Date(Date.now() - Number(st.per) * 86400000).toISOString();
-    try { insp = await cached('map-insp:' + st.per, () => pageAll(() => sb.from('inspections').select('id,site_id,site_name,kind,started_at,flagged').eq('status', 'completada').gte('started_at', from).order('started_at').order('id'), 10000)); }
-    catch { insp = []; }
-  };
-  await loadInsp();
+  let insp = insp0 || [];
+  const loadInsp = async () => { insp = await inspQ(st.per); };
   if (pmap){ pmap.remove(); pmap = null; }
   if (!window.L){ $('#pmap').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa.</p>'; return; }
   pmap = L.map('pmap', { preferCanvas: true, zoomControl: true }).setView([-34, -63], 5);
@@ -226,10 +226,19 @@ async function viewMap(v, preset){
       const ll = [Number(x.s.lat), Number(x.s.lng)];
       const crit = x.cols.pend === 'red';
       const html = crit ? `<div class="mk-pin${x.late ? ' pulse' : ''}"><b>!</b></div>`
+        : st.kindc ? `<div class="mk${x.late ? ' pulse' : ''}" style="background:${SITE_COLORS[x.s.kind] || '#475569'}"></div>`
         : `<div class="mk mk-${x.color}${x.late ? ' pulse' : ''}"></div>`;
       const m = L.marker(ll, { icon: L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], iconAnchor: [0, 0], html }), keyboard: false, riseOnHover: true, zIndexOffset: SEM[x.color].o * 100 });
       if (z >= 10) m.bindTooltip(esc(x.s.name), { permanent: true, direction: 'right', offset: crit ? [10, -16] : [9, 0], className: 'mk-lbl' });
       m.bindPopup(() => popup(x), { maxWidth: 300, offset: crit ? [0, -26] : [0, -4] }).addTo(layer);
+    }
+    // vínculos (radioenlaces y fibra) cargados en Sitios
+    if (st.lnk && links.length){
+      const ids = new Set(data.map(x => x.s.id));
+      for (const l of links){ if (!ids.has(l.site_a) && !ids.has(l.site_b)) continue;
+        const g = Array.isArray(l.geom) && l.geom.length > 1 ? l.geom : (l.a_lat != null && l.b_lat != null ? [[l.a_lat, l.a_lng], [l.b_lat, l.b_lng]] : null); if (!g) continue;
+        L.polyline(g, { color: l.kind === 'fo' ? '#F2A93B' : l.kind === 'mw' ? '#7C3AED' : '#0E7490', weight: 3, opacity: .85, dashArray: l.kind === 'fo' ? null : '8 6' })
+          .bindTooltip(`${l.kind === 'fo' ? '🧵' : '📡'} ${esc(l.name)}`, { sticky: true }).on('click', () => { location.hash = '#/vinc'; }).addTo(layer); }
     }
     if (!fitted && withC.length){ fitted = true; pmap.fitBounds(L.latLngBounds(withC.map(x => [Number(x.s.lat), Number(x.s.lng)])), { padding: [30, 30], maxZoom: 12 }); }
     // leyenda con cantidades
@@ -266,6 +275,8 @@ async function viewMap(v, preset){
     if (!Object.values(st.layers).some(Boolean)) st.layers[b.dataset.ly] = true;
     b.classList.toggle('on', st.layers[b.dataset.ly]); save(); render();
   });
+  $('#mp-lnk') && ($('#mp-lnk').onclick = () => { st.lnk = !st.lnk; $('#mp-lnk').classList.toggle('on', st.lnk); save(); render(); });
+  $('#mp-kc').onclick = () => { st.kindc = !st.kindc; $('#mp-kc').classList.toggle('on', st.kindc); save(); render(); };
   $('#mp-proj').onchange = () => { st.project = $('#mp-proj').value; fitted = false; save(); render(); };
   $('#mp-per').onchange = async () => { st.per = $('#mp-per').value; save(); await loadInsp(); render(); };
   let tq; $('#mp-q').oninput = () => { clearTimeout(tq); tq = setTimeout(() => { fitted = false; render(); }, 300); };
@@ -292,10 +303,12 @@ function projSummary(p, psAll){
 const semChips = sm => ['red', 'amber', 'blue', 'gray', 'green'].filter(c => sm[c]).map(c => `<span class="semchip">${semDot(c)}${sm[c]}</span>`).join('') || '<span class="muted sm">Sin sitios</span>';
 
 async function viewProjects(v){
-  const [projects, psAll, tasks] = await Promise.all([loadProjects(), loadPS().catch(() => []), loadAllTasks().catch(() => [])]);
+  const [allProjects, psAll, tasks] = await Promise.all([loadProjects(), loadPS().catch(() => []), loadAllTasks().catch(() => [])]);
+  const scP = scopeGet() && scopeGet().p.length ? new Set(scopeGet().p) : null;
+  const projects = scP ? allProjects.filter(p => scP.has(p.id)) : allProjects;
   const manage = isManager() && canWrite() && online() && can('proj', 3);
   const actives = projects.filter(p => p.active);
-  v.innerHTML = `
+  v.innerHTML = `${scP ? scopeBanner(projects.length, allProjects.length, 'proyectos') : ''}
     <div class="card"><div class="row between"><h2 style="margin:0">Proyectos</h2>${manage ? '<button class="btn" id="pj-new">+ Proyecto</button>' : ''}</div>
       <p class="muted sm" style="margin:8px 0 0">Cada proyecto agrupa sitios (escuelas, edificios, nodos, racks…), lo que hay que instalar o mantener en cada uno, sus etapas, fechas y Gantt.</p></div>
     ${actives.length ? `<div class="pj-grid">${actives.map(p => projCard(p, psAll, tasks)).join('')}</div>` : `<div class="card"><div class="empty">${manage ? 'Todavía no hay proyectos. Creá el primero con <b>+ Proyecto</b>.' : 'No hay proyectos para mostrar.'}</div></div>`}

@@ -61,7 +61,7 @@ async function sitKmzSave(name, kml){
   const blob = await z.generateAsync({ type: 'blob', compression: 'DEFLATE', mimeType: 'application/vnd.google-earth.kmz' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name.replace(/[^\w\- áéíóúñÁÉÍÓÚÑ]/g, '_').slice(0, 80) + '.kmz'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
 }
-async function sitLinks(){ try { return await cached('site-links', () => pageAll(() => sb.from('site_links').select('*').order('name').order('id'))); } catch { return []; } }
+async function sitLinks(){ try { return await cachedQuick('site-links-full', () => pageAll(() => sb.from('site_links').select('*').order('name').order('id'))); } catch { return []; } }
 function sitLinkPts(l){ return l.geom?.length > 1 ? l.geom : [[l.a_lat, l.a_lng], [l.b_lat, l.b_lng]]; }
 function sitDrawLink(layer, l, onClick){
   const k = LNK_KIND[l.kind] || LNK_KIND.otro, off = ['fuera_servicio', 'baja'].includes(l.status);
@@ -122,18 +122,30 @@ async function siteImport(file, existing){
       aliases: g(r, 'al') ? g(r, 'al').split(',').map(x => x.trim().slice(0, 80)).filter(Boolean).slice(0, 20) : null, active: g(r, 'ac') ? /^(si|sí|s|1|true|verdadero)$/i.test(g(r, 'ac')) : null }));
   } catch (e){ return toast('No se pudo leer el Excel: ' + errText(e)); }
   if (!rows.length) return toast('El archivo no tiene sitios.');
-  const byId = new Map(existing.map(s => [s.id, s])), byKey = new Map(existing.map(s => [s.kind + '|' + sitN(s.name), s]));
-  let fixed = 0; const outside = [], nuevos = [], cambios = [], iguales = [];
+  // cómo se reconoce un sitio que ya existe: 1) ID interno (planilla exportada), 2) el nombre (sin mayúsculas ni tildes);
+  //   si hay varios sitios con el mismo nombre, desempata el Tipo. El tipo ya no hace falta para reconocerlo y se puede cambiar.
+  const byId = new Map(existing.map(s => [s.id, s])), byName = new Map();
+  for (const s of existing){ const k = sitN(s.name); if (!byName.has(k)) byName.set(k, []); byName.get(k).push(s); }
+  let fixed = 0; const outside = [], nuevos = [], cambios = [], iguales = [], probs = [], seen = new Map();
   for (const r of rows){
     const c = coordCheck(r.lat, r.lng); if (!c.ok){ if (c.fix){ r.lat = c.fix[0]; r.lng = c.fix[1]; fixed++; } else outside.push(r.name); }
-    const ex = (r._id && byId.get(r._id)) || byKey.get((r.kind || 'epi') + '|' + sitN(r.name));
+    let ex = r._id ? byId.get(r._id) : null;
+    if (r._id && !ex){ probs.push([r._row, r.name, 'El ID interno no corresponde a ningún sitio de tu empresa (¿borrado?). No se tocó.']); continue; }
+    if (!ex){ const cand = byName.get(sitN(r.name)) || [];
+      if (cand.length === 1) ex = cand[0];
+      else if (cand.length > 1){ ex = r.kind ? cand.find(s => s.kind === r.kind) : null;
+        if (!ex){ probs.push([r._row, r.name, `Hay ${cand.length} sitios con ese nombre (${cand.map(s => SITE_KINDS[s.kind] || s.kind).join(', ')}): completá la columna Tipo o usá la planilla exportada.`]); continue; } } }
+    const key = ex ? 'id:' + ex.id : 'n:' + sitN(r.name) + '|' + (r.kind || 'otro');
+    if (seen.has(key)){ probs.push([r._row, r.name, `Repetido en la planilla (ya está en la fila ${seen.get(key)}): se tomó solo la primera.`]); continue; }
+    seen.set(key, r._row);
     if (!ex){ nuevos.push({ ...r, kind: r.kind || 'otro' }); continue; }
     const patch = {}, diff = [];
     for (const k of Object.keys(F)){ let v = r[k]; if (v == null || v === '' ) continue; if (k === 'name' && !r._id) continue;
       const old = ex[k]; const same = k === 'aliases' ? JSON.stringify(old || []) === JSON.stringify(v) : (k === 'lat' || k === 'lng') ? Math.abs(Number(old) - Number(v)) < 1e-7 : String(old ?? '') === String(v);
       if (!same){ patch[k] = v; diff.push([F[k], k === 'kind' ? SITE_KINDS[old] : k === 'active' ? (old ? 'Sí' : 'No') : Array.isArray(old) ? old.join(', ') : old, k === 'kind' ? SITE_KINDS[v] : k === 'active' ? (v ? 'Sí' : 'No') : Array.isArray(v) ? v.join(', ') : v]); } }
-    if (diff.length) cambios.push({ ex, patch, diff }); else iguales.push(ex);
+    if (diff.length) cambios.push({ ex, patch, diff, row: r._row }); else iguales.push(ex);
   }
+  const probHTML = list => `<div class="tblwrap" style="max-height:200px;overflow:auto"><table class="tbl"><thead><tr><th>Fila</th><th>Sitio</th><th>Motivo</th></tr></thead><tbody>${list.slice(0, 300).map(([f, n, why]) => `<tr><td>${f || '—'}</td><td>${esc(n)}</td><td class="sm">${esc(why)}</td></tr>`).join('')}</tbody></table></div>`;
   const m = modal(`<h2>Importar sitios</h2>
     <div class="stk-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"><div class="card" style="margin:0;padding:10px"><span class="muted sm">✨ Nuevos</span><b style="display:block;font-size:24px">${nuevos.length}</b></div>
       <div class="card" style="margin:0;padding:10px"><span class="muted sm">🔄 Con cambios</span><b style="display:block;font-size:24px">${cambios.length}</b></div><div class="card" style="margin:0;padding:10px"><span class="muted sm">= Sin cambios</span><b style="display:block;font-size:24px">${iguales.length}</b></div></div>
@@ -141,19 +153,41 @@ async function siteImport(file, existing){
     ${outside.length ? `<div class="banner warn" style="margin:8px 0"><span class="dot"></span><div><b>${outside.length} con coordenadas fuera de ${COORD_BOX.name}</b>: ${outside.slice(0, 8).map(esc).join(', ')}${outside.length > 8 ? '…' : ''}.</div></div>` : ''}
     ${cambios.length ? `<h3 style="margin:12px 0 6px">Cambios</h3><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="sx-upd" checked style="width:auto"> Actualizar los ${cambios.length} sitios que cambian</label>
       <div class="tblwrap diff" style="max-height:240px;overflow:auto"><table class="tbl"><tbody>${cambios.slice(0, 150).map(c => `<tr><td><b>${esc(c.ex.name)}</b></td><td class="sm">${c.diff.map(([f, o, n]) => `${esc(f)}: <s>${esc(o ?? '—')}</s> → <b>${esc(n)}</b>`).join('<br>')}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${probs.length ? `<h3 style="margin:12px 0 6px;color:#B45309">⚠️ Filas que no se van a cargar (${probs.length})</h3>${probHTML(probs)}` : ''}
     ${nuevos.length ? `<h3 style="margin:12px 0 6px">Nuevos</h3><div class="tblwrap" style="max-height:180px;overflow:auto"><table class="tbl"><tbody>${nuevos.slice(0, 80).map(r => `<tr><td>${esc(r.name)}</td><td class="sm">${SITE_KINDS[r.kind]}</td><td class="sm">${esc([r.localidad, r.grupo].filter(Boolean).join(' · '))}</td></tr>`).join('')}</tbody></table></div>` : ''}
-    <p class="muted sm">Las celdas vacías no borran datos. Para identificar cada sitio se usa la columna "ID interno" (si viene de una exportación) o el nombre y el tipo.</p>
+    <p class="muted sm">Las celdas vacías no borran datos. Cada sitio se reconoce por la columna "ID interno" (si la planilla viene de ⬇ Excel) o por el <b>nombre</b>; podés subir la misma planilla las veces que quieras: solo se cambia lo distinto.</p>
     <div class="progress hidden" id="sx-pg" style="height:10px"><i style="width:0"></i></div><div class="err" id="sx-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="sx-x">Cancelar</button><button class="btn" id="sx-go" ${nuevos.length || cambios.length ? '' : 'disabled'}>Guardar</button></div>`, { wide: true });
   $('#sx-x').onclick = m.close;
   $('#sx-go').onclick = async () => {
-    const upd = cambios.length && $('#sx-upd')?.checked ? cambios : [], tot = nuevos.length + upd.length; let done = 0;
-    $('#sx-go').disabled = true; $('#sx-pg').classList.remove('hidden'); const bar = $('#sx-pg i');
+    const upd = cambios.length && $('#sx-upd')?.checked ? cambios : [], tot = nuevos.length + upd.length; let done = 0, okN = 0, okU = 0; const errs = [];
+    $('#sx-go').disabled = true; $('#sx-x').disabled = true; $('#sx-pg').classList.remove('hidden'); const bar = $('#sx-pg i');
+    const why = e => /duplicate|unique|23505/i.test((e && (e.message || '') + (e.code || '')) || '') ? 'Ya hay otro sitio con ese nombre y ese tipo.' : errText(e);
+    const toRow = ({ _row, _id, active, ...r }) => ({ ...r, aliases: r.aliases || [], active: active ?? true, org_id: me.org_id });
+    const step = () => { bar.style.width = Math.round(done * 100 / Math.max(1, tot)) + '%'; };
     try {
-      for (let i = 0; i < nuevos.length; i += 100){ const { error } = await sb.from('sites').insert(nuevos.slice(i, i + 100).map(({ _row, _id, active, ...r }) => ({ ...r, aliases: r.aliases || [], active: active ?? true, org_id: me.org_id }))); if (error) throw error; done += Math.min(100, nuevos.length - i); bar.style.width = Math.round(done * 100 / tot) + '%'; }
-      for (const c of upd){ const { error } = await sb.from('sites').update(c.patch).eq('id', c.ex.id); if (error) throw new Error(`${c.ex.name}: ${errText(error)}`); done++; if (done % 10 === 0) bar.style.width = Math.round(done * 100 / tot) + '%'; }
-      m.close(); toast(`Listo: ${nuevos.length} nuevos y ${upd.length} actualizados`); try { await IDB.del('kv', CUR_UID + ':sites-all'); await IDB.del('kv', CUR_UID + ':sites-map'); } catch {} route();
-    } catch (e){ $('#sx-err').textContent = errText(e); $('#sx-go').disabled = false; }
+      for (let i = 0; i < nuevos.length; i += 100){
+        const part = nuevos.slice(i, i + 100);
+        const { error } = await sb.from('sites').insert(part.map(toRow));
+        if (!error) okN += part.length;
+        else if (isNetErr(error)) throw error;
+        else for (const r of part){ const { error: e1 } = await sb.from('sites').insert(toRow(r)); if (e1){ if (isNetErr(e1)) throw e1; errs.push([r._row, r.name, why(e1)]); } else okN++; }
+        done += part.length; step();
+      }
+      for (const c of upd){ const { error } = await sb.from('sites').update(c.patch).eq('id', c.ex.id);
+        if (error){ if (isNetErr(error)) throw error; errs.push([c.row, c.ex.name, why(error)]); } else okU++;
+        done++; if (done % 10 === 0) step(); }
+    } catch (e){ errs.push([null, '—', 'Se cortó la conexión: ' + errText(e) + '. Volvé a subir la planilla: lo que ya se guardó no se duplica.']); }
+    try { await IDB.del('kv', CUR_UID + ':sites-all'); await IDB.del('kv', CUR_UID + ':sites-map'); await IDB.del('kv', CUR_UID + ':sites-min2'); } catch {}
+    m.close();
+    await route();
+    const all = [...probs, ...errs];
+    const r = modal(`<div style="text-align:center"><div style="font-size:42px">${all.length ? '📋' : '✅'}</div><h2 style="margin:4px 0">Importación terminada</h2></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0"><div class="card" style="margin:0;padding:10px;text-align:center"><span class="muted sm">✨ Creados</span><b style="display:block;font-size:24px">${okN}</b></div>
+        <div class="card" style="margin:0;padding:10px;text-align:center"><span class="muted sm">🔄 Actualizados</span><b style="display:block;font-size:24px">${okU}</b></div>
+        <div class="card" style="margin:0;padding:10px;text-align:center"><span class="muted sm">⚠️ No cargados</span><b style="display:block;font-size:24px;color:${all.length ? '#B45309' : 'inherit'}">${all.length}</b></div></div>
+      ${all.length ? probHTML(all) : ''}
+      <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" data-close-modal>Listo</button></div>`, { wide: true });
   };
 }
 
@@ -188,7 +222,7 @@ const SIT_TABS = [['res', 'Resumen'], ['act', 'Activos'], ['hist', 'Actividad'],
 let sitMap = null;
 async function viewSite(v, id){
   sitCss();
-  const sites = await cached('sites-all', () => pageAll(() => sb.from('sites').select('*').order('name').order('id')));
+  const sites = await loadSitesAll();
   const s = sites.find(x => x.id === id); if (!s) throw new Error('No se encontró el sitio.');
   const manage = isManager() && canWrite() && online();
   const col = SITE_COLORS[s.kind] || '#475569';
@@ -280,7 +314,7 @@ function sitBindLinksTable(box, links){ box.querySelectorAll('[data-l]').forEach
 let lnkMap = null;
 async function viewLinks(v){
   sitCss();
-  const [links, sites] = await Promise.all([sitLinks(), cached('sites-all', () => pageAll(() => sb.from('sites').select('*').order('name').order('id')))]);
+  const [links, sites] = await Promise.all([sitLinks(), loadSitesAll()]);
   const manage = isManager() && canWrite() && online();
   const tot = k => links.filter(l => l.kind === k).reduce((s, l) => s + (Number(l.length_m) || 0), 0);
   v.innerHTML = `<div class="card"><div class="row between" style="flex-wrap:wrap;gap:8px"><div><h2 style="margin:0">🔗 Vínculos</h2><p class="muted sm" style="margin:4px 0 0">Enlaces entre dos sitios: microondas, fibra óptica y radio. Tocá una línea del mapa para ver su ficha.</p></div>
@@ -315,7 +349,7 @@ async function viewLinks(v){
 /* ---------- editor de vínculo ---------- */
 async function linkEditor(l, preset = {}){
   sitCss();
-  const sites = (await cached('sites-all', () => pageAll(() => sb.from('sites').select('*').order('name').order('id')))).filter(s => s.lat != null);
+  const sites = (await loadSitesAll()).filter(s => s.lat != null);
   const sById = new Map(sites.map(s => [s.id, s]));
   const w = isManager() && canWrite() && online(), isNew = !l;
   const st = { kind: l?.kind || preset.kind || 'mw', method: l?.method || 'recta', A: null, B: null, aSite: l?.site_a || preset.a || null, bSite: l?.site_b || null, pts: l?.geom?.length > 1 ? l.geom.map(p => [p[0], p[1]]) : [], via: [], pick: null };
