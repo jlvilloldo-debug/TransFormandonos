@@ -82,7 +82,7 @@ function rsCss(){
 /* ---------- datos ---------- */
 async function rsLoad(){
   const W = rsCan();
-  if (W) await sb.rpc('res_autolink').catch(() => {});
+  if (W) { try { await sb.rpc('res_autolink'); } catch {} }
   const q = (t, cols, f) => { let x = sb.from(t).select(cols); if (f) x = f(x); return x.then(r => { if (r.error) throw r.error; return r.data || []; }); };
   let staff, contrs, users, pcs, pss, scopes, tasks, sites, projects;
   try {
