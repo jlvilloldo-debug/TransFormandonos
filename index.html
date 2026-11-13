@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-rEQByXQJxm6sHQzItiN+zQ/Kx+gFRG1XI9QFhpm4UV8='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-9pmMon2yPQozDdFN3w+TNIsfwqZC5uPoWrk/oe/pUts='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -52,6 +52,7 @@ a{color:var(--navy-2)}
 .tabs button.on{color:#fff;border-bottom-color:var(--green)}
 
 main{max-width:1080px;margin:0 auto;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+body.wide-main main{max-width:1600px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:14px}
 h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:0 0 12px} h3{font-size:15px;margin:0 0 8px}
 .muted{color:var(--muted)} .sm{font-size:13px}
@@ -411,6 +412,7 @@ tr.sor-bad td{background:var(--red-bg)}
   <nav class="tabs" id="tabs">
     <button data-tab="home">Inicio</button>
     <button data-tab="mesa" id="tab-mesa" class="hidden">Mesa</button>
+    <button data-tab="agenda">📅 Agenda</button>
     <button data-tab="map">Mapa</button>
     <button data-tab="proj">Proyectos</button>
     <button data-tab="tools">🧰 Herramientas</button>
@@ -447,11 +449,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.16';
+const APP_VERSION = '5.17';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -1362,8 +1364,8 @@ function navBuild(){
   if (isManager()){
     it[0] = ['mesa', '🧭', 'Mesa', '#/mesa'];
     if (c('horas')) it.push(['hhb', '📥', 'Bandeja', '#/tools/hh/bandeja']);
+    if (c('tasks')) it.push(['agenda', '📅', 'Agenda', '#/agenda']);
     if (c('tasks')) it.push(['tasks', '📋', 'Tareas', '#/tasks']);
-    if (c('map')) it.push(['map', '🗺️', 'Mapa', '#/map']);
   } else {
     if (c('tasks')) it.push(['tickets', '🎫', 'Tickets', '#/tickets']);
     if (c('horas', 2) && me.hh_enabled !== false) it.push(['hh', '⏱️', 'Horas', '#/tools/hh/hoy']);
@@ -1375,7 +1377,7 @@ function navBuild(){
 }
 function navMark(){
   const h = location.hash || '#/home', nav = $('#bnav'); if (!nav) return;
-  const k = h.startsWith('#/tools/hh/bandeja') ? 'hhb' : h.startsWith('#/tools/hh') ? 'hh' : h.startsWith('#/tools/veh') ? 'veh' : h.startsWith('#/tasks') ? 'tasks' : h.startsWith('#/tickets') ? 'tickets' : h.startsWith('#/mesa') ? 'mesa' : h.startsWith('#/map') ? 'map' : h.startsWith('#/home') || h === '#/' ? 'home' : 'more';
+  const k = h.startsWith('#/tools/hh/bandeja') ? 'hhb' : h.startsWith('#/tools/hh') ? 'hh' : h.startsWith('#/tools/veh') ? 'veh' : h.startsWith('#/tasks') ? 'tasks' : h.startsWith('#/tickets') ? 'tickets' : h.startsWith('#/mesa') ? 'mesa' : h.startsWith('#/agenda') ? 'agenda' : h.startsWith('#/map') ? 'map' : h.startsWith('#/home') || h === '#/' ? 'home' : 'more';
   nav.querySelectorAll('[data-bn]').forEach(a => a.classList.toggle('on', a.dataset.bn === k));
 }
 window.addEventListener('hashchange', navMark);
@@ -1387,6 +1389,7 @@ async function route(){
   geoStop();
   const [, tab='home', id, id2] = (location.hash || '#/home').split('/');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
+  document.body.classList.toggle('wide-main', tab === 'agenda');
   if (tab !== 'map' && typeof pmap !== 'undefined' && pmap){ pmap.remove(); pmap = null; }
   if (typeof fmap !== 'undefined' && fmap){ fmap.remove(); fmap = null; }
   $('#modal-root').innerHTML = ''; hideTip();
@@ -1413,6 +1416,7 @@ async function route(){
     else if (tab === 'invitacion'){ v.innerHTML = '<div class="card"><h2>Invitación</h2><p>Ya ingresaste con una cuenta. La invitación es para crear una cuenta nueva: abrí el link en otro navegador o cerrá la sesión primero.</p><a class="btn" href="#/home">Ir al inicio</a></div>'; }
     else if (tab === 'stock'){ if (isContractor()) { location.hash = '#/tasks'; return; } await needLib('stock'); await viewStock(v, id, id2); }
     else if (tab === 'hys'){ await needLib('hys'); await viewHys(v, id, id2); }
+    else if (tab === 'agenda'){ await needLib('agenda'); await viewAgenda(v, id); }
     else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
     else if (tab === 'tools') await viewTools(v);
