@@ -11,7 +11,7 @@ const PERM_NAMES = { insp: 'Inspecciones', tasks: 'Tareas', proj: 'Proyectos', m
   fibra: 'Herramienta de fibra', dc: 'Relevamiento DC', dc_net: 'DC: IP / VLAN / redes', horas: 'Horas y tareas', rrhh: 'Reporte RRHH y guardias', veh: 'Vehículos (jornadas)', veh_inf: 'Infracciones', stock: 'Activos y stock' };
 const PERM_LV = ['No ve', 'Ve', 'Carga', 'Gestiona'];
 const PERM_ROLES = { supervisor: 'Supervisor', pm: 'PM', coordinador: 'Coordinador', inspector: 'Técnico', contratista: 'Contratista' };
-const PERM_TAB = { agenda: 'tasks', map: 'map', proj: 'proj', insp: 'insp', tasks: 'tasks', stats: 'stats', sites: 'sites', tpl: 'tpl', org: 'org', stock: 'stock', sitio: 'sites', vinc: 'sites' };
+const PERM_TAB = { agenda: 'tasks', map: 'map', proj: 'proj', insp: 'insp', tasks: 'tasks', stats: 'stats', sites: 'sites', tpl: 'tpl', org: 'org', recursos: 'org', stock: 'stock', sitio: 'sites', vinc: 'sites' };
 let PERMS = null;
 
 function permDefault(role, mod){

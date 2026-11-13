@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-9pmMon2yPQozDdFN3w+TNIsfwqZC5uPoWrk/oe/pUts='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-jomaj/O8CG5SFEv98ca7RYoWiuVw36DSvaOar0xoQXw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -449,11 +449,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.17';
+const APP_VERSION = '5.18';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -501,6 +501,7 @@ function errText(e){
   const m = (e && (e.message || e.error_description)) || String(e);
   if (m === 'OFFLINE_NODATA') return 'Sin conexión. Este dato todavía no está guardado en el dispositivo: conectate una vez para descargarlo.';
   if (m === 'NEEDS_ONLINE') return 'Esta acción necesita conexión a internet.';
+  if (m === 'STORAGE_FULL') return 'El teléfono no tiene lugar para guardarla. Subí lo pendiente con señal o liberá espacio en el teléfono.';
   if (/Invalid login credentials/i.test(m)) return 'Email o contraseña incorrectos.';
   if (/Email not confirmed/i.test(m)) return 'Todavía no confirmaste tu email. Revisá tu casilla (y la carpeta de spam).';
   if (/already registered/i.test(m)) return 'Ese email ya tiene una cuenta. Probá ingresar o recuperar la contraseña.';
@@ -548,11 +549,57 @@ const IDB = (() => {
   };
   return {
     get: (st, k) => tx(st, 'readonly', s => s.get(k)),
-    put: (st, v, k) => tx(st, 'readwrite', s => k === undefined ? s.put(v) : s.put(v, k)),
+    put: async (st, v, k) => {
+      const go = () => tx(st, 'readwrite', s => k === undefined ? s.put(v) : s.put(v, k));
+      try { return await go(); } catch (e){
+        if (!isQuota(e)) throw e;
+        await storageFree().catch(() => {});            // libera lo que se puede (mapas guardados, fotos ya subidas) y reintenta una vez
+        try { return await go(); } catch (e2){ if (isQuota(e2)){ storageFullHelp(); throw new Error('STORAGE_FULL'); } throw e2; }
+      }
+    },
     del: (st, k) => tx(st, 'readwrite', s => s.delete(k)),
     all: st => tx(st, 'readonly', s => s.getAll()),
+    keys: st => tx(st, 'readonly', s => s.getAllKeys()),
   };
 })();
+/* ---------- espacio del teléfono para fotos y videos sin señal ---------- */
+const isQuota = e => !!e && (e.name === 'QuotaExceededError' || e.code === 22 || /quota|storage.*full|no space|disk/i.test(String(e.message || e)));
+let STORE_LOW = false;
+async function storageInfo(){
+  try { const e = await navigator.storage?.estimate?.(); if (!e || !e.quota) return null; const free = e.quota - (e.usage || 0); STORE_LOW = free < 250e6; return { used: e.usage || 0, quota: e.quota, free }; } catch { return null; }
+}
+const fmtMB = b => b >= 1e9 ? (b / 1e9).toFixed(1).replace('.', ',') + ' GB' : Math.max(1, Math.round(b / 1e6)) + ' MB';
+// calidad de las fotos: normal 1280 px; liviana 1024 px si el usuario la eligió o queda poco lugar
+const photoLite = () => { try { if (localStorage.getItem('ia_photo_lite') === '1') return true; } catch {} return STORE_LOW; };
+const photoQ = () => photoLite() ? [1024, 0.6] : [1280, 0.72];
+async function storageFree(){
+  let n = 0;
+  try { if (window.caches) n += (await caches.delete('ia-tiles')) ? 1 : 0; } catch {}
+  // fotos y videos que ya no pertenecen a ninguna planilla guardada en el teléfono (ya subidas o borradas)
+  try {
+    // solo se borran las de planillas que ya no están en el teléfono (nunca las de una planilla guardada o abierta)
+    const ids = new Set((await IDB.all('insp')).map(r => r.id)); const open = (location.hash.split('/')[2] || '');
+    for (const k of await IDB.keys('blobs')){ const iid = String(k).split('/')[1] || ''; if (!iid || ids.has(iid) || iid === open) continue; await IDB.del('blobs', k).catch(() => {}); n++; }
+  } catch {}
+  return n;
+}
+let fullShown = 0;
+function storageFullHelp(){
+  if (Date.now() - fullShown < 60000) return; fullShown = Date.now();
+  storageInfo().then(i => {
+    const m = modal(`<h2>📵 El teléfono se quedó sin lugar</h2>
+      <p>La foto <b>no se guardó</b>. ${i ? `Esta app tiene ${fmtMB(i.used)} guardados y el teléfono le deja ${fmtMB(Math.max(0, i.free))} libres.` : ''} Ya borré los mapas guardados y las fotos que estaban subidas.</p>
+      <p class="sm"><b>Para seguir cargando:</b></p><ol class="sm" style="margin-top:0;padding-left:18px">
+        <li>${online() ? '<b>Subí lo pendiente ahora</b> (botón de abajo): al subirse, las fotos se borran del teléfono.' : 'Cuando tengas señal, la app sube todo y libera el lugar sola.'}</li>
+        <li>Liberá espacio en el teléfono: borrá videos y fotos viejas de la galería, o archivos de WhatsApp (Ajustes → Almacenamiento).</li>
+        <li>En la cámara del teléfono, desactivá que también guarde una copia en la galería si no la necesitás.</li></ol>
+      <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="sf-lite" style="width:auto" ${photoLite() ? 'checked' : ''}> 📷 Fotos livianas (ocupan casi la mitad; se siguen viendo bien)</label>
+      <div class="row" style="justify-content:flex-end;gap:6px;margin-top:12px">${online() ? '<button class="btn" id="sf-sync">⬆ Subir lo pendiente</button>' : ''}<button class="btn sec" id="sf-x">Entendido</button></div>`);
+    $('#sf-lite').onchange = e => { try { localStorage.setItem('ia_photo_lite', e.target.checked ? '1' : '0'); } catch {} };
+    $('#sf-x').onclick = m.close;
+    $('#sf-sync')?.addEventListener('click', async () => { m.close(); try { await syncNow(); toast('Listo: lo subido ya no ocupa lugar en el teléfono.'); } catch (e){ toast(errText(e)); } });
+  });
+}
 let CUR_UID = null;
 async function cached(key, fetcher){
   const k = CUR_UID + ':' + key;
@@ -1284,7 +1331,10 @@ async function boot(){
   if (installPrompt) $('#b-install').classList.remove('hidden');
   updateNet(); syncNow();
   route();
-  setTimeout(warmCache, 2500);   // lo que se baja para trabajar sin señal, después de mostrar la primera pantalla
+  setTimeout(warmCache, 2500);
+  // pedirle al navegador que no borre las fotos sin subir cuando el teléfono necesita lugar; y medir el espacio libre
+  try { navigator.storage?.persist?.().catch(() => {}); } catch {}
+  storageInfo();   // lo que se baja para trabajar sin señal, después de mostrar la primera pantalla
 }
 /* Al tener señal, deja en el teléfono lo necesario para trabajar sin conexión */
 let warming = false;
@@ -1311,8 +1361,15 @@ function offlineReadyHTML(){
   const ago = h == null ? '' : h < 1 ? 'hace menos de 1 h' : h < 48 ? `hace ${Math.floor(h)} h` : `hace ${Math.floor(h / 24)} días`;
   const ok = h != null && h < 24;
   return `<div class="offready ${ok ? 'ok' : 'old'}"><span>${ok ? '✅' : '⚠️'} ${t ? `<b>${ok ? 'Listo para trabajar sin señal' : 'Datos sin señal desactualizados'}</b> · actualizado ${ago}` : '<b>Todavía no se bajaron los datos para trabajar sin señal</b>'}</span>
-    ${online() ? '<button class="btn small sec" data-offready>Actualizar ahora</button>' : ''}</div>`;
+    <span class="sm muted" data-stinfo></span>${online() ? '<button class="btn small sec" data-offready>Actualizar ahora</button>' : ''}</div>`;
 }
+// lugar en el teléfono, dentro del cartel "Listo para trabajar sin señal"
+function stInfoFill(){
+  const els = $$('[data-stinfo]:not([data-done])'); if (!els.length) return;
+  storageInfo().then(i => { for (const el of els){ el.dataset.done = '1'; if (!i) continue;
+    el.innerHTML = i.free < 250e6 ? `<b style="color:var(--red)">📵 Poco lugar: ${fmtMB(Math.max(0, i.free))} libres</b> · fotos livianas activadas` : `📱 ${fmtMB(i.free)} libres para fotos`; } });
+}
+new MutationObserver(() => { if (document.querySelector('[data-stinfo]:not([data-done])')) stInfoFill(); }).observe(document.body, { childList: true, subtree: true });
 document.addEventListener('click', async e => { const b = e.target.closest('[data-offready]'); if (!b) return;
   b.disabled = true; b.textContent = 'Bajando…';
   try { warming = false; await warmCache(); toast('Listo: plantillas, sitios y tareas guardados en el teléfono.'); } catch (er){ toast(errText(er)); }
@@ -1382,14 +1439,14 @@ function navMark(){
 }
 window.addEventListener('hashchange', navMark);
 let leaveGuard = null;
-const ONLINE_ONLY = ['org', 'admin'];
+const ONLINE_ONLY = ['org', 'admin', 'recursos'];
 async function route(){
   if (!me) return;
   if (leaveGuard){ await leaveGuard(); leaveGuard = null; }
   geoStop();
   const [, tab='home', id, id2] = (location.hash || '#/home').split('/');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
-  document.body.classList.toggle('wide-main', tab === 'agenda');
+  document.body.classList.toggle('wide-main', tab === 'agenda' || tab === 'recursos');
   if (tab !== 'map' && typeof pmap !== 'undefined' && pmap){ pmap.remove(); pmap = null; }
   if (typeof fmap !== 'undefined' && fmap){ fmap.remove(); fmap = null; }
   $('#modal-root').innerHTML = ''; hideTip();
@@ -1417,6 +1474,7 @@ async function route(){
     else if (tab === 'stock'){ if (isContractor()) { location.hash = '#/tasks'; return; } await needLib('stock'); await viewStock(v, id, id2); }
     else if (tab === 'hys'){ await needLib('hys'); await viewHys(v, id, id2); }
     else if (tab === 'agenda'){ await needLib('agenda'); await viewAgenda(v, id); }
+    else if (tab === 'recursos'){ if (!isManager()) { location.hash = '#/home'; return; } await needLib('recursos'); await viewRecursos(v, id, id2); }
     else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
     else if (tab === 'tools') await viewTools(v);
@@ -1962,7 +2020,7 @@ async function viewExecute(v, id){
         if (/^video\//.test(f.type)){ ph.remove(); await addVideo(itId, f, { gal: true }); continue; }
         try {
           const meta = await jpegMeta(f);
-          const blob = await compressImage(f, 1280, 0.72, meta);
+          const blob = await compressImage(f, ...photoQ(), meta);
           const path = `${ins.org_id}/${id}/${uid()}.jpg`;
           await IDB.put('blobs', blob, path);
           let rec;
@@ -2775,8 +2833,9 @@ async function viewContractors(v){
   const staffOpts = (HHS.staff || []).filter(s => s.active && s.kind !== 'contratista');
   const stName = id => staffOpts.find(s => s.id === id)?.name || (HHS.staff || []).find(s => s.id === id)?.name || '';
   v.innerHTML = `
-    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" data-go="#/tasks">← Tareas</button><h2 style="margin:0">Contratistas y cuadrillas</h2></div>
+    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" data-go="#/tasks">← Tareas</button><h2 style="margin:0">Contratistas y cuadrillas <span class="muted sm" style="font-weight:400">· avanzado</span></h2></div>
       <div class="row" style="gap:6px">${manage ? '<button class="btn sec" id="c-link" title="Une cada cuadrilla con el técnico de Recursos que tiene el mismo nombre">🔗 Vincular cuadrillas por nombre</button><button class="btn" id="c-add">+ Contratista</button>' : ''}</div></div>
+      ${isManager() ? '<p class="sm" style="margin:10px 0 0;background:#EFF5FF;border-radius:10px;padding:8px 10px">💡 Ahora las contratistas, su gente y sus proyectos se manejan más fácil desde <a href="#/recursos"><b>👥 Recursos</b></a>. Esta pantalla queda como vista avanzada.</p>' : ''}
       <p class="muted sm" style="margin:10px 0 0">Para que una contratista entre a la app: pasale el código de la empresa (en <b>Mi empresa</b>), que cree su cuenta con “Tengo un código”, y después cambiale el rol a <b>Contratista</b> eligiendo a cuál pertenece. Cada usuario ocupa un lugar del cupo de la empresa.</p></div>
     <div class="card">${contrs.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Contacto</th><th class="hide-sm">WhatsApp</th><th class="hide-sm">Usuarios</th><th>Es el técnico</th><th>Estado</th><th></th></tr></thead><tbody>
       ${contrs.map(c => { const us = (members || []).filter(m => m.contractor_id === c.id); return `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.contact_name || '')}<div class="muted sm">${esc(c.email || '')}</div></td>
@@ -3517,6 +3576,7 @@ async function viewOrg(v){
   const active = (members || []).filter(m => m.active).length;
   const adm = isAdmin();
   v.innerHTML = `
+    ${isManager() ? `<a class="card row between" href="#/recursos" style="text-decoration:none;color:inherit;border-left:5px solid var(--s1)"><div><h2 style="margin:0">👥 Recursos</h2><div class="muted sm">Organigrama, personal propio y contratistas, en qué proyectos está cada uno. Alta de personas y carga por Excel.</div></div><span class="btn" style="margin:0">Abrir</span></a>` : ''}
     ${permCanManage() ? `<div class="card row between"><div><h2 style="margin:0">🔐 Permisos por módulo</h2><div class="muted sm">Qué ve y qué puede cargar cada perfil o persona${adm ? ', y qué coordinador te ayuda a manejarlos' : ''}.</div></div><a class="btn sec" href="#/perms">Abrir</a></div>` : ''}
     ${isManager() ? '<div id="org-ext"></div>' : ''}
     ${adm ? `<div class="card"><h2>Datos de la empresa</h2><div class="row"><input id="o-name" class="grow" value="${esc(org?.name || '')}"><button class="btn sec" id="o-save">Guardar nombre</button></div></div>
@@ -3526,7 +3586,7 @@ async function viewOrg(v){
       <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap"><button class="btn" id="b-invite">✉ Invitar a una persona</button><span class="muted sm">Le llega un link para crear su cuenta, ya con su rol y sus proyectos.</span></div>
       <div id="inv-list"></div>
       <p class="muted sm" style="margin-bottom:0">Usuarios activos: ${active} de ${org?.seat_limit ?? '—'}.${active >= (org?.seat_limit ?? 0) ? ' El cupo está completo: para sumar a alguien, pedí más usuarios o desactivá uno.' : ''}</p></div>` : ''}
-    <div class="card"><h2>Usuarios</h2><div class="tblwrap"><table class="tbl">
+    <div class="card"><h2>Usuarios <span class="muted sm" style="font-weight:400">· avanzado</span></h2>${isManager() ? '<p class="muted sm" style="margin-top:-4px">Para sumar personas, armar el organigrama y afectarlas a proyectos usá <a href="#/recursos"><b>👥 Recursos</b></a>. Acá quedan los roles y el acceso de cada cuenta.</p>' : ''}<div class="tblwrap"><table class="tbl">
       <thead><tr><th>Nombre</th><th class="hide-sm">Email</th><th>Rol</th><th>Estado</th>${isManager() ? '<th>Horas</th>' : ''}<th></th></tr></thead><tbody>
       ${(members||[]).map(m => `<tr><td>${esc(m.full_name || '—')}${m.id === me.id ? ' <span class="muted">(vos)</span>' : ''}</td><td class="hide-sm">${esc(m.email)}</td>
         <td>${adm && m.id !== me.id ? `<select data-role="${m.id}" style="padding:6px;width:auto">${Object.entries(ROLE_TXT).map(([r, x]) => `<option ${m.role===r?'selected':''} value="${r}">${x}</option>`).join('')}</select>${m.role === 'contratista' ? `<div class="muted sm">${esc(cName(m.contractor_id))}</div>` : ''}` : esc(ROLE_TXT[m.role] || m.role) + (m.role === 'contratista' ? ` · ${esc(cName(m.contractor_id))}` : '')}</td>
