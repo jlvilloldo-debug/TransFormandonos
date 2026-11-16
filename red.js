@@ -36,7 +36,8 @@ const rdNbOf = n => Math.max(8, ...RD.cbs.filter(c => c.a_id === n.id || c.b_id 
 const rdIsCut = n => n && n.kind === 'nodo' && rdDropOf(n).filter(b => b < rdNbOf(n)).length >= rdNbOf(n);
 const rdPorts = c => +(String(c.props?.n2 || '1x8').split('x')[1]) || 8;
 const rdKids = id => RD.els.filter(e => e.parent_id === id);
-const rdFree = c => { const used = rdKids(c.id).filter(e => e.kind === 'ap').map(e => e.port); return [...Array(rdPorts(c))].map((_, i) => i + 1).filter(p => !used.includes(p)); };
+const rdOuts = c => (c.props?.outs && typeof c.props.outs === 'object') ? c.props.outs : {};
+const rdFree = c => { const used = [...rdKids(c.id).filter(e => e.kind === 'ap').map(e => e.port), ...Object.keys(rdOuts(c)).map(Number)]; return [...Array(rdPorts(c))].map((_, i) => i + 1).filter(p => !used.includes(p)); };
 const rdPend = id => RD.ch.some(h => h.status === 'pendiente' && h.target_id === id);
 const rdNear = (ll, list) => list.reduce((b, e) => { const d = havm(ll, rdLL(e)); return !b || d < b.d ? { e, d } : b; }, null);
 
@@ -139,11 +140,11 @@ async function rdOpen(v, id){
   const T = RD.net.kind === 'troncal';
   v.innerHTML = `<div class="rd-top"><div><div class="muted sm"><a href="#/red">Red de fibra</a> › ${T ? 'Troncal' : 'FTTH'}</div><h1>🌐 ${esc(RD.net.name)}</h1></div>
       <span class="rd-chip" id="rd-asof"></span><span style="flex:1"></span>
-      <button class="btn sec" id="rd-ch">Cambios <b id="rd-np"></b></button><button class="btn sec" id="rd-uni">Unifilar</button>
+      <button class="btn sec" id="rd-ch">Cambios <b id="rd-np"></b></button><button class="btn sec" id="rd-uni">Unifilar</button>${!T && rdEdit() ? '<button class="btn sec" id="rd-auto" title="Ubicar cada AP en su caja y salida según el código">AP → cajas</button>' : ''}
       ${rdMgr() ? '<button class="btn" id="rd-up">⬆ Subir información</button>' : ''}<button class="btn sec" id="rd-xl" title="Bajar los elementos en Excel">⬇</button></div>
     <div class="rd-row" style="margin-bottom:8px"><div class="rd-tools" id="rd-tools"></div><span class="muted sm" id="rd-cnt"></span></div>
     <div class="rd-main"><div class="rd-mapw"><div id="rd-map"></div><div class="rd-hint hidden" id="rd-hint"></div></div><aside class="rd-side" id="rd-side"></aside></div>`;
-  $('#rd-ch').onclick = rdTray; $('#rd-uni').onclick = rdUnifilar; $('#rd-xl').onclick = rdExport; $('#rd-up')?.addEventListener('click', rdUpload);
+  $('#rd-ch').onclick = rdTray; $('#rd-uni').onclick = rdUnifilar; $('#rd-auto')?.addEventListener('click', rdAutoAssign); $('#rd-xl').onclick = rdExport; $('#rd-up')?.addEventListener('click', rdUpload);
   if (!window.L){ $('#rd-map').innerHTML = '<p class="muted" style="padding:20px">El mapa necesita conexión la primera vez.</p>'; rdSide(); return; }
   RD.map = L.map('rd-map', { preferCanvas: false }); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(RD.map);
   RD.lay = L.layerGroup().addTo(RD.map);
@@ -226,6 +227,67 @@ async function rdApply(tk, id, op, data, descr){
   for (const k of ['e', 'c', 'h']) IDB.del('kv', CUR_UID + ':net-' + k + '-' + RD.net.id).catch(() => {});
   toast(r.status === 'pendiente' ? 'Cambio registrado. La red ya quedó actualizada; falta que lo confirme un supervisor.' : 'Cambio registrado.');
   rdBar(); rdDraw(); rdSide(); return row;
+}
+/* ---------- salidas de la caja ---------- */
+// conecta un AP a la salida p de una caja; si la caja tiene código CDO-OLT-rama-botella-caja, el AP toma el código que corresponde
+async function rdAssign(ap, caja, p, quiet){
+  const m = (ap.code || '').split('-'), cc = (caja.code || '').split('-');
+  const nc = m.length >= 7 && cc.length >= 5 && /^cdo$/i.test(cc[0]) ? ['AP', cc[1], cc[2], cc[3], cc[4], p, m[6]].join('-') : ap.code, d = { parent_id: caja.id, port: +p };
+  if (!quiet && nc === ap.code && m.length >= 7 && !(cc.length >= 5)) toast('La caja no tiene un código CDO-OLT-rama-botella-caja: el AP conserva su código.');
+  if (nc !== ap.code){ d.code = nc; d.props = { ...(ap.props || {}), old: [...(ap.props?.old || []), ap.code].slice(-10) }; }
+  return rdApply('el', ap.id, 'upd', d, `${ap.code || 'AP'} a la salida ${p} de ${rdName(caja)}${nc !== ap.code ? '. Código nuevo: ' + nc : ''}`);
+}
+function rdOutEdit(c, p){
+  const ap = rdKids(c.id).find(e => e.kind === 'ap' && e.port === p), tx = rdOuts(c)[p] || '';
+  const near = RD.els.filter(e => e.kind === 'ap' && e.lat != null && e.id !== ap?.id).map(e => ({ e, d: havm(rdLL(c), rdLL(e)) })).sort((a, b) => a.d - b.d).slice(0, 12);
+  const where = e => { const k = e.parent_id && rdEl(e.parent_id); return k ? `en la salida ${e.port || '?'} de ${rdName(k)}` : 'sin caja'; };
+  const m = modal(`<h2>Salida ${p} · ${esc(rdName(c))}</h2>
+    <p class="muted sm" style="margin:0 0 8px">${ap ? `Hoy va al AP <b>${esc(rdName(ap))}</b>.` : tx ? `Hoy va a: <b>${esc(tx)}</b>.` : 'Hoy está libre.'}</p>
+    <h3 style="margin:8px 0 4px">Conectar un AP (los más cercanos a la caja)</h3>
+    <div style="display:grid;gap:4px;max-height:260px;overflow:auto">${near.map(({ e, d }) => `<button class="rd-item" data-ap="${e.id}" style="text-align:left"><b>${esc(rdName(e))}</b><span class="muted sm"> · a ${Math.round(d)} m · ${esc(where(e))}</span></button>`).join('') || '<span class="muted sm">No hay AP cargados.</span>'}</div>
+    <h3 style="margin:12px 0 4px">U otro destino</h3><div class="row" style="gap:6px"><input id="ro-t" maxlength="80" value="${esc(tx)}" placeholder="Ej.: drop a Escuela N° 1234, reserva" style="flex:1;margin:0"><button class="btn sec" id="ro-ts">Guardar</button></div>
+    <div class="row" style="justify-content:space-between;gap:6px;margin-top:12px">${ap || tx ? '<button class="btn sec" id="ro-free" style="color:var(--red)">Liberar salida</button>' : '<span></span>'}<span class="row" style="gap:6px">${ap ? `<button class="btn sec" id="ro-go">Ver el AP</button>` : ''}<button class="btn sec" id="ro-x">Cerrar</button></span></div>`);
+  const props = o => ({ ...(c.props || {}), outs: o });
+  const freeAp = () => ap ? rdApply('el', ap.id, 'upd', { parent_id: null, port: null }, `${rdName(ap)} sale de la salida ${p} de ${rdName(c)}`) : true;
+  $('#ro-x').onclick = m.close;
+  $('#ro-go')?.addEventListener('click', () => { m.close(); RD.sel = ap.id; if (ap.lat != null && RD.map) RD.map.panTo([ap.lat, ap.lng]); rdDraw(); rdSide(); });
+  m.el.querySelectorAll('[data-ap]').forEach(b => b.onclick = async () => { const e = rdEl(b.dataset.ap); if (!e) return; m.close();
+    if (!(await freeAp())) return; if (tx){ const o = { ...rdOuts(c) }; delete o[p]; if (!(await rdApply('el', c.id, 'upd', { props: props(o) }, `${rdName(c)}: salida ${p} deja de ir a "${tx}"`))) return; }
+    const row = await rdAssign(e, rdEl(c.id), p); if (row){ RD.sel = c.id; rdSide(); } });
+  $('#ro-ts').onclick = async () => { const v = $('#ro-t').value.replace(/[<>]/g, '').trim().slice(0, 80); if (!v) return toast('Escribí el destino o usá "Liberar salida".'); m.close();
+    if (!(await freeAp())) return; const cc = rdEl(c.id); await rdApply('el', c.id, 'upd', { props: { ...(cc.props || {}), outs: { ...rdOuts(cc), [p]: v } } }, `${rdName(c)}: salida ${p} va a "${v}"`); RD.sel = c.id; rdSide(); };
+  $('#ro-free')?.addEventListener('click', async () => { m.close(); if (ap){ await freeAp(); } else { const o = { ...rdOuts(c) }; delete o[p]; await rdApply('el', c.id, 'upd', { props: props(o) }, `${rdName(c)}: se libera la salida ${p}`); } RD.sel = c.id; rdSide(); });
+}
+/* AP → cajas: lee el código AP-OLT-rama-botella-caja-salida-n° y propone en qué caja y salida va cada AP */
+function rdAutoAssign(){
+  const aps = RD.els.filter(e => e.kind === 'ap' && e.lat != null && (e.code || '').split('-').length >= 7), byK = new Map();
+  aps.forEach(a => { const s = a.code.split('-'), k = [s[1], s[2], s[3], s[4]].join('-'); if (!byK.has(k)) byK.set(k, []); byK.get(k).push({ a, p: +s[5] || null }); });
+  const cajas = RD.els.filter(e => e.kind === 'caja' && e.lat != null), taken = new Set(), rows = [], cen = l => ({ lat: l.reduce((t, x) => t + x.a.lat, 0) / l.length, lng: l.reduce((t, x) => t + x.a.lng, 0) / l.length });
+  const coded = k => cajas.find(c => (c.code || '').toLowerCase() === ('cdo-' + k).toLowerCase());
+  [...byK.keys()].forEach(k => { const c = coded(k); if (c) taken.add(c.id); });
+  // primero los grupos con caja con código; después cada grupo toma la caja sin código más cercana (hasta 250 m)
+  const order = [...byK.entries()].map(([k, l]) => { const ce = cen(l), c = coded(k); if (c) return { k, l, c, d: 0, by: 'código' };
+    const cand = cajas.filter(x => !/^cdo-/i.test(x.code || '')).map(x => ({ x, d: havm([ce.lng, ce.lat], rdLL(x)) })).sort((a, b) => a.d - b.d); return { k, l, cand, ce }; });
+  order.filter(o => !o.c).map(o => ({ o, d: o.cand.find(x => !taken.has(x.x.id))?.d ?? 1e9 })).sort((a, b) => a.d - b.d).forEach(({ o }) => { const n = o.cand.find(x => !taken.has(x.x.id) && x.d < 250); if (n){ taken.add(n.x.id); o.c = n.x; o.d = n.d; o.by = 'cercanía'; o.setCode = !(n.x.code); } });
+  order.forEach(o => { const used = new Map(); o.l.forEach(({ a, p }) => {
+    const same = o.c && a.parent_id === o.c.id && a.port === p, np = o.c ? rdPorts(o.c) : 0, other = o.c && p && rdKids(o.c.id).find(x => x.kind === 'ap' && x.port === p && x.id !== a.id && !o.l.some(y => y.a.id === x.id)), dup = p && used.has(p), txt = o.c && p && rdOuts(o.c)[p];
+    const prob = !o.c ? 'no hay caja a menos de 250 m' : !p ? 'el código no tiene salida' : p > np ? `la caja tiene ${np} salidas` : dup ? `la salida ${p} se repite (${rdName(used.get(p))})` : other ? `la salida ${p} ya tiene ${rdName(other)}` : txt ? `la salida ${p} tiene "${txt}"` : '';
+    if (p) used.set(p, a); rows.push({ a, p, c: o.c, by: o.by, d: o.d, setCode: o.setCode, k: o.k, same, prob }); }); });
+  const todo = rows.filter(r => !r.same), ok = todo.filter(r => !r.prob), bad = todo.filter(r => r.prob), done = rows.length - todo.length;
+  const codes = [...new Map(ok.filter(r => r.setCode).map(r => [r.c.id, r])).values()];
+  const m = modal(`<h2>AP → cajas por código</h2><p class="muted sm">Cada AP va a la caja <b>CDO-OLT-rama-botella-caja</b> de su código y a la salida que marca. Si esa caja no tiene código, se usa la caja sin código más cercana (hasta 250 m) y se le pone el código. Revisá antes de aplicar.</p>
+    <p class="sm" style="margin:6px 0">${rdPl(ok.length, 'AP para ubicar', 'AP para ubicar')} · ${done} ya estaban bien · ${bad.length} con problemas${codes.length ? ` · ${codes.length} cajas reciben código` : ''}</p>
+    <div style="max-height:46vh;overflow:auto"><table class="tbl"><thead><tr><th></th><th>AP</th><th>Caja</th><th>Salida</th><th></th></tr></thead><tbody>
+    ${ok.map((r, i) => `<tr><td><input type="checkbox" data-r="${i}" checked style="width:auto;margin:0"></td><td>${esc(r.a.code)}</td><td>${esc(rdName(r.c))}${r.setCode ? ` <span class="muted sm">→ CDO-${esc(r.k)}</span>` : ''}${r.by === 'cercanía' ? ` <span class="muted sm">(a ${Math.round(r.d)} m)</span>` : ''}</td><td>${r.p}</td><td class="muted sm">${r.a.parent_id ? 'cambia de caja o salida' : 'nuevo'}</td></tr>`).join('')}
+    ${bad.map(r => `<tr><td></td><td>${esc(r.a.code)}</td><td>${r.c ? esc(rdName(r.c)) : '—'}</td><td>${r.p || '—'}</td><td style="color:var(--red)" class="sm">${esc(r.prob)}</td></tr>`).join('')}</tbody></table></div>
+    <p class="muted sm" id="ra-e"></p><div class="row" style="justify-content:flex-end;gap:6px;margin-top:8px"><button class="btn sec" id="ra-x">Cancelar</button><button class="btn" id="ra-ok" ${ok.length ? '' : 'disabled'}>Aplicar</button></div>`, { wide: true });
+  $('#ra-x').onclick = m.close;
+  $('#ra-ok').onclick = async () => { if (!needOnline()) return; const sel = ok.filter((r, i) => m.el.querySelector(`[data-r="${i}"]`)?.checked); if (!sel.length) return; const b = $('#ra-ok'); b.disabled = true; let n = 0, err = 0;
+    const call = (id, d, descr) => sb.rpc('net_apply', { p_net: RD.net.id, p_tk: 'el', p_id: id, p_op: 'upd', p_data: d, p_descr: descr }).then(({ error }) => { if (error) throw error; });
+    for (const r of [...new Map(sel.filter(r => r.setCode).map(r => [r.c.id, r])).values()]){ try { await call(r.c.id, { code: 'CDO-' + r.k }, `${rdName(r.c)} recibe el código CDO-${r.k} (AP → cajas)`); r.c.code = 'CDO-' + r.k; } catch (e){ err++; } }
+    for (const r of sel){ $('#ra-e').textContent = `Ubicando ${++n} de ${sel.length}…`;
+      try { await call(r.a.id, { parent_id: r.c.id, port: r.p }, `${r.a.code} a la salida ${r.p} de ${r.c.code || rdName(r.c)} (AP → cajas, por código)`); } catch (e){ err++; } }
+    m.close(); await rdReload(); toast(err ? `Listo, con ${err} que no se pudieron aplicar. Revisalos en Cambios.` : `Listo: ${sel.length} AP ubicados en su caja. Quedó en Cambios.`); };
 }
 async function rdMoved(e, latlng){
   let ll = [+latlng.lng.toFixed(6), +latlng.lat.toFixed(6)], extra = {};
@@ -394,15 +456,17 @@ function rdCajaPanel(c){
   o.push(`<line x1="6" y1="${mid}" x2="${n1 ? 54 : 130}" y2="${mid}" stroke="#1D4ED8" stroke-width="3"/>`);
   if (n1) o.push(`<path d="M54 ${mid - 16}L54 ${mid + 16}L86 ${mid}Z" fill="#F08A8A" stroke="#12222E"/><text x="56" y="${mid + 30}" font-size="11">${esc(n1)}</text><line x1="86" y1="${mid - 5}" x2="130" y2="${mid - 5}" stroke="#12222E" stroke-width="1.5"/><line x1="86" y1="${mid + 6}" x2="104" y2="${mid + 6}" stroke="#EA7A0C" stroke-width="1.5"/><text x="88" y="${mid + 44}" font-size="9" fill="#B45309">resto: reserva</text>`);
   o.push(`<path d="M130 ${mid - 26}L130 ${mid + 26}L172 ${mid}Z" fill="#F08A8A" stroke="#12222E"/><text x="132" y="${mid + 40}" font-size="11">${esc(n2)}</text>`);
-  for (let p = 1; p <= np; p++){ const y = 16 + (p - 1) * 26, a = aps.find(x => x.port === p);
-    o.push(`<path d="M172 ${mid}C200 ${mid} 190 ${y} 218 ${y}" fill="none" stroke="${a ? '#15803D' : '#D5DEE4'}" stroke-width="2"/><circle cx="218" cy="${y}" r="5" fill="${a ? '#0B7A75' : '#fff'}" stroke="${a ? '#0B7A75' : '#5C6F7C'}" ${a ? `data-go="${a.id}" style="cursor:pointer"` : ''}/><text x="228" y="${y + 4}" font-size="11" fill="${a ? '#12222E' : '#5C6F7C'}" ${a ? `data-go="${a.id}" style="cursor:pointer;font-weight:600"` : ''}>${p} · ${a ? esc(rdName(a)) : 'libre'}</text>`); }
+  const outs = rdOuts(c);
+  for (let p = 1; p <= np; p++){ const y = 16 + (p - 1) * 26, a = aps.find(x => x.port === p), tx = !a && outs[p], col = a ? '#0B7A75' : tx ? '#B45309' : '#5C6F7C';
+    const act = ed ? `data-out="${p}" style="cursor:pointer"` : a ? `data-go="${a.id}" style="cursor:pointer"` : '';
+    o.push(`<g ${act}><path d="M172 ${mid}C200 ${mid} 190 ${y} 218 ${y}" fill="none" stroke="${a ? '#15803D' : tx ? '#F59E0B' : '#D5DEE4'}" stroke-width="2" pointer-events="none"/><circle cx="218" cy="${y}" r="5" fill="${a || tx ? col : '#fff'}" stroke="${col}"/><rect x="212" y="${y - 11}" width="166" height="22" fill="transparent"/><text x="228" y="${y + 4}" font-size="11" fill="${a ? '#12222E' : col}" style="${a || tx ? 'font-weight:600' : ''}">${p} · ${a ? esc(rdName(a)) : tx ? esc(String(tx).slice(0, 26)) : 'libre'}${ed ? ' ✎' : ''}</text></g>`); }
   const loose = aps.filter(a => !a.port || a.port > np);
   return `<h2>${esc(rdName(c))}</h2><div class="rd-row"><span class="rd-chip">${esc(c.name || 'Sin dirección cargada')}</span>${rdPosChip(c)}</div>
     ${bot ? `<button class="rd-item" data-go="${bot.id}">Cuelga de la botella <b>${esc(rdName(bot))}</b></button>` : ''}
     <h3>Splitters y salidas</h3><div class="rd-uni"><svg viewBox="0 0 380 ${H}" width="100%" style="max-width:380px;display:block">${o.join('')}</svg></div>
     ${loose.length ? `<div class="rd-alert">AP sin salida válida: ${loose.map(a => esc(rdName(a))).join(', ')}</div>` : ''}
     <dl class="rd-kv"><dt>Nivel 1</dt><dd>${ed ? `<select id="rj-n1" style="width:auto;margin:0">${['', '1x2', '1x4', '1x8'].map(x => `<option value="${x}" ${x === n1 ? 'selected' : ''}>${x || 'sin splitter'}</option>`).join('')}</select>` : esc(n1 || 'sin')}</dd>
-      <dt>Nivel 2</dt><dd>${ed ? `<select id="rj-n2" style="width:auto;margin:0">${['1x4', '1x8', '1x16', '1x32'].map(x => `<option ${x === n2 ? 'selected' : ''}>${x}</option>`).join('')}</select>` : esc(n2)}</dd><dt>Salidas</dt><dd>${aps.length} ocupadas · ${rdFree(c).length} libres</dd></dl>${rdBasics(c)}`;
+      <dt>Nivel 2</dt><dd>${ed ? `<select id="rj-n2" style="width:auto;margin:0">${['1x4', '1x8', '1x16', '1x32'].map(x => `<option ${x === n2 ? 'selected' : ''}>${x}</option>`).join('')}</select>` : esc(n2)}</dd><dt>Salidas</dt><dd>${np - rdFree(c).length} ocupadas · ${rdFree(c).length} libres</dd></dl>${ed ? '<p class="muted sm" style="margin:4px 0 0">Tocá una salida (✎) para conectarle un AP, escribir otro destino o liberarla.</p>' : ''}${rdBasics(c)}`;
 }
 function rdBindSide(e, c){
   const s = $('#rd-side');
@@ -458,11 +522,8 @@ function rdBindSide(e, c){
   if (e.kind === 'ap'){
     $('#ra-light')?.addEventListener('click', () => { RD.light = RD.light === e.id ? null : e.id; rdDraw(); rdSide(); });
     $('#ra-move')?.addEventListener('click', () => { RD.moving = RD.moving === e.id ? null : e.id; rdSide(); });
-    s.querySelectorAll('[data-mv]').forEach(x => x.onclick = async () => { const [cid, p] = x.dataset.mv.split('|'), caja = rdEl(cid), m = (e.code || '').split('-'), cc = (caja.code || '').split('-');
-      const nc = m.length >= 7 && cc.length >= 5 ? ['AP', cc[1], cc[2], cc[3], cc[4], p, m[6]].join('-') : e.code, d = { parent_id: cid, port: +p };
-      if (nc === e.code && m.length >= 7) toast('La caja elegida no tiene un código CDO-OLT-rama-botella-caja: el AP conserva su código. Corregí el código de la caja para que se arme solo.');
-      if (nc !== e.code){ d.code = nc; d.props = { ...(e.props || {}), old: [...(e.props?.old || []), e.code].slice(-10) }; }
-      RD.moving = null; const old = e.code; const row = await rdApply('el', e.id, 'upd', d, `${old || 'AP'} derivado a la salida ${p} de ${rdName(caja)}${nc !== old ? '. Código nuevo: ' + nc : ''}`); if (row){ RD.sel = row.id; rdSide(); } }); }
+    s.querySelectorAll('[data-mv]').forEach(x => x.onclick = async () => { const [cid, p] = x.dataset.mv.split('|'); RD.moving = null; const row = await rdAssign(e, rdEl(cid), +p); if (row){ RD.sel = row.id; rdSide(); } }); }
+  if (e.kind === 'caja') s.querySelectorAll('[data-out]').forEach(g => g.onclick = () => rdOutEdit(e, +g.dataset.out));
   if (e.kind === 'caja') for (const k of ['n1', 'n2']) $('#rj-' + k)?.addEventListener('change', ev => rdApply('el', e.id, 'upd', { props: { ...(e.props || {}), [k]: ev.target.value } }, `${rdName(e)}: splitter de nivel ${k === 'n1' ? 1 : 2} pasa a ${ev.target.value || 'sin splitter'}`));
 }
 
