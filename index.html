@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-TSXqawcpUcUs6Yg1bzUjK7Ni5qGI1zq1Zj6QiLYTHGs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-2M0+LiYDKlsWEEeSrcGVhuOFNDtY483Ag9MOqX7k4Cc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -329,7 +329,7 @@ tr.sor-bad td{background:var(--red-bg)}
 @media (max-width:640px){ .hide-sm{display:none} main{padding:10px} .card{padding:14px} .sec-title{margin:0 -14px} #report{padding:18px} .ed-item{grid-template-columns:1fr} .vbars{height:170px} }
 @media print{
   body{background:#fff}
-  .top,.tabs,.bnav,.report-bar,#lic-banner,.toast{display:none!important}
+  .top,.tabs,.bnav,.report-bar,#lic-banner,.toast,.no-print{display:none!important}
   main{max-width:none;padding:0}
   #report{padding:0;max-width:none}
   @page{size:A4;margin:16mm 14mm}
@@ -449,11 +449,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.20.1';
+const APP_VERSION = '5.21.0';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -1612,8 +1612,14 @@ async function viewInspections(v){
         <select id="f-status" style="width:auto"><option value="">Todos los estados</option><option value="borrador">Borrador</option><option value="completada">Completada</option></select>
         <input id="f-from" type="date" style="width:auto" title="Desde"><input id="f-to" type="date" style="width:auto" title="Hasta">
       </div></div>
-    <div class="card" id="list"><p class="muted">Cargando…</p></div>`;
+    <div id="fx-open"></div><div class="card" id="list"><p class="muted">Cargando…</p></div>`;
   $('#b-new')?.addEventListener('click', newInspection);
+  // supervisión: correcciones de técnicos y contratistas sin revisar
+  if (isManager() && online()) sb.from('insp_fixes').select('inspection_id,item_label,by_name,at').eq('status', 'sin_revisar').order('at', { ascending: false }).limit(50).then(({ data }) => {
+    const el = $('#fx-open'); if (!el || !data?.length) return; const ids = [...new Set(data.map(x => x.inspection_id))];
+    el.innerHTML = `<div class="banner warn" style="margin:0 0 12px;cursor:pointer" id="fx-ob">✏️ ${data.length} ${data.length > 1 ? 'correcciones' : 'corrección'} sin revisar en ${ids.length} ${ids.length > 1 ? 'inspecciones' : 'inspección'}. Tocá para verlas.</div>`;
+    $('#fx-ob').onclick = () => { const m = modal(`<h2>Correcciones sin revisar</h2><div style="display:grid;gap:6px">${data.map(x => `<a class="btn sec" style="text-align:left;justify-content:flex-start" href="#/informe/${esc(x.inspection_id)}">${esc(x.item_label || 'Ítem')} · <span class="muted sm">${esc(x.by_name || '')} · ${esc(fmtDT(x.at))}</span></a>`).join('')}</div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="fx-oc">Cerrar</button></div>`); $('#fx-oc').onclick = m.close; m.el.querySelectorAll('a').forEach(a => a.addEventListener('click', () => m.close())); };
+  }).catch(() => {});
   const load = async () => {
     const f = { kind: $('#f-kind').value, status: $('#f-status').value, from: $('#f-from').value, to: $('#f-to').value };
     let server = [];
@@ -2256,7 +2262,7 @@ async function viewReport(v, id){
       const a = answers[it.id] || {};
       const longTxt = it.type === 'text' && it.long && a.value ? `<div class="rp-note">${esc(a.value)}</div>` : '';
       const photos = (a.photos||[]).map(p => { n++; media.push({...p, n}); return p.kind === 'video' ? `<figure><a class="rp-vid" href="#" data-vpath="${esc(p.path)}" title="Ver el video">▶<small>${vidDur(p.dur)}</small></a><figcaption>Video ${n}</figcaption></figure>` : `<figure><img data-path="${esc(p.path)}"><figcaption>Foto ${n}</figcaption></figure>`; }).join('');
-      return `<div class="rp-item"><div class="lb">${esc(it.label)}</div>${ansHTML(it, a)}${longTxt}
+      return `<div class="rp-item" data-it="${esc(it.id)}"><div class="lb">${esc(it.label)}</div>${ansHTML(it, a)}${longTxt}
         ${a.note ? `<div class="rp-note">${esc(a.note)}</div>` : ''}${a.pending ? `<div class="rp-note" style="color:#C8102E"><b>⚠ Pendiente ${esc((PRIO_TXT[a.pending.priority] || '').toLowerCase())}:</b> ${esc(a.pending.action || '')}${a.pending.material ? ' · Material: ' + esc(a.pending.material) : ''}</div>` : ''}${photos ? `<div class="rp-photos">${photos}</div>` : ''}</div>`;
     }).join('')}`).join('');
 
@@ -2291,10 +2297,12 @@ async function viewReport(v, id){
         <div class="rp-kv"><b>Apertura / cierre</b><span>${ins.corr?.open_at ? fmtDT(ins.corr.open_at) : '—'} → ${ins.corr?.close_at ? fmtDT(ins.corr.close_at) : '—'}${ins.corr?.ttr_h ? ' · TTR ' + esc(ins.corr.ttr_h) + ' h' : ''}${ins.corr?.afect ? ' · ' + esc(ins.corr.afect) : ''}${ins.corr?.smt ? ' · ' + esc(ins.corr.smt) : ''}</span></div>` : ''}
       ${body}
       ${media.length ? `<div class="rp-sec" style="break-before:page"><span>Resumen de archivos multimedia</span></div>
-        <div class="rp-media">${media.map(p => `<figure>${p.kind === 'video' ? `<a class="rp-vid" href="#" data-vpath="${esc(p.path)}" style="width:100%;height:140px">▶<small>${vidDur(p.dur)} · se ve desde la app</small></a>` : `<img data-path="${esc(p.path)}">`}<figcaption>${p.kind === 'video' ? 'Video' : 'Foto'} ${p.n}${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}${p.src === 'galeria' ? ` · <b${p.warn ? ' style="color:var(--red)"' : ''}>${esc(p.warn || 'De la galería')}</b>` : ''}</figcaption></figure>`).join('')}</div>` : ''}
+        <div class="rp-media">${media.map(p => `<figure>${p.kind === 'video' ? `<a class="rp-vid" href="#" data-vpath="${esc(p.path)}" style="width:100%;height:140px">▶<small>${vidDur(p.dur)} · se ve desde la app</small></a>` : `<img data-path="${esc(p.path)}">`}<figcaption>${p.kind === 'video' ? 'Video' : 'Foto'} ${p.n}${p.fix ? '' : `${p.ts ? ' · ' + fmtDT(p.ts) : ''}${p.lat ? ` · ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}` : ''}${p.src === 'galeria' ? ` · <b${p.warn ? ' style="color:var(--red)"' : ''}>${esc(p.warn || 'De la galería')}</b>` : ''}`}</figcaption></figure>`).join('')}</div>` : ''}
       <div class="rp-foot"><span>${esc(ins.site_name || '')} · Generado con InspectApp</span><span>${fmtDT(new Date())}</span></div>
     </div>`;
   await hydrate(v);
+  // ✏️ correcciones (módulo aparte, solo con señal y con la inspección ya enviada)
+  if (ins.status === 'completada' && ins._synced && !ins._dirty && online()) needLib('fix').then(() => fixDecorate(v, ins, def)).catch(() => {});
   v.querySelectorAll('[data-vpath]').forEach(a => a.onclick = e => { e.preventDefault(); const p = media.find(x => x.path === a.dataset.vpath); if (p) videoViewer(p); });
   const imgs = [...v.querySelectorAll('#report img')];
   $('#b-pdf').onclick = async () => {
