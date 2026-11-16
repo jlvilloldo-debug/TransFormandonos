@@ -624,6 +624,12 @@ const rdStop = new Set(['de', 'del', 'la', 'las', 'los', 'el', 'a', 'nodo', 'epi
 const rdTok = t => rdNorm(t).replace(/[^a-z0-9. ]/g, ' ').split(/\s+/).map(x => x.replace(/\.$/, '')).filter(x => x && !rdStop.has(x));
 function rdSame(a, b){ const A = rdTok(a), B = rdTok(b); if (!A.length || !B.length) return false; const [S, L] = A.length <= B.length ? [A, B] : [B, A];
   if (L.length - S.length > 1 && S.length < 2) return false; const ok = (t, u) => t === u || u.startsWith(t) || t.startsWith(u); return S.every(t => L.some(u => ok(t, u))) && ok(S[0], L[0]); }
+/* "EPI - Rincón" ↔ "SAN JOSÉ DEL RINCÓN": todas las palabras del nombre del mapa (sin "EPI -") están en el del PDF, y es el único que cumple */
+function rdUniGuess(nodes, name){ const pw = new Set(rdNorm(name).split(/[^a-z0-9]+/).filter(w => w.length > 2));
+  const c = nodes.filter(x => { const w = rdNorm(String(x.name || x.code || '').replace(/^(epi|nodo)\s*-?\s*/i, '')).split(/[^a-z0-9]+/).filter(w => w.length > 2); return w.length && w.every(z => pw.has(z)); });
+  return c.length === 1 ? c[0] : null; }
+function rdTitle(s){ const low = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'el']);
+  return String(s || '').toLowerCase().split(/\s+/).filter(Boolean).map((w, i) => i && low.has(w) ? w : w.replace(/(^|[.\-])(\p{L})/gu, (m, a, c) => a + c.toUpperCase())).join(' '); }
 function rdBufs(str){ const x = rdNorm(str).replace(/:$/, ''), out = new Set(), rg = /b(\d+)\s+a\s+b(\d+)/g; let m;
   while ((m = rg.exec(x))) for (let i = +m[1]; i <= +m[2] && i <= 24; i++) out.add(i - 1);
   for (const n of x.replace(/b\d+\s+a\s+b\d+/g, '').match(/b(\d+)/g) || []) { const i = +n.slice(1); if (i >= 1 && i <= 24) out.add(i - 1); }
@@ -651,7 +657,18 @@ async function rdReadPdf(buf, fname, P){
     for (const h of it){ const m = /^nodo tipo\s*(\d)/i.exec(h.s); if (!m) continue;
       const cand = it.filter(i => !skip.test(i.s) && i.y < h.y - 12 && i.y > h.y - 80 && Math.abs(i.x - h.x) < 130 && /[a-z]{3}/i.test(i.s)).sort((a, b) => Math.hypot(a.x - h.x, (a.y - h.y) * 0.6) - Math.hypot(b.x - h.x, (b.y - h.y) * 0.6));
       if (!cand.length) continue; const c = cand[0], grp = it.filter(i => (i === c || !skip.test(i.s) || /^de\s/i.test(i.s)) && Math.abs(i.x - c.x) < 22 && Math.abs(i.y - c.y) < 10).sort((a, b) => b.y - a.y);   // nombres en dos renglones
-      rowOf(grp.map(i => i.s).join(' ')).tipo = +m[1]; }
+      const r = rowOf(grp.map(i => i.s).join(' ')); r.tipo = +m[1]; r.pos = { p, x: h.x, y: h.y };
+      const hi = it.find(i => /^de\s+(\d+)\s+hilos/i.test(i.s) && Math.abs(i.x - h.x) < 30 && i.y < h.y && i.y > h.y - 40); if (hi) r.hilos = +/(\d+)/.exec(hi.s)[1]; }
+    // gabinete: debajo de cada nodo, columna "DE NODO …" (lado sur) y "A NODO …" (lado norte) con cada grupo de buffers
+    const colOf = hd => { const col = it.filter(i => i !== hd && Math.abs(i.x - hd.x) <= 9 && i.y < hd.y && i.y > hd.y - 70).sort((a, b) => b.y - a.y), g = []; let pend = null;
+      for (const i of col){ if (isList(i.s)) pend = rdBufs(i.s); else if (pend){ g.push([pend, i.s]); pend = null; } else if (g.length) break; } return g; };
+    const nodeName = s => s.replace(/^(de|a)\s+nodo\s+/i, '').trim();
+    for (const L of it.filter(i => /^de nodo\s+/i.test(i.s))){
+      const R = it.filter(i => /^a nodo\s+/i.test(i.s) && Math.abs(i.y - L.y) < 4 && i.x > L.x + 30 && i.x < L.x + 320).sort((a, b) => a.x - b.x)[0]; if (!R) continue;
+      const own = rows.filter(r => r.pos && r.pos.p === p && r.pos.x > L.x - 40 && r.pos.x < R.x && r.pos.y > L.y + 40 && r.pos.y < L.y + 420).sort((a, b) => (a.pos.y - L.y) - (b.pos.y - L.y))[0]; if (!own) continue;
+      const two = it.some(i => /^odf\s*2\b/i.test(i.s) && i.x > L.x - 40 && i.x < R.x + 60 && i.y > L.y && i.y < own.pos.y);
+      own.gab = { sur: { hdr: nodeName(L.s), groups: colOf(L) }, norte: { hdr: nodeName(R.s), groups: colOf(R) }, two, hilos: own.hilos || null };
+      if (two) own.drop = [...Array(8).keys()]; }
   }
   if (!rows.length) P.probs.push(`${fname}: no encontré en el PDF los textos "A NODO …" ni "NODO TIPO …". Si el unifilar es una imagen escaneada no se puede leer.`);
 }
@@ -694,9 +711,10 @@ function rdPreview(P, src){
     ${S ? `<div class="rd-buf" style="padding:10px;display:grid;gap:8px"><b>Empalmes por progresiva: ${S.ev.length} eventos${S.total ? ` · fibra ${rdKm(S.total)}` : ''}</b><span class="muted sm">${esc(S.src.join(', '))}. Elegí entre qué nodos está medido (normalmente de un corte de tramo ✂ al siguiente): las botellas se dibujan sobre el cable a su progresiva${Object.keys(S.ev[0]?.loss || {}).length ? ', con la atenuación de cada pelo' : ''}.</span>
       ${nodes.length >= 2 ? `<div class="grid2"><div><label>Nodo origen (A)</label><select id="rp-a">${nodes.map(n => `<option value="${n.id}" ${guessN(S.a)?.id === n.id ? 'selected' : ''}>${rdIsCut(n) ? '✂ ' : ''}${esc(n.name || n.code)}</option>`).join('')}</select></div><div><label>Nodo destino (B)</label><select id="rp-b">${nodes.map((n, i) => `<option value="${n.id}" ${(guessN(S.b)?.id || nodes[1].id) === n.id ? 'selected' : ''}>${rdIsCut(n) ? '✂ ' : ''}${esc(n.name || n.code)}</option>`).join('')}</select></div></div><div class="sm" id="rp-s"></div>` : '<div class="rd-alert">Los empalmes se ubican después de cargar los nodos y los cables: al terminar esta carga te pido entre qué nodos está medido.</div>'}</div>` : ''}
     ${P.uni && P.uni.length ? `<div class="rd-buf" style="padding:10px;display:grid;gap:8px"><b>Unifilar: tipo de nodo y buffers que bajan al ODF</b><span class="muted sm">Leído del PDF. Revisá a qué nodo del mapa corresponde cada uno; lo que no tilde no se cambia.</span>
-      <div class="tblwrap" style="max-height:34vh;overflow:auto"><table class="tbl rd-df"><thead><tr><th></th><th>En el PDF</th><th>Nodo del mapa</th><th>Tipo</th><th>Bajan</th><th>Siguen</th></tr></thead><tbody>${P.uni.map((u, i) => { const n = nodes.find(x => rdNorm(x.name || x.code) === rdNorm(u.name)) || nodes.find(x => rdSame(x.name || x.code, u.name)), nb = 8;
+      <div class="tblwrap" style="max-height:34vh;overflow:auto"><table class="tbl rd-df"><thead><tr><th></th><th>En el PDF</th><th>Nodo del mapa</th><th>Tipo</th><th>Bajan</th><th>Siguen</th><th>Gabinete (ODF)</th></tr></thead><tbody>${P.uni.map((u, i) => { const n = nodes.find(x => rdNorm(x.name || x.code) === rdNorm(u.name)) || nodes.find(x => rdSame(x.name || x.code, u.name)) || rdUniGuess(nodes, u.name), nb = 8;
         return `<tr><td><input type="checkbox" id="ru-c${i}" ${n ? 'checked' : ''} style="width:auto"></td><td><b>${esc(u.name)}</b></td><td><select id="ru-n${i}" style="margin:0"><option value="">— elegir —</option>${nodes.map(x => `<option value="${x.id}" ${n?.id === x.id ? 'selected' : ''}>${esc(x.name || x.code)}</option>`).join('')}</select></td>
-          <td style="white-space:nowrap">${u.tipo ? 'Tipo ' + u.tipo : '<span class="muted">—</span>'}</td><td>${u.drop ? (u.drop.length >= nb ? '<b style="color:#C2410C">Todos · corte de tramo</b>' : u.drop.map(b => 'B' + (b + 1)).join(' ')) : '<span class="muted">según tipo</span>'}</td><td class="muted">${u.drop ? [...Array(nb).keys()].filter(b => !u.drop.includes(b)).map(b => 'B' + (b + 1)).join(' ') || '—' : ''}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
+          <td style="white-space:nowrap">${u.tipo ? 'Tipo ' + u.tipo : '<span class="muted">—</span>'}</td><td>${u.drop ? (u.drop.length >= nb ? '<b style="color:#C2410C">Todos · corte de tramo</b>' : u.drop.map(b => 'B' + (b + 1)).join(' ')) : '<span class="muted">según tipo</span>'}</td><td class="muted">${u.drop ? [...Array(nb).keys()].filter(b => !u.drop.includes(b)).map(b => 'B' + (b + 1)).join(' ') || '—' : ''}</td>
+          <td style="white-space:nowrap">${u.gab ? `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="ru-g${i}" checked style="width:auto;margin:0"> ${u.gab.two ? '2 ODF de 96' : 'Distrib. ' + (u.gab.hilos || '')} · ${esc(rdTitle(u.gab.sur.hdr))} → ${esc(rdTitle(u.gab.norte.hdr))}</label>` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
     <div class="grid2"><div><label>Información al día</label><input type="date" id="rp-d" value="${todayStr()}"></div><div><label>Nota</label><input id="rp-n" maxlength="120" placeholder="Ej.: KMZ entregado por el cliente"></div></div>
     <div class="err" id="rp-e"></div><div class="row" style="justify-content:flex-end;gap:6px"><button class="btn sec" id="rp-c">Cancelar</button><button class="btn" id="rp-ok">Cargar</button></div>`, { wide: true });
   $('#rp-x').onclick = $('#rp-c').onclick = m.close;
@@ -745,7 +763,8 @@ function rdPreview(P, src){
   const refresh = () => { const r = build(); G.forEach((g, i) => { const s = r.stat[i], el = $('#rp-r' + i); if (el) el.textContent = m.el.querySelector(`[data-g="${i}"]`).value === 'x' ? 'no se carga' : `${s.n} nuevos · ${s.u} se actualizan · ${s.s} ya estaban`; }); if ($('#rp-s')) $('#rp-s').innerHTML = r.sNote; const nu = (P.uni || []).filter((u, i) => $('#ru-c' + i)?.checked && $('#ru-n' + i)?.value).length; $('#rp-ok').textContent = [r.els.length || r.cbs.length || !nu ? `Cargar ${r.els.length} elementos y ${r.cbs.length} cables` : '', nu ? `${r.els.length || r.cbs.length ? 'y a' : 'A'}ctualizar ${rdPl(nu, 'nodo', 'nodos')} según el unifilar` : ''].filter(Boolean).join(' '); };
   m.el.querySelectorAll('select,input[type=checkbox]').forEach(x => x.addEventListener('change', refresh)); refresh();
   $('#rp-ok').onclick = async () => {
-    const r = build(), U = (P.uni || []).map((u, i) => ({ u, on: $('#ru-c' + i)?.checked, n: rdEl($('#ru-n' + i)?.value) })).filter(x => x.on && x.n);
+    const r = build(), U = (P.uni || []).map((u, i) => ({ u, on: $('#ru-c' + i)?.checked, n: rdEl($('#ru-n' + i)?.value), g: !!$('#ru-g' + i)?.checked })).filter(x => x.on && x.n);
+    if (U.some(x => x.g && x.u.gab)) try { await needLib('gab'); } catch (e){ return void ($('#rp-e').textContent = errText(e)); }
     if (!r.els.length && !r.cbs.length && !U.length) return void ($('#rp-e').textContent = 'No hay nada nuevo para cargar.');
     if (!needOnline()) return; $('#rp-ok').disabled = true; $('#rp-ok').textContent = 'Cargando…';
     const batch = (crypto.randomUUID ? crypto.randomUUID() : null), tot = { el_new: 0, el_upd: 0, cb_new: 0, cb_upd: 0 }, note = $('#rp-n').value.trim() || src.slice(0, 110), asof = $('#rp-d').value || todayStr();
@@ -755,10 +774,11 @@ function rdPreview(P, src){
     for (let i = 0; i < sorted.length; i += 400) batches.unshift({ els: sorted.slice(i, i + 400), cbs: [] });
     batches.sort((a, b) => (b.els.length ? 1 : 0) - (a.els.length ? 1 : 0));
     let nU = 0;
-    for (const { u, n } of U){ const props = { ...(n.props || {}) }; if (u.tipo) props.tipo = u.tipo; const t = RD_TIPOS[props.tipo], def = !t ? null : t.drop === 'all' ? [...Array(8).keys()] : t.drop;
+    for (const { u, n, g } of U){ const props = { ...(n.props || {}) }; if (u.tipo) props.tipo = u.tipo; const t = RD_TIPOS[props.tipo], def = !t ? null : t.drop === 'all' ? [...Array(8).keys()] : t.drop;
       if (u.drop){ if (def && def.join() === u.drop.join()) delete props.drop; else props.drop = u.drop; }
+      if (g && u.gab){ const gab = gabFromUni({ ...n, props }, u); if (gab) props.gab = gab; }
       if (JSON.stringify(props) === JSON.stringify(n.props || {})) continue;
-      const row = await rdApply('el', n.id, 'upd', { props }, `${rdName(n)}: según el unifilar (${u.src}) ${u.tipo ? 'tipo ' + u.tipo + ', ' : ''}bajan ${RD_TIPOS[props.tipo]?.drop === 'all' && !u.drop ? 'todos los buffers' : (u.drop || rdDropOf({ props })).map(b => 'B' + (b + 1)).join('-') || 'ninguno'}`); if (row) nU++; }
+      const row = await rdApply('el', n.id, 'upd', { props }, `${rdName(n)}: según el unifilar (${u.src}) ${u.tipo ? 'tipo ' + u.tipo + ', ' : ''}bajan ${RD_TIPOS[props.tipo]?.drop === 'all' && !u.drop ? 'todos los buffers' : (u.drop || rdDropOf({ props })).map(b => 'B' + (b + 1)).join('-') || 'ninguno'}${g && u.gab ? ' · ODF del gabinete completados' : ''}`); if (row) nU++; }
     for (const b of batches){ const { data, error } = await sb.rpc('net_import', { p_net: RD.net.id, p_els: b.els, p_cbs: b.cbs, p_asof: asof, p_note: note, p_batch: batch });
       if (error){ $('#rp-e').textContent = errText(error); $('#rp-ok').disabled = false; $('#rp-ok').textContent = 'Reintentar'; return; } for (const k in tot) tot[k] += data?.[k] || 0; }
     // segunda pasada corta: dependencias que apuntaban a elementos de un lote posterior

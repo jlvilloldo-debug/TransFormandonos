@@ -108,6 +108,55 @@ function gbNeighbors(n){
   const s = ty.filter(e => e.lat < n.lat).sort((a, b) => d(a) - d(b))[0], N = ty.filter(e => e.lat > n.lat).sort((a, b) => d(a) - d(b))[0];
   return { sur: s ? nm(s) : '', norte: N ? nm(N) : '' };
 }
+/* ---------- completar los ODF desde el unifilar (PDF) ----------
+   u.gab = { sur:{hdr, groups:[[bufs, texto]]}, norte:{...}, two, hilos } leído por rdReadPdf.
+   Lado sur: "DE X" = viene de X; "A <este nodo>" = baja acá y viene del nodo del encabezado. Lado norte: "A X" o "X" = va a X. */
+function gbUniFar(side, b){ const grp = side.groups.find(([bs]) => bs.includes(b)); if (!grp) return rdTitle(side.hdr);
+  const s = String(grp[1] || '').trim(); if (/^de\s+/i.test(s)) return rdTitle(s.replace(/^de\s+/i, '')); if (/^a\s+/i.test(s)) return rdTitle(side.isN ? s.replace(/^a\s+/i, '') : side.hdr); return rdTitle(s); }
+function gabFromUni(n, u){
+  const info = u.gab; if (!info) return null;
+  const tipo = +n.props?.tipo || 3, base = gbClean(n.props?.gab) || gbTemplate(n, tipo === 2 ? 'int42' : 'ext41'); if (!base) return null;
+  const { acom, odfs } = gbOdfsFor(n);
+  if (acom && info.hilos && [24, 48, 72, 96, 144].includes(+info.hilos) && odfs[0] && Math.max(0, ...odfs[0].ranges.map(r => r.to)) <= +info.hilos){ odfs[0].hilos = +info.hilos; odfs[0].name = `Distribuidor ${info.hilos} H`; }
+  const S = { ...info.sur, isN: false }, N = { ...info.norte, isN: true };
+  odfs.forEach(o => o.ranges.forEach(r => { r.far = gbT(gbUniFar(r.side === 'sur' ? S : N, r.buf), 80); }));
+  // si los ODF tienen la misma estructura se conservan cordones y equipos; si cambian, se rearman
+  const sig = os => JSON.stringify(os.map(o => [o.id, o.hilos, o.ranges.map(r => [r.from, r.side, r.buf, r.acom])]));
+  const g = JSON.parse(JSON.stringify(base)); g.sides = { sur: gbT(rdTitle(info.sur.hdr)), norte: gbT(rdTitle(info.norte.hdr)) }; g.acom = acom;
+  if (sig(g.odfs) === sig(odfs)){ g.odfs.forEach((o, i) => o.ranges.forEach((r, k) => r.far = odfs[i].ranges[k].far)); return gbClean(g); }
+  const old = g.rack.filter(r => r.kind === 'odf'); g.rack = g.rack.filter(r => r.kind !== 'odf'); g.odfs = odfs; g.eq = []; g.cords = [];
+  const fits = (u, h) => { const keep = GB.g; GB.g = g; const ok = gbFits(u, h, 'both'); GB.g = keep; return ok; };
+  odfs.forEach((o, i) => { const h = o.hilos >= 144 ? 6 : o.hilos >= 96 ? 4 : o.hilos >= 48 ? 2 : 1, prev = old[i] || old[0]; let at = null;
+    for (const c of [prev?.u, prev ? prev.u + prev.h + 1 : null, 8].filter(x => x)) if (at == null && fits(c, h)) at = c;
+    for (let x = 1; at == null && x <= g.H - h + 1; x++) if (fits(x, h)) at = x;
+    if (at != null) g.rack.push({ id: 'o' + Date.now().toString(36) + i, u: at, h, n: o.name, kind: 'odf', odf: o.id, face: 'both', approx: false, det: '' }); });
+  return gbClean(g);
+}
+/* botón dentro del gabinete: leer un unifilar y completar este nodo */
+function gbUniPick(){
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,application/pdf';
+  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; if (f.size > 30 * 1024 * 1024) return toast('El PDF supera 30 MB.');
+    toast('Leyendo el unifilar…'); const P = { els: [], cbs: [], probs: [] };
+    try { await rdReadPdf(await f.arrayBuffer(), f.name, P); } catch (e){ return toast(errText(e)); }
+    const me = String(GB.n.name || GB.n.code || '').replace(/^(epi|nodo)\s*-?\s*/i, ''), rows = (P.uni || []).filter(r => r.gab);
+    const hit = rows.find(r => rdNorm(r.name) === rdNorm(me)) || rows.find(r => rdSame(r.name, me));
+    const m = modal(`<h2>Completar desde el unifilar</h2><p class="muted sm">${esc(f.name)}</p>
+      ${rows.length ? `<label>Nodo del unifilar</label><select id="gx-r">${rows.map((r, i) => `<option value="${i}" ${r === hit ? 'selected' : ''}>${esc(rdTitle(r.name))}${r.tipo ? ' · tipo ' + r.tipo : ''}</option>`).join('')}</select><div id="gx-pv" style="margin-top:8px"></div>
+        <div class="row" style="justify-content:flex-end;gap:6px;margin-top:10px"><button class="btn sec" id="gx-x">Cancelar</button><button class="btn" id="gx-ok">Completar los ODF</button></div>`
+      : `<div class="gb-alert">${esc(P.probs[0] || 'No encontré en el PDF las columnas "DE NODO …" y "A NODO …" debajo de los nodos.')}</div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="gx-x">Cerrar</button></div>`}`, { wide: true });
+    $('#gx-x').onclick = m.close; if (!rows.length) return;
+    const calc = () => { const u = rows[+$('#gx-r').value], props = { ...(GB.n.props || {}) }; if (u.tipo) props.tipo = u.tipo; if (u.drop) props.drop = u.drop; return { u, props, g: gabFromUni({ ...GB.n, props }, u) }; };
+    const paint = () => { const { u, g } = calc(), same = g && GB.g && JSON.stringify(g.eq) === JSON.stringify(GB.g.eq) && JSON.stringify(g.cords) === JSON.stringify(GB.g.cords);
+      $('#gx-pv').innerHTML = !g ? '<div class="gb-alert">No se pudo armar.</div>' : `${u.tipo ? `<p class="sm" style="margin:0 0 6px">Tipo ${u.tipo}${u.gab.two ? ' · <b>corte de tramo</b>: dos ODF de 96' : ''} · de <b>${esc(g.sides.sur)}</b> a <b>${esc(g.sides.norte)}</b></p>` : ''}
+        <div style="overflow-x:auto"><table class="gb-t"><thead><tr><th>ODF</th><th>Puertos</th><th>Buffer</th><th>Viene de / va a</th></tr></thead><tbody>${g.odfs.flatMap(o => o.ranges.map(r => `<tr><td>${esc(o.name)}</td><td>${r.from}–${r.to}</td><td><span class="gb-sq" style="background:${gbB(r.acom ?? r.buf)[1]}"></span>${r.acom != null ? `acom. B${r.acom + 1} → ` : ''}B${r.buf + 1} ${r.side}</td><td>${r.side === 'sur' ? 'de' : 'a'} ${esc(r.far)}</td></tr>`)).join('')}</tbody></table></div>
+        ${GB.g && !same && (GB.g.eq.length || GB.g.cords.length) ? '<div class="gb-alert" style="margin-top:8px">Los ODF cambian de estructura: se borran los cordones y las conexiones a equipos cargados en ellos.</div>' : ''}`; };
+    $('#gx-r').onchange = paint; paint();
+    $('#gx-ok').onclick = async () => { const { u, props, g } = calc(); if (!g) return; m.close(); props.gab = g;
+      const row = await rdApply('el', GB.n.id, 'upd', { props }, `${rdName(GB.n)} · gabinete: ODF completados desde el unifilar (${f.name})`.slice(0, 380));
+      if (row){ GB.n = row; GB.g = gbClean(row.props?.gab); } gbRender(); };
+  };
+  inp.click();
+}
 /* ---------- consultas ---------- */
 const gbOdf = id => GB.g.odfs.find(o => o.id === id);
 const gbUnit = id => GB.g.rack.find(r => r.id === id);
@@ -198,7 +247,7 @@ function gbRender(){
     ${gbDrift()}${GB.tab === 'gab' ? gbVGab() : GB.tab === 'odf' ? gbVOdf() : GB.tab === 'ic' ? gbVIc() : GB.tab === 'ene' ? gbVEne() : gbVMant()}`;
   root.innerHTML = `<div class="gb-wrap"><div class="gb-head"><div><div class="muted sm">${esc(RD.net.name)} › nodo</div><h1>🗄 ${esc(n.name || n.code || 'Nodo')}</h1>
       <div class="gb-chips">${t ? `<span class="gb-chip">${esc(t.n)}</span>` : '<span class="gb-chip plan">Sin tipo</span>'}${cut ? '<span class="gb-chip cut">✂ Corte de tramo óptico</span>' : ''}${GB.g ? `<span class="gb-chip">${esc(GB_MODEL[GB.g.model].n)}</span>` : ''}${pend ? '<span class="gb-chip plan">Cambios pendientes de confirmar</span>' : ''}</div></div>
-      <div class="gb-row">${GB.g && gbCanEd() ? '<button class="btn sec small" id="gb-sides">Nombres de los lados</button>' : ''}<button class="btn sec small" id="gb-ch">Cambios</button><button class="btn small" id="gb-x">✕ Cerrar</button></div></div>${body}</div>`;
+      <div class="gb-row">${gbCanEd() ? '<button class="btn sec small" id="gb-uni">⬆ Completar desde el unifilar</button>' : ''}${GB.g && gbCanEd() ? '<button class="btn sec small" id="gb-sides">Nombres de los lados</button>' : ''}<button class="btn sec small" id="gb-ch">Cambios</button><button class="btn small" id="gb-x">✕ Cerrar</button></div></div>${body}</div>`;
   gbBind(root);
 }
 function gbEmpty(){
@@ -419,7 +468,9 @@ function gbFormOdf(id){
   const paint = () => { m.el.innerHTML = draw();
     $('#go-x').onclick = m.close;
     m.el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { read(); rows.splice(+b.dataset.del, 1); paint(); });
-    $('#go-add').onclick = () => { read(); const last = Math.max(0, ...rows.map(r => r.from + 11)); rows.push({ from: last + 1, side: 'sur', buf: 0, acom: GB.g.acom ? 0 : null, far: '' }); paint(); };
+    $('#go-add').onclick = () => { read(); const last = Math.max(0, ...rows.map(r => r.from + 11)), prev = rows[rows.length - 1];
+      const nb = prev ? Math.min(23, prev.buf + 1) : 0, na = prev && prev.acom != null ? Math.min(23, prev.acom + 1) : GB.g.acom ? 0 : null;
+      rows.push({ from: last + 1, side: prev ? prev.side : 'sur', buf: nb, acom: na, far: prev ? prev.far : '' }); paint(); };
     $('#go-ok').onclick = () => { read(); const hilos = +$('#go-h').value, bad = rows.find(r => r.from < 1 || r.from + 11 > hilos), over = rows.find((r, i) => rows.some((q, j) => j !== i && r.from <= q.from + 11 && q.from <= r.from + 11));
       if (bad) return ($('#go-e').textContent = `La fila que empieza en ${bad.from} no entra en un ODF de ${hilos}.`); if (over) return ($('#go-e').textContent = `Hay filas que se pisan (puerto ${over.from}).`);
       const g = gbCopy(), x = g.odfs.find(q => q.id === id); x.name = gbT($('#go-n').value, 60) || x.name; x.hilos = hilos; x.ranges = rows.map(r => ({ ...r, to: r.from + 11 }));
@@ -483,6 +534,7 @@ function gbBind(root){
   q('#gb-x').onclick = gabClose;
   q('#gb-ch').onclick = () => { gabClose(); rdTray(); };
   q('#gb-sides')?.addEventListener('click', gbFormSides);
+  q('#gb-uni')?.addEventListener('click', gbUniPick);
   q('#gb-tpl')?.addEventListener('click', () => { const g = gbTemplate(GB.n, q('#gb-model').value); if (!g) return; gbSave(g, `armado desde la plantilla (${GB_MODEL[g.model].n})`); });
   q('#gb-reodf')?.addEventListener('click', () => { if (!confirm('Se rearman los ODF según la Red. Los cordones y conexiones a equipos de los ODF se borran. ¿Seguir?')) return;
     const g = gbCopy(), { acom, odfs } = gbOdfsFor(GB.n); g.acom = acom; g.odfs = odfs; g.eq = []; g.cords = [];
