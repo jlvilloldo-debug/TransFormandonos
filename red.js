@@ -660,15 +660,27 @@ async function rdReadPdf(buf, fname, P){
       const r = rowOf(grp.map(i => i.s).join(' ')); r.tipo = +m[1]; r.pos = { p, x: h.x, y: h.y };
       const hi = it.find(i => /^de\s+(\d+)\s+hilos/i.test(i.s) && Math.abs(i.x - h.x) < 30 && i.y < h.y && i.y > h.y - 40); if (hi) r.hilos = +/(\d+)/.exec(hi.s)[1]; }
     // gabinete: debajo de cada nodo, columna "DE NODO …" (lado sur) y "A NODO …" (lado norte) con cada grupo de buffers
+    const isL2 = s => isList(s) || /^\s*b\d+([\s\-+]+(a\s+)?b\d+)*\s*$/i.test(s);
     const colOf = hd => { const col = it.filter(i => i !== hd && Math.abs(i.x - hd.x) <= 9 && i.y < hd.y && i.y > hd.y - 70).sort((a, b) => b.y - a.y), g = []; let pend = null;
-      for (const i of col){ if (isList(i.s)) pend = rdBufs(i.s); else if (pend){ g.push([pend, i.s]); pend = null; } else if (g.length) break; } return g; };
-    const nodeName = s => s.replace(/^(de|a)\s+nodo\s+/i, '').trim();
-    for (const L of it.filter(i => /^de nodo\s+/i.test(i.s))){
-      const R = it.filter(i => /^a nodo\s+/i.test(i.s) && Math.abs(i.y - L.y) < 4 && i.x > L.x + 30 && i.x < L.x + 320).sort((a, b) => a.x - b.x)[0]; if (!R) continue;
-      const own = rows.filter(r => r.pos && r.pos.p === p && r.pos.x > L.x - 40 && r.pos.x < R.x && r.pos.y > L.y + 40 && r.pos.y < L.y + 420).sort((a, b) => (a.pos.y - L.y) - (b.pos.y - L.y))[0]; if (!own) continue;
-      const two = it.some(i => /^odf\s*2\b/i.test(i.s) && i.x > L.x - 40 && i.x < R.x + 60 && i.y > L.y && i.y < own.pos.y);
-      own.gab = { sur: { hdr: nodeName(L.s), groups: colOf(L) }, norte: { hdr: nodeName(R.s), groups: colOf(R) }, two, hilos: own.hilos || null };
-      if (two) own.drop = [...Array(8).keys()]; }
+      for (const i of col){ if (isL2(i.s)) pend = rdBufs(i.s); else if (pend){ g.push([pend, i.s]); pend = null; } else if (g.length) break; } return g; };
+    const nodeName = s => s.replace(/^(de|a)\s+(nodo\s+)?/i, '').trim();
+    // encabezado de columna: "DE (NODO) X" / "A (NODO) X" con una lista de buffers debajo y nada de lista justo arriba
+    const isHdr = (h, re) => re.test(h.s) && (/^(de|a)\s+nodo\s+/i.test(h.s) || (it.some(i => isL2(i.s) && Math.abs(i.x - h.x) <= 9 && i.y < h.y && i.y > h.y - 22)
+      && !it.some(i => isL2(i.s) && Math.abs(i.x - h.x) <= 9 && i.y > h.y && i.y < h.y + 8)));
+    const Ls = it.filter(h => isHdr(h, /^de\s+\S/i)), Rs = it.filter(h => isHdr(h, /^a\s+\S/i));
+    const put = (own, L, R, x0, x1) => { const y = (L || R).y, two = it.some(i => /^odf\s*2\b/i.test(i.s) && i.x > x0 && i.x < x1 && i.y > y && i.y < own.pos.y);
+      own.gab = { sur: L ? { hdr: nodeName(L.s), groups: colOf(L) } : null, norte: R ? { hdr: nodeName(R.s), groups: colOf(R) } : null, two, hilos: own.hilos || null };
+      if (two || !L || !R) own.drop = [...Array(8).keys()]; };
+    // cada nodo ("NODO TIPO n") toma las columnas que tiene justo debajo (100 a 300 puntos), sin repetir
+    const heads = rows.filter(r => r.pos && r.pos.p === p), cand = [];
+    const near = (x0, x1, y) => heads.filter(r => r.pos.x > x0 && r.pos.x < x1 && r.pos.y > y + 100 && r.pos.y < y + 300).map(r => ({ r, dy: r.pos.y - y }));
+    for (const L of Ls){ const R = Rs.filter(i => Math.abs(i.y - L.y) < 4 && i.x > L.x + 30 && i.x < L.x + 320).sort((a, b) => a.x - b.x)[0]; if (R) near(L.x - 40, R.x, L.y).forEach(c => cand.push({ ...c, k: 0, L, R, x0: L.x - 40, x1: R.x + 60 })); }
+    // la fibra nace en este nodo (ej. Data Center): solo tiene "A NODO …"; o termina: solo tiene "DE NODO …"
+    for (const R of Rs) near(R.x - 320, R.x, R.y).forEach(c => cand.push({ ...c, k: 1, L: null, R, x0: R.x - 320, x1: R.x + 60 }));
+    for (const L of Ls) near(L.x - 40, L.x + 320, L.y).forEach(c => cand.push({ ...c, k: 2, L, R: null, x0: L.x - 40, x1: L.x + 320 }));
+    const usedH = new Set(), usedC = new Set();
+    for (const c of cand.sort((a, b) => a.k - b.k || a.dy - b.dy)){ if (usedH.has(c.r) || (c.L && usedC.has(c.L)) || (c.R && usedC.has(c.R))) continue;
+      usedH.add(c.r); if (c.L) usedC.add(c.L); if (c.R) usedC.add(c.R); put(c.r, c.L, c.R, c.x0, c.x1); }
   }
   if (!rows.length) P.probs.push(`${fname}: no encontré en el PDF los textos "A NODO …" ni "NODO TIPO …". Si el unifilar es una imagen escaneada no se puede leer.`);
 }
@@ -714,7 +726,7 @@ function rdPreview(P, src){
       <div class="tblwrap" style="max-height:34vh;overflow:auto"><table class="tbl rd-df"><thead><tr><th></th><th>En el PDF</th><th>Nodo del mapa</th><th>Tipo</th><th>Bajan</th><th>Siguen</th><th>Gabinete (ODF)</th></tr></thead><tbody>${P.uni.map((u, i) => { const n = nodes.find(x => rdNorm(x.name || x.code) === rdNorm(u.name)) || nodes.find(x => rdSame(x.name || x.code, u.name)) || rdUniGuess(nodes, u.name), nb = 8;
         return `<tr><td><input type="checkbox" id="ru-c${i}" ${n ? 'checked' : ''} style="width:auto"></td><td><b>${esc(u.name)}</b></td><td><select id="ru-n${i}" style="margin:0"><option value="">— elegir —</option>${nodes.map(x => `<option value="${x.id}" ${n?.id === x.id ? 'selected' : ''}>${esc(x.name || x.code)}</option>`).join('')}</select></td>
           <td style="white-space:nowrap">${u.tipo ? 'Tipo ' + u.tipo : '<span class="muted">—</span>'}</td><td>${u.drop ? (u.drop.length >= nb ? '<b style="color:#C2410C">Todos · corte de tramo</b>' : u.drop.map(b => 'B' + (b + 1)).join(' ')) : '<span class="muted">según tipo</span>'}</td><td class="muted">${u.drop ? [...Array(nb).keys()].filter(b => !u.drop.includes(b)).map(b => 'B' + (b + 1)).join(' ') || '—' : ''}</td>
-          <td style="white-space:nowrap">${u.gab ? `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="ru-g${i}" checked style="width:auto;margin:0"> ${u.gab.two ? '2 ODF de 96' : 'Distrib. ' + (u.gab.hilos || '')} · ${esc(rdTitle(u.gab.sur.hdr))} → ${esc(rdTitle(u.gab.norte.hdr))}</label>` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
+          <td style="white-space:nowrap">${u.gab ? `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="ru-g${i}" checked style="width:auto;margin:0"> ${u.gab.two ? '2 ODF de 96' : 'Distrib. ' + (u.gab.hilos || '')} · ${!u.gab.sur ? 'nace acá' : esc(rdTitle(u.gab.sur.hdr))} → ${!u.gab.norte ? 'termina acá' : esc(rdTitle(u.gab.norte.hdr))}</label>` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
     <div class="grid2"><div><label>Información al día</label><input type="date" id="rp-d" value="${todayStr()}"></div><div><label>Nota</label><input id="rp-n" maxlength="120" placeholder="Ej.: KMZ entregado por el cliente"></div></div>
     <div class="err" id="rp-e"></div><div class="row" style="justify-content:flex-end;gap:6px"><button class="btn sec" id="rp-c">Cancelar</button><button class="btn" id="rp-ok">Cargar</button></div>`, { wide: true });
   $('#rp-x').onclick = $('#rp-c').onclick = m.close;
