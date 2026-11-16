@@ -1,5 +1,5 @@
 /* =========================================================
-   🌐 RED DE FIBRA (Herramientas → Red, y dentro de cada proyecto) · v5.19
+   🌐 RED DE FIBRA (Herramientas → Red, y dentro de cada proyecto) · v5.20
    Cada red pertenece a un proyecto. Dos tipos:
      troncal: nodos (tipo 1 a 4), cables de N pelos en buffers, botellas de empalme
      ftth:    OLT → botellas → cajas con splitters → AP (el árbol sale del código del AP)
@@ -327,7 +327,7 @@ function rdNodePanel(n){
   const t = RD_TIPOS[n.props?.tipo], drop = rdDropOf(n), nb = Math.max(8, ...RD.cbs.filter(c => c.a_id === n.id || c.b_id === n.id).map(rdBufN), 0), ed = rdEdit();
   const cb = RD.cbs.find(c => c.a_id === n.id || c.b_id === n.id) || rdCableOf({});
   const cut = rdIsCut(n);
-  return `<h2>${esc(n.name || n.code || 'Nodo')}</h2><div class="rd-row">${t ? `<span class="rd-chip">${esc(t.n)}</span>` : '<span class="rd-chip warn">Sin tipo</span>'}${cut ? '<span class="rd-chip" style="background:#FFEDD5;color:#C2410C;font-weight:600">✂ Corte de tramo óptico</span>' : ''}${rdPosChip(n)}</div>${t && !cut ? `<div class="muted sm">${esc(t.dist)}</div>` : ''}
+  return `<h2>${esc(n.name || n.code || 'Nodo')}</h2><div><button class="btn small" id="rn-gab">🗄 Abrir gabinete${n.props?.gab ? '' : ' (armar)'}</button></div><div class="rd-row">${t ? `<span class="rd-chip">${esc(t.n)}</span>` : '<span class="rd-chip warn">Sin tipo</span>'}${cut ? '<span class="rd-chip" style="background:#FFEDD5;color:#C2410C;font-weight:600">✂ Corte de tramo óptico</span>' : ''}${rdPosChip(n)}</div>${t && !cut ? `<div class="muted sm">${esc(t.dist)}</div>` : ''}
     ${cut ? '<div class="rd-alert" style="background:#FFEDD5;color:#9A3412">Todos los pelos terminan en el ODF de este nodo: acá termina un tramo óptico y empieza el siguiente. Cada tramo se mide y se empalma por separado.</div>' : ''}
     ${ed ? `<div><button class="btn sec small" id="rn-cut">${cut ? 'Quitar corte de tramo (vuelve a lo que indica el tipo)' : '✂ Marcar como corte de tramo (bajan todos los buffers)'}</button></div>` : ''}
     ${ed ? `<label class="sm muted" style="margin:0">Tipo de nodo <select id="rn-tipo" style="width:auto;display:inline-block;margin:0 0 0 6px">${Object.entries(RD_TIPOS).map(([k, v]) => `<option value="${k}" ${+k === n.props?.tipo ? 'selected' : ''}>${esc(v.n)}</option>`).join('')}</select></label>` : ''}
@@ -433,6 +433,7 @@ function rdBindSide(e, c){
     return; }
   if (!e) return;
   if (e.kind === 'nodo'){
+    $('#rn-gab')?.addEventListener('click', async () => { try { await needLib('gab'); gabOpen(e.id); } catch (err){ toast(errText(err)); } });
     $('#rn-cut')?.addEventListener('click', () => { const props = { ...(e.props || {}) }; if (rdIsCut(e)) delete props.drop; else props.drop = [...Array(rdNbOf(e)).keys()];
       rdApply('el', e.id, 'upd', { props }, `${rdName(e)}: ${rdIsCut(e) ? 'deja de ser corte de tramo' : 'pasa a ser corte de tramo óptico (bajan todos los buffers)'}`); });
     $('#rn-tipo')?.addEventListener('change', ev => { const props = { ...(e.props || {}), tipo: +ev.target.value }; delete props.drop; rdApply('el', e.id, 'upd', { props }, `${rdName(e)}: pasa a ${RD_TIPOS[ev.target.value].n}`); });
