@@ -30,7 +30,10 @@ const rdMapOf = (sp, f) => sp.map[f] != null ? +sp.map[f] : f;
 const rdUse = (c, f) => c.props?.use?.[f]?.s || 'libre';
 const rdOut = (b, c, sp, g) => sp.out[g] || rdUse(c, g);
 const rdCutN = b => { const c = rdCableOf(b), sp = rdSp(b); let n = 0; for (const f of Object.keys(sp.out)) if (sp.out[f] === 'cort' && rdUse(c, +f) === 'serv' && rdMapOf(sp, +f) === +f) n++; return n; };
-const rdDropOf = n => { const t = RD_TIPOS[n.props?.tipo]; if (Array.isArray(n.props?.drop)) return n.props.drop; return !t ? [] : t.drop === 'all' ? [...Array(24).keys()] : t.drop; };
+const rdDropOf = n => { const t = RD_TIPOS[n.props?.tipo]; if (Array.isArray(n.props?.drop)) return n.props.drop; if (!t) return []; if (t.drop !== 'all') return t.drop; const nb = Math.max(8, ...RD.cbs.filter(c => c.a_id === n.id || c.b_id === n.id).map(rdBufN)); return [...Array(nb).keys()]; };
+const rdNbOf = n => Math.max(8, ...RD.cbs.filter(c => c.a_id === n.id || c.b_id === n.id).map(rdBufN));
+// corte de tramo óptico: todos los buffers terminan en el ODF del nodo (la fibra se corta cada ~100 km por el alcance de los equipos de medición)
+const rdIsCut = n => n && n.kind === 'nodo' && rdDropOf(n).filter(b => b < rdNbOf(n)).length >= rdNbOf(n);
 const rdPorts = c => +(String(c.props?.n2 || '1x8').split('x')[1]) || 8;
 const rdKids = id => RD.els.filter(e => e.parent_id === id);
 const rdFree = c => { const used = rdKids(c.id).filter(e => e.kind === 'ap').map(e => e.port); return [...Array(rdPorts(c))].map((_, i) => i + 1).filter(p => !used.includes(p)); };
@@ -171,7 +174,7 @@ function rdBar(){
 function rdIcon(e){
   const z = RD.map.getZoom(), sel = RD.sel === e.id ? ' sel' : '', pend = rdPend(e.id) ? ' pend' : '';
   const mk = (w, h, bg, rad, txt = '', extra = '') => L.divIcon({ className: '', iconSize: [w, h], iconAnchor: [w / 2, h / 2], html: `<div class="rd-mk${sel}${pend}" style="width:${w}px;height:${h}px;background:${bg};border-radius:${rad};${extra}">${txt}</div>` });
-  if (e.kind === 'nodo') return mk(24, 24, '#0F2A4A', '50%', esc(String(e.props?.tipo || '')));
+  if (e.kind === 'nodo') return rdIsCut(e) ? mk(26, 26, '#0F2A4A', '6px', esc(String(e.props?.tipo || '')), 'outline:3px solid #EA580C;outline-offset:1px') : mk(24, 24, '#0F2A4A', '50%', esc(String(e.props?.tipo || '')));
   if (e.kind === 'olt') return mk(34, 20, '#0F2A4A', '5px', 'OLT');
   if (e.kind === 'botella'){ const cut = rdCutN(e); return mk(15, 15, cut ? '#C0262D' : RD.net.kind === 'ftth' ? '#1D4ED8' : e.pos === 'confirmada' ? '#15803D' : '#B45309', '4px'); }
   if (e.kind === 'caja') return mk(17, 15, '#EA7A0C', '3px', '', 'clip-path:polygon(0 0,100% 0,50% 100%);box-shadow:none');
@@ -298,11 +301,12 @@ function rdSide(){
     s.innerHTML = `<h2>${esc(RD.net.name)}</h2>
       ${!RD.els.length && !RD.cbs.length ? `<div class="rd-alert">La red está vacía. ${rdMgr() ? 'Usá <b>⬆ Subir información</b> para cargar el KMZ, o dibujá con las herramientas de arriba.' : 'Todavía no se cargó información.'}</div>` : ''}
       ${T && RD.els.length ? (cuts.length ? `<div class="rd-alert bad"><b>${rdPl(cuts.reduce((n, b) => n + rdCutN(b), 0), 'pelo en servicio cortado', 'pelos en servicio cortados')}</b>${cuts.map(b => `<div class="rd-row" style="margin-top:6px"><span>${esc(rdName(b))}</span><button class="btn sec small" data-go="${b.id}">Abrir botella</button></div>`).join('')}</div>` : '<div class="rd-alert ok">Sin pelos en servicio cortados.</div>') : ''}
+      ${T && RD.els.some(rdIsCut) ? `<h3>Cortes de tramo óptico</h3><p class="muted sm">Nodos donde terminan todos los pelos en el ODF. Cada tramo se mide por separado.</p><div class="rd-row">${RD.els.filter(rdIsCut).sort((a, b) => (a.name || a.code || '').localeCompare(b.name || b.code || '', 'es')).map(n => `<button class="btn sec small" data-go="${n.id}">✂ ${esc(n.name || n.code)}</button>`).join('')}</div>` : ''}
       <h3>Cómo se usa</h3>
       <div class="rd-item">${T ? 'Tocá una <b>botella</b> para ver sus empalmes, marcar un pelo cortado o derivarlo.' : 'Tocá un <b>AP</b> para ver de dónde cuelga e iluminar su camino.'}</div>
       <div class="rd-item">${T ? 'Tocá un <b>nodo</b> para ver su tipo y qué buffers bajan. Tocá un <b>cable</b> para ver sus pelos.' : 'Tocá una <b>caja</b> para ver sus splitters y salidas.'}</div>
       ${rdEdit() ? '<div class="rd-item">Con las herramientas de arriba agregás, movés y borrás. Cada cambio queda registrado con tu nombre.</div>' : ''}
-      <h3>Referencias</h3><div class="sm muted">${T ? '● Nodo (el número es su tipo) · ■ verde: botella confirmada · ■ ámbar: a confirmar · ■ rojo: con pelo en servicio cortado' : '▬ OLT · ■ azul: botella · ▼ naranja: caja con splitters · ● verde: AP · ○ reserva'}</div>`;
+      <h3>Referencias</h3><div class="sm muted">${T ? '● Nodo (el número es su tipo) · ▣ con borde naranja: corte de tramo óptico · ■ verde: botella confirmada · ■ ámbar: a confirmar · ■ rojo: con pelo en servicio cortado' : '▬ OLT · ■ azul: botella · ▼ naranja: caja con splitters · ● verde: AP · ○ reserva'}</div>`;
   }
   else if (e.kind === 'nodo') s.innerHTML = pend + rdNodePanel(e);
   else if (e.kind === 'botella' && T) s.innerHTML = pend + rdBotPanel(e);
@@ -313,12 +317,19 @@ function rdSide(){
   rdBindSide(e, c);
 }
 const rdPosChip = e => `<span class="rd-chip ${e.pos === 'confirmada' ? 'ok' : 'warn'}">${e.pos === 'confirmada' ? 'Posición confirmada en campo' : e.pos === 'archivo' ? 'Posición del archivo' : 'Posición estimada'}</span>`;
+// elementos "hermanos": mismo tipo y mismo código salvo el número final (ej. E-VERA-MALA-01 … 54, de una misma planilla)
+const rdGroup = e => { const m = /^(.*?[-_ ])\d+$/.exec(e.code || ''); if (!m) return []; const pre = m[1].toLowerCase();
+  return RD.els.filter(x => x.kind === e.kind && (x.code || '').toLowerCase().startsWith(pre) && /^\d+$/.test((x.code || '').slice(pre.length))); };
 const rdBasics = e => `${rdEdit() ? `<div class="rd-row"><button class="btn sec small" id="re-ed">Editar datos</button>${e.pos !== 'confirmada' ? '<button class="btn sec small" id="re-conf">Confirmar posición (estoy en el lugar)</button>' : ''}</div>` : ''}
+  ${rdMgr() && online() && rdGroup(e).length > 1 ? `<div><button class="btn sec small" id="re-grp" style="color:var(--red)">Borrar las ${rdGroup(e).length} ${e.kind === 'botella' ? 'botellas' : 'del grupo'} ${esc(/^(.*?[-_ ])\d+$/.exec(e.code)[1])}…</button></div>` : ''}
   <div class="muted sm">${e.name && e.code ? esc(e.name) + ' · ' : ''}${e.lat != null ? `${(+e.lat).toFixed(5)}, ${(+e.lng).toFixed(5)}` : ''}${e.updated_by ? ` · último cambio: ${esc(e.updated_by)} ${esc(fmtDate(e.updated_at))}` : ''}</div>`;
 function rdNodePanel(n){
   const t = RD_TIPOS[n.props?.tipo], drop = rdDropOf(n), nb = Math.max(8, ...RD.cbs.filter(c => c.a_id === n.id || c.b_id === n.id).map(rdBufN), 0), ed = rdEdit();
   const cb = RD.cbs.find(c => c.a_id === n.id || c.b_id === n.id) || rdCableOf({});
-  return `<h2>${esc(n.name || n.code || 'Nodo')}</h2><div class="rd-row">${t ? `<span class="rd-chip">${esc(t.n)}</span>` : '<span class="rd-chip warn">Sin tipo</span>'}${rdPosChip(n)}</div>${t ? `<div class="muted sm">${esc(t.dist)}</div>` : ''}
+  const cut = rdIsCut(n);
+  return `<h2>${esc(n.name || n.code || 'Nodo')}</h2><div class="rd-row">${t ? `<span class="rd-chip">${esc(t.n)}</span>` : '<span class="rd-chip warn">Sin tipo</span>'}${cut ? '<span class="rd-chip" style="background:#FFEDD5;color:#C2410C;font-weight:600">✂ Corte de tramo óptico</span>' : ''}${rdPosChip(n)}</div>${t && !cut ? `<div class="muted sm">${esc(t.dist)}</div>` : ''}
+    ${cut ? '<div class="rd-alert" style="background:#FFEDD5;color:#9A3412">Todos los pelos terminan en el ODF de este nodo: acá termina un tramo óptico y empieza el siguiente. Cada tramo se mide y se empalma por separado.</div>' : ''}
+    ${ed ? `<div><button class="btn sec small" id="rn-cut">${cut ? 'Quitar corte de tramo (vuelve a lo que indica el tipo)' : '✂ Marcar como corte de tramo (bajan todos los buffers)'}</button></div>` : ''}
     ${ed ? `<label class="sm muted" style="margin:0">Tipo de nodo <select id="rn-tipo" style="width:auto;display:inline-block;margin:0 0 0 6px">${Object.entries(RD_TIPOS).map(([k, v]) => `<option value="${k}" ${+k === n.props?.tipo ? 'selected' : ''}>${esc(v.n)}</option>`).join('')}</select></label>` : ''}
     <h3>Buffers que bajan al nodo</h3><p class="muted sm">El tipo propone cuáles bajan.${ed ? ' Tocá un buffer para ajustarlo en este nodo.' : ''}</p>
     ${[...Array(nb)].map((_, i) => `<button class="rd-item" data-buf="${i}" style="grid-template-columns:auto 1fr auto;align-items:center;gap:8px" ${ed ? '' : 'disabled'}><span class="rd-sw" style="background:${RD_FIB[i % 12][1]}"></span><span>B${i + 1} · ${RD_FIB[i % 12][0]} ${rdFt(cb, i) ? '· ' + rdFt(cb, i) : ''}</span><span class="rd-chip ${drop.includes(i) ? 'ok' : ''}">${drop.includes(i) ? 'Baja al distribuidor' : 'Pasa de largo'}</span></button>`).join('')}
@@ -396,6 +407,15 @@ function rdCajaPanel(c){
 function rdBindSide(e, c){
   const s = $('#rd-side');
   s.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { RD.sel = b.dataset.go; RD.open = null; RD.pick = null; const t = rdEl(RD.sel); if (t && t.lat != null && RD.map) RD.map.panTo([t.lat, t.lng]); rdDraw(); rdSide(); });
+  $('#re-grp')?.addEventListener('click', () => { const g = rdGroup(e), pre = /^(.*?[-_ ])\d+$/.exec(e.code)[1], kids = RD.els.filter(x => g.some(y => y.id === x.parent_id) && !g.includes(x));
+    if (kids.length) return toast(`Hay ${rdPl(kids.length, 'elemento que depende', 'elementos que dependen')} de este grupo: primero movelos o borralos.`);
+    const m = modal(`<h2>¿Borrar ${g.length} ${e.kind === 'botella' ? 'botellas' : 'elementos'}?</h2><p>Se borran todos los que tienen código <b>${esc(pre)}…</b> (${esc(g.slice(0, 3).map(x => x.code).join(', '))}${g.length > 3 ? '…' : ''}).</p>
+      <p class="muted sm">Queda registrado en Cambios y se puede recuperar desde ahí.</p><label>Motivo</label><input id="rg-m" maxlength="120" placeholder="Ej.: planilla cargada con los nodos equivocados">
+      <div class="row" style="justify-content:flex-end;gap:6px;margin-top:10px"><button class="btn sec" id="rg-x">Cancelar</button><button class="btn danger" id="rg-ok">Borrar ${g.length}</button></div>`);
+    $('#rg-x').onclick = m.close;
+    $('#rg-ok').onclick = async () => { if (!needOnline()) return; $('#rg-ok').disabled = true; const why = $('#rg-m').value.trim();
+      const { data, error } = await sb.rpc('net_bulk_del', { p_net: RD.net.id, p_ids: g.map(x => x.id), p_descr: `Borrar ${g.length} ${e.kind === 'botella' ? 'botellas' : 'elementos'} ${pre}…${why ? ': ' + why : ''}` });
+      if (error){ $('#rg-ok').disabled = false; return toast(errText(error)); } m.close(); RD.sel = null; await rdReload(); toast(`Se borraron ${data}. Se pueden recuperar desde Cambios.`); }; });
   $('#re-conf')?.addEventListener('click', () => rdApply('el', e.id, 'upd', { pos: 'confirmada' }, `Confirmar en campo la posición de ${rdName(e)}`));
   $('#re-ed')?.addEventListener('click', () => { const m = modal(`<h2>Editar ${esc(RD_KIND[e.kind].toLowerCase())}</h2><label>Código</label><input id="rz-c" maxlength="80" value="${esc(e.code || '')}"><label>Nombre / dirección</label><input id="rz-n" maxlength="160" value="${esc(e.name || '')}">
       <div class="row" style="justify-content:flex-end;gap:6px;margin-top:10px"><button class="btn sec" id="rz-x">Cancelar</button><button class="btn" id="rz-ok">Guardar</button></div>`);
@@ -413,6 +433,8 @@ function rdBindSide(e, c){
     return; }
   if (!e) return;
   if (e.kind === 'nodo'){
+    $('#rn-cut')?.addEventListener('click', () => { const props = { ...(e.props || {}) }; if (rdIsCut(e)) delete props.drop; else props.drop = [...Array(rdNbOf(e)).keys()];
+      rdApply('el', e.id, 'upd', { props }, `${rdName(e)}: ${rdIsCut(e) ? 'deja de ser corte de tramo' : 'pasa a ser corte de tramo óptico (bajan todos los buffers)'}`); });
     $('#rn-tipo')?.addEventListener('change', ev => { const props = { ...(e.props || {}), tipo: +ev.target.value }; delete props.drop; rdApply('el', e.id, 'upd', { props }, `${rdName(e)}: pasa a ${RD_TIPOS[ev.target.value].n}`); });
     s.querySelectorAll('[data-buf]').forEach(b => b.onclick = () => { const i = +b.dataset.buf, cur = rdDropOf(e).filter(x => x < 24), drop = cur.includes(i) ? cur.filter(x => x !== i) : [...cur, i].sort((x, y) => x - y);
       rdApply('el', e.id, 'upd', { props: { ...(e.props || {}), drop } }, `${rdName(e)}: el buffer B${i + 1} ahora ${drop.includes(i) ? 'baja al distribuidor' : 'pasa de largo'}`); }); }
@@ -450,11 +472,18 @@ function rdTray(){
     <p class="muted sm">El técnico registra el cambio en el lugar y la red queda actualizada al momento. Supervisor, coordinador, PM o administrador lo confirma o lo rechaza; si se rechaza, vuelve a como estaba.</p>
     <div style="display:grid;gap:6px;max-height:60vh;overflow:auto">${RD.ch.map(h => `<div class="rd-item ${h.status === 'pendiente' ? 'pend' : h.status === 'confirmado' ? 'ok' : 'rej'}"><div><b>${esc(h.descr)}</b></div>
       <div class="muted sm">${esc(fmtDT(h.created_at))} · ${esc(h.created_name || '')} · ${h.status === 'pendiente' ? 'pendiente de confirmar' : h.status === 'confirmado' ? 'confirmado' + (h.decided_name && h.decided_name !== h.created_name ? ' por ' + esc(h.decided_name) : '') : 'rechazado' + (h.decided_name ? ' por ' + esc(h.decided_name) : '') + (h.note ? ': ' + esc(h.note) : '')}</div>
+      ${mgr && h.target_kind === 'red' && (h.op === 'import' || h.op === 'del') && h.status !== 'rechazado' ? `<div class="rd-row"><button class="btn sec small" data-undo="${h.id}" style="${h.op === 'import' ? 'color:var(--red)' : ''}">${h.op === 'import' ? 'Deshacer esta carga' : 'Recuperar lo borrado'}</button></div>` : ''}
       ${h.status === 'pendiente' && mgr ? `<div class="rd-row"><button class="btn small" data-ok="${h.id}">Confirmar</button><button class="btn sec small" data-rej="${h.id}" style="color:var(--red)">Rechazar</button>${h.target_id && h.op !== 'del' ? `<button class="btn sec small" data-see="${h.target_id}">Ver en el mapa</button>` : ''}</div>` : ''}</div>`).join('') || '<p class="muted">Todavía no hay cambios registrados.</p>'}</div>`, { wide: true });
   $('#rt-x').onclick = m.close;
   const dec = async (id, ok) => { if (!needOnline()) return; const { error } = await sb.rpc('net_decide', { p_change: +id, p_ok: ok, p_note: null }); if (error) return toast(errText(error)); m.close(); await rdReload(); rdTray(); };
   m.el.querySelectorAll('[data-ok]').forEach(b => b.onclick = () => dec(b.dataset.ok, true));
   m.el.querySelectorAll('[data-rej]').forEach(b => b.onclick = () => dec(b.dataset.rej, false));
+  m.el.querySelectorAll('[data-undo]').forEach(b => b.onclick = () => { const h = RD.ch.find(x => x.id == b.dataset.undo); if (!h) return;
+    const imp = h.op === 'import', c = modal(`<h2>${imp ? '¿Deshacer esta carga?' : '¿Recuperar lo borrado?'}</h2><p class="sm">${esc(h.descr)}</p><p class="muted sm">${imp ? 'Se borran los elementos y cables que creó esa carga. Lo que la carga solo actualizó queda como está.' : 'Vuelven a aparecer en el mapa.'}</p>
+      <div class="row" style="justify-content:flex-end;gap:6px"><button class="btn sec" id="ug-x">Cancelar</button><button class="btn ${imp ? 'danger' : ''}" id="ug-ok">${imp ? 'Deshacer' : 'Recuperar'}</button></div>`);
+    $('#ug-x').onclick = c.close;
+    $('#ug-ok').onclick = async () => { if (!needOnline()) return; const { data, error } = await sb.rpc('net_undo_group', { p_change: +h.id }); if (error){ c.close(); return toast(errText(error)); }
+      c.close(); m.close(); await rdReload(); toast(imp ? `Carga deshecha: ${rdPl(data, 'elemento borrado', 'elementos borrados')}.` : `Recuperados: ${data}.`); rdTray(); }; });
   m.el.querySelectorAll('[data-see]').forEach(b => b.onclick = () => { const t = rdEl(b.dataset.see) || rdCb(b.dataset.see); if (!t) return toast('Ese elemento ya no está en el mapa.'); m.close(); RD.sel = t.id; if (t.lat != null) RD.map.setView([t.lat, t.lng], Math.max(RD.map.getZoom(), 16)); rdDraw(); rdSide(); });
 }
 
@@ -472,9 +501,9 @@ function rdUnifilar(){
     else {
       const on = l => l.map(e => ({ e, r: projectOn(rt.path, rt.cum, rdLL(e)) })), st = on(nodes).filter(x => x.r.off < 700).sort((x, y) => x.r.chain - y.r.chain).filter((x, i, a) => !i || x.r.chain - a[i - 1].r.chain > 300 || rdNorm(x.e.name || x.e.code) !== rdNorm(a[i - 1].e.name || a[i - 1].e.code)), bots = on(RD.els.filter(e => e.kind === 'botella' && e.lat != null)).filter(x => x.r.off < 80);
       const trunk = RD.cbs.filter(c => c.kind !== 'drop'), cabAt = m => rdSnap(pointAt(rt.path, rt.cum, m), trunk)?.c || rdCableOf({});
-      const W = 250, gap = 13, top = 70, o = [], segs = st.slice(1).map((x, i) => ({ c: cabAt((st[i].r.chain + x.r.chain) / 2), a: st[i].r.chain, b: x.r.chain })), nbAll = Math.max(8, ...segs.map(s => rdBufN(s.c))), H = top + nbAll * gap + 70;
+      const W = 250, gap = 13, top = 70, o = [], segs = st.slice(1).map((x, i) => ({ c: cabAt((st[i].r.chain + x.r.chain) / 2), a: st[i].r.chain, b: x.r.chain })), nbAll = Math.max(8, ...segs.map(s => rdBufN(s.c))), H = top + nbAll * gap + 100;
       st.forEach((x, i) => { const n = x.e, cx = i * W + 125, xl = i * W + 10, drop = rdDropOf(n), t = RD_TIPOS[n.props?.tipo], sl = segs[i - 1], sr = segs[i];
-        o.push(`<rect x="${cx - 70}" y="8" width="140" height="24" rx="4" fill="#fff" stroke="#12222E"/><text x="${cx}" y="25" text-anchor="middle" font-size="12" font-weight="700" data-uni="${n.id}" style="cursor:pointer">${esc((n.name || n.code || '').toUpperCase().slice(0, 20))}</text><text x="${cx}" y="46" text-anchor="middle" font-size="10" fill="#5C6F7C">${t ? 'NODO TIPO ' + n.props.tipo : 'NODO'}</text>`);
+        o.push(`<rect x="${cx - 82}" y="8" width="164" height="24" rx="4" fill="#fff" stroke="${rdIsCut(n) ? '#EA580C' : '#12222E'}" stroke-width="${rdIsCut(n) ? 2 : 1}"/><text x="${cx}" y="25" text-anchor="middle" font-size="11" font-weight="700" data-uni="${n.id}" style="cursor:pointer">${esc((n.name || n.code || '').toUpperCase().slice(0, 20))}</text><text x="${cx}" y="46" text-anchor="middle" font-size="10" fill="#5C6F7C">${t ? 'NODO TIPO ' + n.props.tipo : 'NODO'}</text>`);
         o.push(`<circle cx="${cx}" cy="${top + nbAll * gap / 2}" r="${nbAll * gap * 0.58}" fill="none" stroke="#93A6B2" stroke-dasharray="3 3"/>`);
         const nb = Math.max(sl ? rdBufN(sl.c) : 0, sr ? rdBufN(sr.c) : 0);
         for (let j = 0; j < nb; j++){ const y = top + j * gap + 6, col = RD_FIB[j % 12][1] === '#F4F4F4' ? '#93A6B2' : RD_FIB[j % 12][1], dp = drop.includes(j), x0 = sl && j < rdBufN(sl.c) ? xl : cx, x1 = sr && j < rdBufN(sr.c) ? xl + W : cx, ox = cx - 40 + drop.indexOf(j) * 10;
@@ -485,9 +514,14 @@ function rdUnifilar(){
           o.push(`<text x="${cx + W / 2}" y="${yb + 20}" text-anchor="middle" font-size="11" font-weight="600">${((sr.b - sr.a) / 1000).toFixed(1).replace('.', ',')} km · ${sr.c.fibers} pelos</text><text x="${cx + W / 2}" y="${yb + 34}" text-anchor="middle" font-size="10" fill="#5C6F7C">${rdPl(bs.length, 'botella', 'botellas')}${sr.c.kind === 'subterraneo' ? ' · subterráneo' : ''}</text>`);
           bs.forEach(q => { const bx = x1 + (x2 - x1) * (q.r.chain - sr.a) / Math.max(1, sr.b - sr.a), b = q.e;
             o.push(`<rect data-uni="${b.id}" x="${bx - 3.5}" y="${top - 3}" width="7" height="${rdBufN(sr.c) * gap + 6}" rx="3" fill="${rdCutN(b) ? '#C0262D' : b.pos === 'confirmada' ? '#15803D' : '#B45309'}" fill-opacity=".45" stroke="#12222E" stroke-width=".6" style="cursor:pointer"><title>${esc(rdName(b))}</title></rect>`); }); } });
+      // tramos ópticos: de corte a corte (los extremos de la vista cuentan como inicio y fin)
+      const cuts = st.map((x, i) => rdIsCut(x.e) || i === 0 || i === st.length - 1 ? i : -1).filter(i => i >= 0), yt = top + nbAll * gap + 52;
+      st.forEach((x, i) => { if (rdIsCut(x.e)){ const cx = i * W + 125; o.push(`<path d="M${cx} ${top - 8}V${top + nbAll * gap + 10}" stroke="#EA580C" stroke-width="2" stroke-dasharray="5 3"/><text x="${cx}" y="${top + nbAll * gap + 24}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#C2410C">✂ CORTE DE TRAMO</text>`); } });
+      cuts.slice(1).forEach((ci, k) => { const a = cuts[k], xa = a * W + 125, xb = ci * W + 125, km = (st[ci].r.chain - st[a].r.chain) / 1000;
+        o.push(`<path d="M${xa + 6} ${yt}V${yt + 6}H${xb - 6}V${yt}" fill="none" stroke="#C2410C" stroke-width="1.4"/><text x="${(xa + xb) / 2}" y="${yt + 20}" text-anchor="middle" font-size="11" font-weight="700" fill="#9A3412">TRAMO ÓPTICO ${k + 1}: ${esc((st[a].e.name || st[a].e.code || '').toUpperCase())} → ${esc((st[ci].e.name || st[ci].e.code || '').toUpperCase())} · ${km.toFixed(1).replace('.', ',')} km</text>`); });
       const maxW = st.length * W + 20;
       svg = `<svg viewBox="0 0 ${maxW} ${H}" width="${maxW}" height="${H}" style="display:block;font-family:inherit">${o.join('')}</svg>`;
-      note = `${st.length} nodos en ${rdKm(rt.len)}. Los buffers que bajan suben al distribuidor del nodo; el resto pasa de largo. Tocá una botella o un nodo para abrirlo.`;
+      note = `${st.length} nodos en ${rdKm(rt.len)}${cuts.length > 2 ? ', ' + (cuts.length - 1) + ' tramos ópticos' : ''}. Los buffers que bajan suben al distribuidor del nodo; el resto pasa de largo. Tocá una botella o un nodo para abrirlo.`;
     }
   } else {
     const o = [], X = [70, 200, 380, 590]; let y = 20; const Y = {};
@@ -551,7 +585,7 @@ function rdRoute(a, b){
 const rdD = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
 async function rdUpload(){
   if (!rdMgr() || !needOnline()) return;
-  const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.accept = '.kmz,.kml,.xlsx,.xls,.csv,.sor';
+  const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.accept = '.kmz,.kml,.xlsx,.xls,.csv,.sor,.pdf';
   inp.onchange = async () => {
     const files = [...inp.files].slice(0, 30); if (!files.length) return;
     const P = { els: [], cbs: [], probs: [], spl: null };       // spl = empalmes por progresiva (planilla o .sor)
@@ -562,6 +596,7 @@ async function rdUpload(){
         else if (/\.sor$/i.test(f.name)){ const s = parseSor(await f.arrayBuffer()), end = s.events.find(e => e.end) || s.events[s.events.length - 1];
           (P.spl ||= { src: [], ev: [], total: 0, a: '', b: '' }).src.push(f.name); P.spl.total = Math.max(P.spl.total, end ? end.m : 0);
           s.events.filter(e => !e.end && e.m > 30 && !e.reflective).forEach(e => { if (!P.spl.ev.some(x => Math.abs(x.m - e.m) < 60)) P.spl.ev.push({ m: e.m, loss: {} }); }); }
+        else if (/\.pdf$/i.test(f.name)){ if (RD.net.kind !== 'troncal'){ P.probs.push(`${f.name}: el unifilar en PDF se lee en las redes troncales.`); continue; } await rdReadPdf(await f.arrayBuffer(), f.name, P); }
         else { await needLib('xlsx'); rdReadXlsx(XLSX.read(await f.arrayBuffer()), f.name, P); }
       }
     } catch (e){ return toast('No pude leer el archivo: ' + errText(e)); }
@@ -580,6 +615,44 @@ function rdReadKml(pms, P){
       if (P.cbs.some(c => Math.abs(c.path.length - pm.pts.length) <= 2 && havm(c.path[0], p0) < 8 && havm(c.path[c.path.length - 1], p1) < 8)){ P.dupL = (P.dupL || 0) + 1; continue; }   // la misma línea dos veces en el archivo
       const k = rdNorm(name) || 'sin nombre', n = (seen.get(k) || 0) + 1; seen.set(k, n);
       P.cbs.push({ kindG: g, name: n > 1 || !name ? `${name || 'Recorrido'} (${n})` : name, path: pm.pts.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]), group: (pm.path[pm.path.length - 1] || 'Sin carpeta') + ' · líneas' }); } }
+}
+/* ---------- unifilar en PDF: qué buffers bajan en cada nodo y el tipo de nodo ----------
+   Se lee solo el texto del PDF (no se ejecuta nada del archivo). En cada columna "A NODO X" vienen pares
+   "B1-B2: A X" (bajan al nodo) y "B3-…: A <otro>" (siguen). "NODO TIPO n" va arriba del nombre de cada nodo. */
+const rdStop = new Set(['de', 'del', 'la', 'las', 'los', 'el', 'a', 'nodo', 'epi', 'y']);
+const rdTok = t => rdNorm(t).replace(/[^a-z0-9. ]/g, ' ').split(/\s+/).map(x => x.replace(/\.$/, '')).filter(x => x && !rdStop.has(x));
+function rdSame(a, b){ const A = rdTok(a), B = rdTok(b); if (!A.length || !B.length) return false; const [S, L] = A.length <= B.length ? [A, B] : [B, A];
+  if (L.length - S.length > 1 && S.length < 2) return false; const ok = (t, u) => t === u || u.startsWith(t) || t.startsWith(u); return S.every(t => L.some(u => ok(t, u))) && ok(S[0], L[0]); }
+function rdBufs(str){ const x = rdNorm(str).replace(/:$/, ''), out = new Set(), rg = /b(\d+)\s+a\s+b(\d+)/g; let m;
+  while ((m = rg.exec(x))) for (let i = +m[1]; i <= +m[2] && i <= 24; i++) out.add(i - 1);
+  for (const n of x.replace(/b\d+\s+a\s+b\d+/g, '').match(/b(\d+)/g) || []) { const i = +n.slice(1); if (i >= 1 && i <= 24) out.add(i - 1); }
+  return [...out].sort((p, q) => p - q); }
+async function rdReadPdf(buf, fname, P){
+  if (buf.byteLength > 30 * 1024 * 1024) throw new Error('El PDF supera 30 MB.');
+  await needLib('pdfjs'); pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf), isEvalSupported: false, disableFontFace: true, enableXfa: false, useSystemFonts: false, stopAtErrors: false }).promise;
+  if (doc.numPages > 60){ P.probs.push(`${fname}: tiene más de 60 hojas, no se leyó.`); return; }
+  const rows = (P.uni ||= []), isList = t => /^\s*b\d+[\s\-+a-z0-9]*:\s*$/i.test(t);
+  const rowOf = name => { let r = rows.find(x => rdSame(x.name, name)); if (!r){ r = { name, tipo: null, drop: null, src: fname }; rows.push(r); } return r; };
+  for (let p = 1; p <= doc.numPages; p++){
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const it = tc.items.map(i => ({ s: String(i.str || '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim(), x: i.transform[4], y: i.transform[5] })).filter(i => i.s).slice(0, 20000);
+    // buffers que bajan
+    for (const h of it){ const m = /^a nodo\s+(.+)$/i.exec(h.s); if (!m) continue;
+      const col = it.filter(i => i !== h && Math.abs(i.x - h.x) <= 9 && i.y < h.y && i.y > h.y - 50).sort((a, b) => b.y - a.y), pairs = []; let pend = null;
+      for (const i of col){ if (isList(i.s)) pend = rdBufs(i.s); else { const t = /^a\s+(?!nodo)(.+)$/i.exec(i.s) || (/^de\s/i.test(i.s) ? null : [0, i.s]); if (!t) break; pairs.push([pend, t[1]]); pend = null; } if (pairs.length >= 4) break; }
+      if (!pairs.length) continue;
+      const own = pairs.find(([, t]) => rdSame(t, m[1])), name = own ? own[1] : m[1], pass = pairs.filter(x => x !== own && x[0]).flatMap(x => x[0]);
+      let drop = own && own[0] ? own[0] : pass.length ? [...Array(8).keys()].filter(b => !pass.includes(b)) : null;
+      if (drop){ const r = rowOf(name); r.drop = drop; if (rdTok(name).length > rdTok(r.name).length) r.name = name; } }
+    // tipo de nodo
+    const skip = /distribuidor|^fo\s|hilos|acometida|caja de empalme|cuplas|acueducto|importante|camara|c[aá]mara|^odf|^nodo tipo|^b\d|^\d|^a\s|^de nodo|^de\s|fusionar|definir/i;
+    for (const h of it){ const m = /^nodo tipo\s*(\d)/i.exec(h.s); if (!m) continue;
+      const cand = it.filter(i => !skip.test(i.s) && i.y < h.y - 12 && i.y > h.y - 80 && Math.abs(i.x - h.x) < 130 && /[a-z]{3}/i.test(i.s)).sort((a, b) => Math.hypot(a.x - h.x, (a.y - h.y) * 0.6) - Math.hypot(b.x - h.x, (b.y - h.y) * 0.6));
+      if (!cand.length) continue; const c = cand[0], grp = it.filter(i => (i === c || !skip.test(i.s) || /^de\s/i.test(i.s)) && Math.abs(i.x - c.x) < 22 && Math.abs(i.y - c.y) < 10).sort((a, b) => b.y - a.y);   // nombres en dos renglones
+      rowOf(grp.map(i => i.s).join(' ')).tipo = +m[1]; }
+  }
+  if (!rows.length) P.probs.push(`${fname}: no encontré en el PDF los textos "A NODO …" ni "NODO TIPO …". Si el unifilar es una imagen escaneada no se puede leer.`);
 }
 function rdReadXlsx(wb, fname, P){
   const emp = wb.SheetNames.filter(n => /empalme/i.test(n));
@@ -617,8 +690,12 @@ function rdPreview(P, src){
     ${G.length ? `<div class="tblwrap" style="max-height:38vh;overflow:auto"><table class="tbl rd-df"><thead><tr><th>Grupo del archivo</th><th>Cantidad</th><th>Cargar como</th><th>Resultado</th></tr></thead><tbody>${G.map((g, i) => `<tr><td><b>${esc(g.label)}</b><div class="muted">${esc(g.items.slice(0, 3).map(x => x.code || x.name).filter(Boolean).join(', '))}${g.items.length > 3 ? '…' : ''}</div></td><td>${g.items.length}</td>
       <td><select data-g="${i}" style="margin:0">${g.pt ? KS.map(k => `<option value="${k}" ${g.kind === k ? 'selected' : ''}>${esc(RD_KIND[k])}</option>`).join('') : `<option value="cable" ${g.kind === 'cable' ? 'selected' : ''}>Cable</option><option value="drop" ${g.kind === 'drop' ? 'selected' : ''}>Drop / acometida</option>`}<option value="x" ${g.kind === 'x' ? 'selected' : ''}>No cargar</option></select></td><td id="rp-r${i}" class="muted"></td></tr>`).join('')}</tbody></table></div>` : ''}
     ${RD.net.kind === 'ftth' && P.els.some(e => e.kind === 'ap') ? '<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="rp-tree" style="width:auto" checked> Crear las botellas y cajas que falten leyendo el código de cada AP (posición estimada)</label>' : ''}
-    ${S ? `<div class="rd-buf" style="padding:10px;display:grid;gap:8px"><b>Empalmes por progresiva: ${S.ev.length} eventos${S.total ? ` · fibra ${rdKm(S.total)}` : ''}</b><span class="muted sm">${esc(S.src.join(', '))}. Elegí entre qué nodos está medido: las botellas se dibujan sobre el cable a su progresiva${Object.keys(S.ev[0]?.loss || {}).length ? ', con la atenuación de cada pelo' : ''}.</span>
-      ${nodes.length >= 2 ? `<div class="grid2"><div><label>Nodo origen (A)</label><select id="rp-a">${nodes.map(n => `<option value="${n.id}" ${guessN(S.a)?.id === n.id ? 'selected' : ''}>${esc(n.name || n.code)}</option>`).join('')}</select></div><div><label>Nodo destino (B)</label><select id="rp-b">${nodes.map((n, i) => `<option value="${n.id}" ${(guessN(S.b)?.id || nodes[1].id) === n.id ? 'selected' : ''}>${esc(n.name || n.code)}</option>`).join('')}</select></div></div><div class="sm" id="rp-s"></div>` : '<div class="rd-alert">Los empalmes se ubican después de cargar los nodos y los cables: al terminar esta carga te pido entre qué nodos está medido.</div>'}</div>` : ''}
+    ${S ? `<div class="rd-buf" style="padding:10px;display:grid;gap:8px"><b>Empalmes por progresiva: ${S.ev.length} eventos${S.total ? ` · fibra ${rdKm(S.total)}` : ''}</b><span class="muted sm">${esc(S.src.join(', '))}. Elegí entre qué nodos está medido (normalmente de un corte de tramo ✂ al siguiente): las botellas se dibujan sobre el cable a su progresiva${Object.keys(S.ev[0]?.loss || {}).length ? ', con la atenuación de cada pelo' : ''}.</span>
+      ${nodes.length >= 2 ? `<div class="grid2"><div><label>Nodo origen (A)</label><select id="rp-a">${nodes.map(n => `<option value="${n.id}" ${guessN(S.a)?.id === n.id ? 'selected' : ''}>${rdIsCut(n) ? '✂ ' : ''}${esc(n.name || n.code)}</option>`).join('')}</select></div><div><label>Nodo destino (B)</label><select id="rp-b">${nodes.map((n, i) => `<option value="${n.id}" ${(guessN(S.b)?.id || nodes[1].id) === n.id ? 'selected' : ''}>${rdIsCut(n) ? '✂ ' : ''}${esc(n.name || n.code)}</option>`).join('')}</select></div></div><div class="sm" id="rp-s"></div>` : '<div class="rd-alert">Los empalmes se ubican después de cargar los nodos y los cables: al terminar esta carga te pido entre qué nodos está medido.</div>'}</div>` : ''}
+    ${P.uni && P.uni.length ? `<div class="rd-buf" style="padding:10px;display:grid;gap:8px"><b>Unifilar: tipo de nodo y buffers que bajan al ODF</b><span class="muted sm">Leído del PDF. Revisá a qué nodo del mapa corresponde cada uno; lo que no tilde no se cambia.</span>
+      <div class="tblwrap" style="max-height:34vh;overflow:auto"><table class="tbl rd-df"><thead><tr><th></th><th>En el PDF</th><th>Nodo del mapa</th><th>Tipo</th><th>Bajan</th><th>Siguen</th></tr></thead><tbody>${P.uni.map((u, i) => { const n = nodes.find(x => rdNorm(x.name || x.code) === rdNorm(u.name)) || nodes.find(x => rdSame(x.name || x.code, u.name)), nb = 8;
+        return `<tr><td><input type="checkbox" id="ru-c${i}" ${n ? 'checked' : ''} style="width:auto"></td><td><b>${esc(u.name)}</b></td><td><select id="ru-n${i}" style="margin:0"><option value="">— elegir —</option>${nodes.map(x => `<option value="${x.id}" ${n?.id === x.id ? 'selected' : ''}>${esc(x.name || x.code)}</option>`).join('')}</select></td>
+          <td style="white-space:nowrap">${u.tipo ? 'Tipo ' + u.tipo : '<span class="muted">—</span>'}</td><td>${u.drop ? (u.drop.length >= nb ? '<b style="color:#C2410C">Todos · corte de tramo</b>' : u.drop.map(b => 'B' + (b + 1)).join(' ')) : '<span class="muted">según tipo</span>'}</td><td class="muted">${u.drop ? [...Array(nb).keys()].filter(b => !u.drop.includes(b)).map(b => 'B' + (b + 1)).join(' ') || '—' : ''}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
     <div class="grid2"><div><label>Información al día</label><input type="date" id="rp-d" value="${todayStr()}"></div><div><label>Nota</label><input id="rp-n" maxlength="120" placeholder="Ej.: KMZ entregado por el cliente"></div></div>
     <div class="err" id="rp-e"></div><div class="row" style="justify-content:flex-end;gap:6px"><button class="btn sec" id="rp-c">Cancelar</button><button class="btn" id="rp-ok">Cargar</button></div>`, { wide: true });
   $('#rp-x').onclick = $('#rp-c').onclick = m.close;
@@ -664,24 +741,30 @@ function rdPreview(P, src){
         sNote = `Recorrido sobre el mapa ${rdKm(ch.len)}${S.total ? ` · fibra ${rdKm(S.total)} · ajuste ${k.toFixed(3).replace('.', ',')}` : ''}. ${nn} botellas nuevas, ${nu} se actualizan. Quedan "a confirmar" hasta validarlas en el lugar.`; } }
     return { els, cbs, stat, sNote };
   };
-  const refresh = () => { const r = build(); G.forEach((g, i) => { const s = r.stat[i], el = $('#rp-r' + i); if (el) el.textContent = m.el.querySelector(`[data-g="${i}"]`).value === 'x' ? 'no se carga' : `${s.n} nuevos · ${s.u} se actualizan · ${s.s} ya estaban`; }); if ($('#rp-s')) $('#rp-s').innerHTML = r.sNote; $('#rp-ok').textContent = `Cargar ${r.els.length} elementos y ${r.cbs.length} cables`; };
+  const refresh = () => { const r = build(); G.forEach((g, i) => { const s = r.stat[i], el = $('#rp-r' + i); if (el) el.textContent = m.el.querySelector(`[data-g="${i}"]`).value === 'x' ? 'no se carga' : `${s.n} nuevos · ${s.u} se actualizan · ${s.s} ya estaban`; }); if ($('#rp-s')) $('#rp-s').innerHTML = r.sNote; const nu = (P.uni || []).filter((u, i) => $('#ru-c' + i)?.checked && $('#ru-n' + i)?.value).length; $('#rp-ok').textContent = [r.els.length || r.cbs.length || !nu ? `Cargar ${r.els.length} elementos y ${r.cbs.length} cables` : '', nu ? `${r.els.length || r.cbs.length ? 'y a' : 'A'}ctualizar ${rdPl(nu, 'nodo', 'nodos')} según el unifilar` : ''].filter(Boolean).join(' '); };
   m.el.querySelectorAll('select,input[type=checkbox]').forEach(x => x.addEventListener('change', refresh)); refresh();
   $('#rp-ok').onclick = async () => {
-    const r = build(); if (!r.els.length && !r.cbs.length) return void ($('#rp-e').textContent = 'No hay nada nuevo para cargar.');
+    const r = build(), U = (P.uni || []).map((u, i) => ({ u, on: $('#ru-c' + i)?.checked, n: rdEl($('#ru-n' + i)?.value) })).filter(x => x.on && x.n);
+    if (!r.els.length && !r.cbs.length && !U.length) return void ($('#rp-e').textContent = 'No hay nada nuevo para cargar.');
     if (!needOnline()) return; $('#rp-ok').disabled = true; $('#rp-ok').textContent = 'Cargando…';
-    const tot = { el_new: 0, el_upd: 0, cb_new: 0, cb_upd: 0 }, note = $('#rp-n').value.trim() || src.slice(0, 110), asof = $('#rp-d').value || todayStr();
+    const batch = (crypto.randomUUID ? crypto.randomUUID() : null), tot = { el_new: 0, el_upd: 0, cb_new: 0, cb_upd: 0 }, note = $('#rp-n').value.trim() || src.slice(0, 110), asof = $('#rp-d').value || todayStr();
     // primero cables (con sus extremos ya existentes) y elementos sin dependencias; después todo junto para enlazar
     const batches = []; for (let i = 0; i < r.cbs.length; i += 40) batches.push({ els: [], cbs: r.cbs.slice(i, i + 40) });
     const order = { olt: 0, nodo: 0, botella: 1, caja: 2 }, sorted = [...r.els].sort((a, b) => (order[a.kind] ?? 3) - (order[b.kind] ?? 3));
     for (let i = 0; i < sorted.length; i += 400) batches.unshift({ els: sorted.slice(i, i + 400), cbs: [] });
     batches.sort((a, b) => (b.els.length ? 1 : 0) - (a.els.length ? 1 : 0));
-    for (const b of batches){ const { data, error } = await sb.rpc('net_import', { p_net: RD.net.id, p_els: b.els, p_cbs: b.cbs, p_asof: asof, p_note: note });
+    let nU = 0;
+    for (const { u, n } of U){ const props = { ...(n.props || {}) }; if (u.tipo) props.tipo = u.tipo; const t = RD_TIPOS[props.tipo], def = !t ? null : t.drop === 'all' ? [...Array(8).keys()] : t.drop;
+      if (u.drop){ if (def && def.join() === u.drop.join()) delete props.drop; else props.drop = u.drop; }
+      if (JSON.stringify(props) === JSON.stringify(n.props || {})) continue;
+      const row = await rdApply('el', n.id, 'upd', { props }, `${rdName(n)}: según el unifilar (${u.src}) ${u.tipo ? 'tipo ' + u.tipo + ', ' : ''}bajan ${RD_TIPOS[props.tipo]?.drop === 'all' && !u.drop ? 'todos los buffers' : (u.drop || rdDropOf({ props })).map(b => 'B' + (b + 1)).join('-') || 'ninguno'}`); if (row) nU++; }
+    for (const b of batches){ const { data, error } = await sb.rpc('net_import', { p_net: RD.net.id, p_els: b.els, p_cbs: b.cbs, p_asof: asof, p_note: note, p_batch: batch });
       if (error){ $('#rp-e').textContent = errText(error); $('#rp-ok').disabled = false; $('#rp-ok').textContent = 'Reintentar'; return; } for (const k in tot) tot[k] += data?.[k] || 0; }
     // segunda pasada corta: dependencias que apuntaban a elementos de un lote posterior
     const late = sorted.filter(e => e.code && (e.parent || e.cable)).map(e => ({ kind: e.kind, code: e.code, parent: e.parent, cable: e.cable }));
-    for (let i = 0; i < late.length; i += 1500){ const { error } = await sb.rpc('net_import', { p_net: RD.net.id, p_els: late.slice(i, i + 1500), p_cbs: [], p_asof: asof, p_note: note }); if (error) break; }
+    for (let i = 0; i < late.length; i += 1500){ const { error } = await sb.rpc('net_import', { p_net: RD.net.id, p_els: late.slice(i, i + 1500), p_cbs: [], p_asof: asof, p_note: note, p_batch: batch }); if (error) break; }
     m.close(); IDB.del('kv', CUR_UID + ':net-list').catch(() => {}); await rdReload(); rdFit();
     if (S && !r.sNote) setTimeout(() => rdPreview({ els: [], cbs: [], probs: [], spl: S }, src), 400);
-    toast(`Cargado: ${tot.el_new} elementos nuevos, ${tot.el_upd} actualizados, ${tot.cb_new} cables nuevos, ${tot.cb_upd} actualizados.`);
+    toast(`Cargado: ${tot.el_new} elementos nuevos, ${tot.el_upd} actualizados, ${tot.cb_new} cables nuevos, ${tot.cb_upd} actualizados${U.length ? ` · ${rdPl(nU, 'nodo actualizado', 'nodos actualizados')} según el unifilar` : ''}.`);
   };
 }
