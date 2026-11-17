@@ -82,6 +82,10 @@ function tkCss(){
 .tk-seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}.tk-seg button{border:0;background:#fff;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer;color:var(--muted)}.tk-seg button.on{background:var(--navy);color:#fff}
 .tk-sla{background:var(--navy);color:#fff;border-radius:14px;padding:12px 16px;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
 .tk-ocr mark{background:#FDE68A;border-radius:3px;padding:0 2px}
+.tk-tl{display:grid;margin-top:6px}.tk-ev{display:grid;grid-template-columns:14px minmax(0,1fr);gap:10px;position:relative;padding-bottom:10px}
+.tk-ev:not(:last-child)::before{content:"";position:absolute;left:5px;top:16px;bottom:0;width:2px;background:var(--line)}
+.tk-ev .d{width:12px;height:12px;border-radius:50%;margin-top:4px}.tk-ev .tx{white-space:pre-wrap;overflow-wrap:anywhere;background:#F4F7F9;border-radius:8px;padding:7px 9px;margin-top:3px;font-size:14px}
+.tk-mailb{border:1px dashed var(--line);border-radius:12px;padding:10px;background:#F8FAFC}.tk-mailb code{font-size:12.5px;word-break:break-all}
 @media (max-width:700px){.tk-board{grid-template-columns:repeat(5,minmax(250px,85vw));scroll-snap-type:x mandatory}.tk-col{scroll-snap-align:start}}`;
   document.head.appendChild(st);
 }
@@ -140,7 +144,7 @@ async function viewMesa(v){
   const cnt = { nuevo: by('nuevo').length, corre: vis.filter(t => ['corre'].includes(tkMood(t))).length, vencido: vis.filter(t => tkMood(t) === 'vencido').length };
   const card = t => { const pr = TK_PRIO[t.priority] || TK_PRIO.normal, m = tkMood(t);
     return `<button class="tk-card" data-tk="${esc(t.id)}" style="border-left-color:${TK_MOOD[m][1]}">${tkFigure(t, 40)}<div class="t">
-      <div class="s">#${esc(t.ext_no)} · ${esc(tkPName(t.project_id))}</div><b>${esc(t.site_name)}${t.site2_name ? ' – ' + esc(t.site2_name) : ''}</b>
+      <div class="s">#${esc(t.ext_no)} · ${esc(tkPName(t.project_id))}${t.from_mail ? ' · 📨' : ''}${t.sol_note_at && t.status !== 'cerrado' ? ' · <b style="color:#15803D">✔ solución en el NOC</b>' : ''}</div><b>${esc(t.site_name)}${t.site2_name ? ' – ' + esc(t.site2_name) : ''}</b>
       <div class="s">${esc([t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '))}</div>
       ${t.staff_ids?.length || t.contractor_id ? `<div class="s" style="color:var(--navy)">${esc(tkWho(t))}</div>` : ''}
       <span class="p" style="background:${pr[2]};color:${pr[1]}">${pr[0]}</span>
@@ -153,6 +157,7 @@ async function viewMesa(v){
         <select id="tk-f" style="width:auto"><option value="">Todos los proyectos</option>${TK.projects.map(p => `<option value="${esc(p.id)}" ${p.id === f ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
         <button class="btn ${mine ? 'sec' : ''}" id="tk-shift">${mine ? 'Dejar el turno' : 'Tomar el turno'}</button>
         <button class="btn sec" id="tk-cfg" title="Ticketeras">⚙ Ticketeras</button></div></div>
+    <div id="tk-inbox"></div>
     ${!TK.projects.length ? `<div class="banner warn" style="margin:0 0 12px"><span class="dot"></span><div><b>Primero armá un proyecto de mantenimiento</b><div class="sm">En Proyectos → nuevo proyecto de tipo Mantenimiento, con su ticketera, su planilla de correctivo y la tabla del pliego.</div><a class="btn small" href="#/proj" style="margin-top:6px">Ir a Proyectos</a></div></div>` : ''}
     <div class="tk-top">
       <div class="tk-paste" id="tk-paste" tabindex="0" role="button" aria-label="Pegar captura o texto del ticket">
@@ -172,6 +177,7 @@ async function viewMesa(v){
   v.querySelectorAll('[data-tk]').forEach(b => b.onclick = () => tkDetailModal(b.dataset.tk, () => viewMesa(v)));
   v.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => { const k = b.dataset.jump; const t = vis.find(x => k === 'nuevo' ? x.status === 'nuevo' : tkMood(x) === k); if (t) v.querySelector(`[data-tk="${t.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   tkBindPaste(v, () => viewMesa(v));
+  tkInboxBanner($('#tk-inbox'), () => viewMesa(v)).catch(() => {});
   clearInterval(TK.timer);
   TK.timer = setInterval(() => { if (!document.body.contains(v.querySelector('.tk-board'))){ clearInterval(TK.timer); return; }
     v.querySelectorAll('[data-left]').forEach(el => { const t = list.find(x => x.id === el.dataset.left); if (t) el.textContent = tkLeftTxt(t); }); }, 60000);
@@ -283,6 +289,8 @@ const TK_PRESETS = {
   // el lector a veces lee el "#" como "=", "5" o "2": se toman los 5 dígitos del número, en el renglón de "Type / Nodo Tipo / Client"
   sf: { name: 'Portal Santa Fe', num_re: '(?:^|[^\\d])[#=]?\\d?(\\d{5})\\b(?=.*(?:type|tipo|client|nodo))', title_re: '^(.+?)\\s*/\\s*(.+?)\\s*/\\s*(.+)$', include_hours: false, pdf_tpl: '{ticket}-{sitio}',
         status_map: { open: 'Open', closed: 'Closed', pending: 'Pending', cancelled: 'Cancelled' },
+        url_tpl: 'https://helpdesk-noc.santafe.gov.ar:10444/helpdesk/WebObjects/Helpdesk.woa/wa/TicketActions/view?ticket={n}',
+        mail_from: ['soporte.noc@santafe.gov.ar'], mail_domain: 'santafe.gov.ar', note_to: 'noc@santafe.gov.ar', note_subj: 'Ticket:{n} Action:Update',
         note_tpl: '{saludo}\n\n{realizado}\n\nAdjunto informe para su cierre\n\nSaludos cordiales\n\n{tecnico}\n{cargo}\n{telefono}' },
   trans: { name: 'Ticketera Trans', num_re: 'TICKET\\s*N[°ºo]?\\s*:?\\s*(\\d{3,8})', title_re: '', include_hours: true, pdf_tpl: '{ticket}-{sitio}', status_map: {},
         note_tpl: '{realizado}\n\nTrabajo realizado por {tecnico} el {fecha}. Se adjunta informe.' },
@@ -584,16 +592,21 @@ async function tkDetailModal(id, after){
       <div class="stat"><span>Asignado</span><b style="font-size:15px">${esc(tkWho(t) || 'Nadie')}</b>${t.arrived_at ? `<small>llegó ${esc(fmtTime(t.arrived_at))}</small>` : ''}</div></div>
     <p>${esc([t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '))}</p>${t.description ? `<p class="sm muted" style="white-space:pre-wrap">${esc(t.description.slice(0, 1500))}</p>` : ''}
     ${t.capture_path ? '<p class="sm"><a href="#" id="dt-cap">Ver la captura original</a></p>' : ''}
+    ${t.sol_note_at || t.ext_closed_at ? `<p class="sm">${t.sol_note_at ? `<b style="color:#15803D">Nota de solución en el NOC: ${esc(fmtDT(t.sol_note_at))}</b>${t.reported_at ? ' · nuestro tiempo ' + tkH((new Date(t.sol_note_at) - new Date(t.reported_at)) / 3600000) : ''}` : ''}${t.ext_closed_at ? ` · el cliente lo cerró ${esc(fmtDT(t.ext_closed_at))} (no cuenta)` : ''}</p>` : ''}
+    <div id="dt-notes"></div>
     <details class="sm"><summary style="cursor:pointer">Historial (${(t.history || []).length})</summary>${(t.history || []).map(h => `<div style="padding:3px 0;border-bottom:1px solid var(--line)">${esc(fmtDT(h.at))} · ${esc(h.by || '')}: ${esc(h.ev === 'gracia' ? `gracia +${h.h} h (${h.motivo})` : TK_ST[h.ev] || h.ev)}</div>`).join('')}</details>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
       ${['nuevo', 'asignado', 'en_curso'].includes(t.status) ? `<button class="btn" id="dt-as">${t.staff_ids?.length || t.contractor_id ? 'Reasignar' : 'Asignar'}</button>` : ''}
       ${(t.staff_ids?.length || t.contractor_id) && ['asignado', 'en_curso'].includes(t.status) ? '<button class="btn sec" id="dt-wa">WhatsApp / avisos</button>' : ''}
       ${['nuevo', 'asignado', 'en_curso'].includes(t.status) ? '<button class="btn sec" id="dt-ed">Corregir datos</button><button class="btn sec" id="dt-gr">Período de gracia</button>' : ''}
       ${url ? `<a class="btn sec" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir en la ticketera ↗</a>` : ''}
+      ${k?.note_to && !['cerrado', 'cancelado'].includes(t.status) ? '<button class="btn sec" id="dt-nt">✉️ Nota al NOC</button>' : ''}
       ${t.inspection_id ? `<a class="btn sec" href="#/informe/${esc(t.inspection_id)}">Ver informe</a>` : ''}
       ${['nuevo', 'asignado'].includes(t.status) ? '<button class="btn danger" id="dt-can">Cancelar ticket</button>' : ''}
       <button class="btn sec" id="dt-x" style="margin-left:auto">Cerrar</button></div>`, { wide: true });
   $('#dt-x').onclick = m.close;
+  tkNotesInto($('#dt-notes'), t).catch(() => {});
+  $('#dt-nt')?.addEventListener('click', () => { m.close(); tkNoteModal(t, after); });
   $('#dt-as')?.addEventListener('click', () => { m.close(); tkAssignModal(t.id, after); });
   $('#dt-ed')?.addEventListener('click', () => { m.close(); tkEditModal(t, after); });
   $('#dt-wa')?.addEventListener('click', () => { m.close(); tkReachModal(t, false, false); });
@@ -657,12 +670,17 @@ async function tkCloseModal(t, after){
     <label style="margin-top:12px">Nota para la ticketera (podés corregirla)</label><textarea id="cl-n" rows="10" style="font-size:15px;line-height:1.5;background:#FFFBEB">${esc(note)}</textarea>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" id="cl-copy">Copiar nota</button>
       ${t.inspection_id ? `<button class="btn sec" id="cl-pdf">Informe en PDF (${esc(pdfName)})</button>` : ''}
-      ${url ? `<a class="btn sec" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir el ticket del cliente ↗</a>` : ''}</div>
+      ${url ? `<a class="btn sec" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Abrir el ticket del cliente ↗</a>` : ''}
+      ${k.note_to ? '<a class="btn sec" id="cl-mail" href="#">✉️ Mandar la nota por mail al NOC</a>' : ''}</div>
+    ${k.note_to ? `<p class="sm muted" style="margin:6px 0 0">Mandala a <b>${esc(k.note_to)}</b> con el asunto <b>${esc(tkSubj(k, t))}</b> y el informe adjunto. Cuando vuelva el aviso del NOC con tu nota, el ticket se cierra solo con esa hora.</p>` : ''}
+    <div id="cl-notes"></div>
     ${k.include_hours ? `<label style="margin-top:12px">Horas y viajes para cargar en la ticketera</label>${hh.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Técnico</th><th>Tipo</th><th>Día y horario</th><th class="num">Horas</th></tr></thead><tbody>${hh.map(h => `<tr><td>${esc(tkStaffName(h.staff_id))}</td><td>${h.kind === 'viaje' ? 'Viaje' : 'Trabajo'}</td><td>${esc(fmtD(h.day))} ${esc(String(h.start_t || '').slice(0, 5))}–${esc(String(h.end_t || '').slice(0, 5))}</td><td class="num">${esc(h.hours ?? '')}</td></tr>`).join('')}</tbody></table></div><button class="btn sec small" id="cl-hh" style="margin-top:6px">Copiar horas</button>` : '<p class="sm muted">No hay horas cargadas con este ticket (en Horas, el pedido lleva el número de ticket).</p>'}` : ''}
     <div class="tk-sla" style="margin-top:14px"><span>¿Ya lo cargaste en la ticketera del cliente? Queda registrada la hora y pasa a cerrado.</span><button class="btn" id="cl-ok" style="background:var(--green);border-color:var(--green)">Cargado en el cliente</button></div>
     <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn sec" id="cl-x">Cerrar</button></div>`, { wide: true });
   const copy = async (txt, msg) => { try { await navigator.clipboard.writeText(txt); toast(msg); } catch { toast('No se pudo copiar: seleccioná el texto y copialo a mano.'); } };
   $('#cl-copy').onclick = () => copy($('#cl-n').value, 'Nota copiada: pegala en el ticket del cliente');
+  $('#cl-mail')?.addEventListener('click', e => { e.preventDefault(); tkMailTo(k, t, $('#cl-n').value); });
+  tkNotesInto($('#cl-notes'), t, true).catch(() => {});
   $('#cl-hh')?.addEventListener('click', () => copy(hrsTxt, 'Horas copiadas'));
   $('#cl-pdf')?.addEventListener('click', () => { try { sessionStorage.setItem('ia_pdfname', pdfName.replace(/\.pdf$/, '')); } catch {} m.close(); location.hash = '#/informe/' + t.inspection_id; });
   $('#cl-x').onclick = m.close;
@@ -739,6 +757,7 @@ async function viewTicket(v, id){
       ${task?.description ? `<div style="margin-top:10px;background:#FFFBEB;border-radius:10px;padding:10px">Indicación: ${esc(task.description)}</div>` : ''}
       ${coord ? `<a class="btn" style="display:block;text-decoration:none;text-align:center;margin-top:12px;padding:13px;font-size:16px;background:#2A78D6;border-color:#2A78D6" href="https://www.google.com/maps/dir/?api=1&destination=${coord[0]},${coord[1]}" target="_blank" rel="noopener noreferrer">Ir al sitio (Google Maps)</a>` : ''}</div>
     ${closed ? `<div class="card" style="margin:0;text-align:center"><div style="display:flex;justify-content:center">${tkFigure(t, 80)}</div><h2 style="margin:6px 0">¡Listo!</h2><p class="muted">${t.status === 'cerrado' ? 'La oficina ya lo cargó en el cliente.' : 'Le pasamos el informe a la oficina para que lo cargue en el cliente.'}</p>${ins ? `<a href="#/informe/${esc(ins.id)}">Ver mi informe</a>` : ''}</div>` : `
+    <div id="t-notes"></div>
     <div id="t-lessons"></div>
     <div class="sm muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:0 4px">Tres pasos</div>
     <button class="tk-step ${s1 ? 'done' : 'now'}" id="st1"><span class="n">${s1 ? '✓' : '1'}</span><div><b>Llegué al sitio</b><div class="sm muted">${s1 ? 'Registrado ' + esc(fmtTime(t.arrived_at)) : 'Toca al llegar: guarda la hora y tu ubicación'}</div></div></button>
@@ -747,6 +766,8 @@ async function viewTicket(v, id){
     <div class="sm muted" style="text-align:center">${s2 ? 'Para el reloj del SLA y le pasa el informe a la oficina, firmado por vos.' : 'Se habilita cuando la planilla está completa.'}</div>`}
   </div>`;
   if (typeof taskLessons === 'function') taskLessons($('#t-lessons'), 'reparacion', t.site_id ? [t.site_id] : [], t.id).catch(() => {});
+  if (online()) tkNotes(t).then(l => { const box = $('#t-notes'); if (!box || !l.length) return;
+    box.innerHTML = `<details class="card" style="margin:0"><summary style="cursor:pointer;font-weight:700">💬 Notas del ticket (${l.length})</summary>${tkNotesHtml(l.slice(-8), t)}</details>`; }).catch(() => {});
   $('#st1')?.addEventListener('click', async () => {
     if (s1) return; if (!needOnline()) return;
     const pos = await getPos();
@@ -791,10 +812,13 @@ async function tkTicketerasModal(after){
   const m = modal(`<h2>Ticketeras</h2><p class="muted sm" style="margin-top:-4px">Cómo leer los tickets de cada cliente y cómo armar la nota de cierre. Para un cliente nuevo, sumá una ficha.</p>
     <div id="tk-l">${TK.tkr.map(x => `<div class="item row between"><div><b>${esc(x.name)}</b><div class="sm muted">${esc(x.url_tpl || 'sin enlace')}${x.include_hours ? ' · pasa horas y viajes' : ''}</div></div><button class="btn sec small" data-e="${esc(x.id)}">Editar</button></div>`).join('') || '<p class="muted">Todavía no hay ninguna.</p>'}</div>
     <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">${!TK.tkr.some(x => /santa fe/i.test(x.name)) ? '<button class="btn sec small" data-pre="sf">+ Portal Santa Fe (ya armada)</button>' : ''}${!TK.tkr.some(x => /trans/i.test(x.name)) ? '<button class="btn sec small" data-pre="trans">+ Ticketera Trans (ya armada)</button>' : ''}<button class="btn small" data-e="">+ Otra ticketera</button></div>
+    <div id="tk-mail" style="margin-top:14px"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="tk-lx">Cerrar</button></div>`, { wide: true });
   $('#tk-lx').onclick = () => { m.close(); after && after(); };
+  tkMailBox($('#tk-mail'), m, after).catch(e => { $('#tk-mail').innerHTML = `<p class="sm muted">${esc(errText(e))}</p>`; });
   m.el.querySelectorAll('[data-pre]').forEach(b => b.onclick = async () => { const pz = TK_PRESETS[b.dataset.pre];
-    const { error } = await sb.from('ticketeras').insert({ org_id: me.org_id, name: pz.name, num_re: pz.num_re, title_re: pz.title_re, status_map: pz.status_map, note_tpl: pz.note_tpl, pdf_tpl: pz.pdf_tpl, include_hours: pz.include_hours, url_tpl: '' });
+    const { error } = await sb.from('ticketeras').insert({ org_id: me.org_id, name: pz.name, num_re: pz.num_re, title_re: pz.title_re, status_map: pz.status_map, note_tpl: pz.note_tpl, pdf_tpl: pz.pdf_tpl, include_hours: pz.include_hours, url_tpl: pz.url_tpl || '',
+      ...(pz.mail_from ? { mail_from: pz.mail_from, mail_domain: pz.mail_domain, note_to: pz.note_to, note_subj: pz.note_subj } : {}) });
     if (error) return toast(errText(error)); await IDB.del('kv', CUR_UID + ':tk-tkr').catch(() => {}); m.close(); tkTicketerasModal(after); });
   m.el.querySelectorAll('[data-e]').forEach(b => b.onclick = () => { m.close(); tkTicketeraEdit(TK.tkr.find(x => x.id === b.dataset.e) || {}, after); });
 }
@@ -808,6 +832,13 @@ function tkTicketeraEdit(x, after){
     <label>Nota de cierre <span class="muted sm">{saludo} {realizado} {tecnico} {cargo} {telefono} {ticket} {sitio} {fecha} {hora}</span></label><textarea id="te-note" rows="7">${esc(x.note_tpl || TK_PRESETS.sf.note_tpl)}</textarea>
     <label>Nombre del PDF</label><input id="te-pdf" maxlength="120" value="${esc(x.pdf_tpl || '{ticket}-{sitio}')}">
     <label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:8px"><input type="checkbox" id="te-hh" style="width:auto" ${x.include_hours ? 'checked' : ''}> Al cerrar, pasar también las horas y los viajes del ticket</label>
+    <details ${x.mail_from?.length || x.note_to ? 'open' : ''} style="margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:8px 12px"><summary style="cursor:pointer;font-weight:700">📨 Tickets por mail</summary>
+      <label>Casillas del cliente que mandan los avisos <span class="muted sm">(una por renglón)</span></label><textarea id="te-mf" rows="2" placeholder="soporte.noc@santafe.gov.ar">${esc((x.mail_from || []).join('\n'))}</textarea>
+      <label>Dominio que firma los mails <span class="muted sm">(si está vacío, el de la casilla)</span></label><input id="te-md" maxlength="120" value="${esc(x.mail_domain || '')}" placeholder="santafe.gov.ar">
+      <div class="row" style="gap:10px"><div class="grow"><label>Casilla para cargar notas</label><input id="te-nt" maxlength="120" value="${esc(x.note_to || '')}" placeholder="noc@santafe.gov.ar"></div>
+        <div class="grow"><label>Asunto de la nota <span class="muted sm">({n} = número)</span></label><input id="te-ns" maxlength="120" value="${esc(x.note_subj || 'Ticket:{n} Action:Update')}"></div></div>
+      <label>Cómo se reconocen nuestras notas <span class="muted sm">(opcional; ya se reconocen los nombres del equipo)</span></label><input id="te-or" maxlength="200" value="${esc(x.our_re || '')}" placeholder="\\(L2\\)">
+    </details>
     <div class="err" id="te-err"></div>
     <div class="row between" style="margin-top:10px">${x.id ? '<button class="btn danger" id="te-del">Dar de baja</button>' : '<span></span>'}<div class="row" style="gap:8px"><button class="btn sec" id="te-x">Cancelar</button><button class="btn" id="te-ok">Guardar</button></div></div>`, { wide: true });
   $('#te-try').oninput = () => { const save = TK.tkr; TK.tkr = [{ id: 'x', num_re: $('#te-num').value, title_re: $('#te-tit').value }];
@@ -818,8 +849,9 @@ function tkTicketeraEdit(x, after){
   $('#te-ok').onclick = async () => {
     const url = $('#te-url').value.trim();
     if (url && !/^https:\/\//i.test(url)) return ($('#te-err').textContent = 'El enlace tiene que empezar con https://');
-    for (const id of ['#te-num', '#te-tit']) if ($(id).value && !tkRe($(id).value)) return ($('#te-err').textContent = 'Hay una expresión mal escrita.');
-    const row = { org_id: me.org_id, name: $('#te-name').value.trim(), url_tpl: url, num_re: $('#te-num').value.trim(), title_re: $('#te-tit').value.trim(), note_tpl: $('#te-note').value, pdf_tpl: $('#te-pdf').value.trim() || '{ticket}-{sitio}', include_hours: $('#te-hh').checked };
+    for (const id of ['#te-num', '#te-tit', '#te-or']) if ($(id).value && !tkRe($(id).value)) return ($('#te-err').textContent = 'Hay una expresión mal escrita.');
+    const row = { org_id: me.org_id, name: $('#te-name').value.trim(), url_tpl: url, num_re: $('#te-num').value.trim(), title_re: $('#te-tit').value.trim(), note_tpl: $('#te-note').value, pdf_tpl: $('#te-pdf').value.trim() || '{ticket}-{sitio}', include_hours: $('#te-hh').checked,
+      mail_from: $('#te-mf').value.split(/[\s,;]+/).map(z => z.trim().toLowerCase()).filter(Boolean), mail_domain: $('#te-md').value.trim() || null, note_to: $('#te-nt').value.trim() || null, note_subj: $('#te-ns').value.trim() || 'Ticket:{n} Action:Update', our_re: $('#te-or').value.trim() || null };
     if (row.name.length < 2) return ($('#te-err').textContent = 'Poné un nombre.');
     const { error } = x.id ? await sb.from('ticketeras').update(row).eq('id', x.id) : await sb.from('ticketeras').insert(row);
     if (error) return ($('#te-err').textContent = errText(error));
@@ -982,4 +1014,129 @@ function tkPliegoModal(p, current, after){
       TK.rules.delete(p.id); IDB.del('kv', CUR_UID + ':projects').catch(() => {}); m.close(); toast(found.length ? 'Tabla del pliego guardada' : 'PDF guardado'); after && after();
     } catch (e){ $('#pl-ok').disabled = false; toast(errText(e)); }
   };
+}
+
+/* =====================================================================
+   TICKETS POR MAIL: línea de tiempo, nota al NOC, bandeja y conexión del correo
+   ===================================================================== */
+const TK_SIDE = { cliente: ['Cliente', '#64748B'], nuestro: ['Nosotros', '#15803D'], noc: ['Técnico del NOC', '#7C3AED'] };
+const TK_GS = "// =====================================================================\n// InspectApp · script de la casilla de la app (Gmail: apptransformandonos@gmail.com)\n// Cada 5 minutos manda a InspectApp los mails nuevos (los avisos del NOC que reenvía tu Outlook).\n//\n// Instalar (una sola vez, con la sesión de la casilla de la app abierta):\n//  1. Entrá a https://script.google.com → Nuevo proyecto → nombre \"InspectApp tickets\".\n//  2. Borrá lo que aparece y pegá TODO este archivo. Guardá (ícono del disquete).\n//  3. ⚙ Configuración del proyecto → Propiedades del script → Agregar propiedad:\n//       nombre  IA_MAIL_KEY    valor  la clave que te dio la app (empieza con iam_)\n//     La clave NO va escrita en el código.\n//  4. Arriba elegí la función \"instalar\" y tocá ▶ Ejecutar. Google pide permisos: aceptá\n//     (leer y etiquetar los mails de esta casilla y conectarse a InspectApp).\n//  Listo. Para probar sin esperar: elegí \"revisar\" y ▶ Ejecutar; mirá el resultado en \"Ejecuciones\".\n// =====================================================================\nconst IA_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co/functions/v1/inspectapp-mail';\n\nfunction instalar() {\n  ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'revisar') ScriptApp.deleteTrigger(t); });\n  ScriptApp.newTrigger('revisar').timeBased().everyMinutes(5).create();\n  revisar();\n}\n\nfunction revisar() {\n  const key = PropertiesService.getScriptProperties().getProperty('IA_MAIL_KEY');\n  if (!key || !/^iam_[0-9a-f]{64}$/.test(key)) throw new Error('Falta la propiedad IA_MAIL_KEY (la clave de la app)');\n  const ok = GmailApp.getUserLabelByName('InspectApp') || GmailApp.createLabel('InspectApp');\n  const bad = GmailApp.getUserLabelByName('InspectApp-revisar') || GmailApp.createLabel('InspectApp-revisar');\n  const threads = GmailApp.search('in:inbox is:unread newer_than:10d', 0, 40);\n  let n = 0;\n  for (const th of threads) {\n    for (const m of th.getMessages()) {\n      if (!m.isUnread()) continue;\n      if (n++ >= 60) return;                                     // de a poco: el resto en la próxima vuelta\n      let raw;\n      try { raw = m.getRawContent(); } catch (e) { continue; }\n      if (raw.length > 4000000) { m.markRead(); th.addLabel(bad); continue; }\n      const r = UrlFetchApp.fetch(IA_URL, {\n        method: 'post', contentType: 'application/json', muteHttpExceptions: true,\n        headers: { 'x-ia-mail': key },\n        payload: JSON.stringify({ raw: Utilities.base64Encode(raw, Utilities.Charset.UTF_8) }),\n      });\n      const code = r.getResponseCode();\n      if (code === 200) { m.markRead(); th.addLabel(ok); }\n      else if (code === 401) throw new Error('InspectApp rechazó la clave: generá una nueva en la app y cargala en IA_MAIL_KEY');\n      else if (code >= 400 && code < 500) { m.markRead(); th.addLabel(bad); }  // no es un mail que se pueda leer\n      // 5xx: queda sin leer y se reintenta en la próxima vuelta\n    }\n  }\n}\n";
+const tkSubj = (k, t) => String(k?.note_subj || 'Ticket:{n} Action:Update').replace(/\{n\}/g, t.ext_no).replace(/[\r\n]+/g, ' ');
+function tkMailTo(k, t, body){
+  if (!k?.note_to || !/^[^\s@<>"]+@[a-z0-9.\-]+$/i.test(k.note_to)) return toast('La ticketera no tiene casilla para notas.');
+  let b = String(body || '').trim(), long = b.length > 1700;
+  if (long){ try { navigator.clipboard.writeText(b); } catch {} b = '[La nota es larga: pegala acá (ya está copiada)]'; }
+  const a = document.createElement('a');
+  a.href = `mailto:${encodeURIComponent(k.note_to)}?subject=${encodeURIComponent(tkSubj(k, t))}&body=${encodeURIComponent(b)}`;
+  a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+  toast(long ? 'Se abre tu correo. La nota quedó copiada: pegala en el mail.' : 'Se abre tu correo con la nota lista. Revisala y enviala.');
+}
+async function tkNotes(t){ const { data, error } = await sb.from('ticket_notes').select('at,author,side,body,atts').eq('ticket_id', t.id).order('at'); if (error) throw error; return data || []; }
+function tkNotesHtml(list, t){
+  const k = tkTkr(t.ticketera_id), pref = (k?.url_tpl || '').match(/^https:\/\/[^/\s"'<>]+\//)?.[0] || null;
+  const ev = list.map(n => ({ ...n, k: n.side }));
+  if (t.sol_note_at) ev.push({ at: t.sol_note_at, k: 'fin', author: 'Fin de nuestro tiempo', body: '' });
+  if (t.ext_closed_at) ev.push({ at: t.ext_closed_at, k: 'cierre', author: 'El cliente cerró el ticket', body: 'No cuenta para nuestro tiempo.' });
+  ev.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const col = { fin: '#15803D', cierre: '#0F2A4A' }, lab = { fin: 'Fin de nuestro tiempo', cierre: 'Cierre del cliente' };
+  return `<div class="tk-tl">${ev.map(n => `<div class="tk-ev"><span class="d" style="background:${col[n.k] || TK_SIDE[n.k]?.[1] || '#64748B'}${n.k === 'fin' ? ';box-shadow:0 0 0 3px #DCFCE7' : ''}"></span><div>
+      <div class="sm"><b>${esc(n.author)}</b> · ${esc(fmtDT(n.at))} · <span style="color:${col[n.k] || TK_SIDE[n.k]?.[1]}">${esc(lab[n.k] || TK_SIDE[n.k]?.[0] || '')}</span></div>
+      ${n.body ? `<div class="tx">${esc(n.body)}</div>` : ''}
+      ${(n.atts || []).length ? `<div class="sm" style="margin-top:3px">📎 ${n.atts.map(a => { const ok = pref && typeof a.url === 'string' && a.url.startsWith(pref) && /^https:\/\/[^\s"'<>]+$/.test(a.url);
+          return ok ? `<a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.name)}</a>` : esc(a.name); }).join(' · ')} <span class="muted">(se abren en la ticketera)</span></div>` : ''}</div></div>`).join('')}</div>`;
+}
+async function tkNotesInto(box, t, closed){
+  if (!box || !online()) return;
+  const l = await tkNotes(t); if (!l.length) return;
+  box.innerHTML = `<details style="margin-top:10px" ${closed ? '' : 'open'}><summary style="cursor:pointer;font-weight:700">💬 Notas del ticket en el NOC (${l.length})</summary>${tkNotesHtml(l, t)}</details>`;
+}
+function tkNoteModal(t, after){
+  const k = tkTkr(t.ticketera_id); if (!k?.note_to) return;
+  const who = tkWho(t) || 'la cuadrilla', s = t.site_name;
+  const P = { tomado: `Buenos días. Ticket tomado: se asigna ${who} para atender el evento.`, camino: `${who} en camino al sitio ${s}.`,
+    sitio: `${who} en el sitio ${s}. Se inicia la verificación.`, libre: '' };
+  const m = modal(`<h2>✉️ Nota al NOC · #${esc(t.ext_no)}</h2><p class="muted sm" style="margin-top:-4px">Se manda desde tu correo. El NOC la carga como nota del ticket y vuelve en el próximo aviso.</p>
+    <div class="tk-seg" style="flex-wrap:wrap"><button type="button" data-p="tomado">Tomado</button><button type="button" data-p="camino">En camino</button><button type="button" data-p="sitio">En sitio</button><button type="button" data-p="libre">Texto libre</button></div>
+    <div class="tk-mailb" style="margin-top:10px"><div class="sm">Para: <code>${esc(k.note_to)}</code> · Asunto: <code>${esc(tkSubj(k, t))}</code></div>
+      <textarea id="nt-t" rows="5" maxlength="4000" style="margin-top:6px"></textarea>
+      <p class="sm muted" style="margin:4px 0 0">No pongas DNI ni teléfonos salvo que el NOC los pida para una autorización. Para la nota de cierre usá "Informe listo".</p></div>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn sec" id="nt-x">Cerrar</button><button class="btn sec" id="nt-c">Copiar</button><button class="btn" id="nt-go">Abrir el mail</button></div>`);
+  const set = k2 => { $('#nt-t').value = P[k2]; m.el.querySelectorAll('[data-p]').forEach(b => b.classList.toggle('on', b.dataset.p === k2)); $('#nt-t').focus(); };
+  m.el.querySelectorAll('[data-p]').forEach(b => b.onclick = () => set(b.dataset.p));
+  set(t.status === 'nuevo' || t.status === 'asignado' ? (t.arrived_at ? 'sitio' : 'tomado') : 'sitio');
+  $('#nt-x').onclick = () => { m.close(); after && after(); };
+  $('#nt-c').onclick = async () => { try { await navigator.clipboard.writeText($('#nt-t').value); toast('Nota copiada'); } catch { $('#nt-t').select(); toast('Copiala con Ctrl+C'); } };
+  $('#nt-go').onclick = () => { if (!$('#nt-t').value.trim()) return toast('Escribí la nota.'); tkMailTo(k, t, $('#nt-t').value); };
+}
+
+/* ---------- bandeja: mails que la app no aplicó sola ---------- */
+const TK_MIB = { sin_verificar: ['No se pudo verificar', '#B91C1C'], sin_proyecto: ['Sin proyecto', '#B45309'], varios: ['Más de un proyecto', '#B45309'], error: ['No se pudo aplicar', '#B91C1C'] };
+async function tkInboxBanner(box, after){
+  if (!box) return;
+  const { data, error } = await sb.from('mail_inbox').select('id,ticketera_id,ext_no,subject,reason,detail,received_at,payload').is('done_at', null).order('received_at').limit(100);
+  if (error || !data?.length){ box.innerHTML = ''; return; }
+  box.innerHTML = `<button class="banner warn" style="margin:0 0 12px;width:100%;text-align:left;cursor:pointer;border:1px solid #FCD34D"><span class="dot"></span><div><b>📨 ${data.length} mail${data.length > 1 ? 's' : ''} de tickets para revisar</b><div class="sm">${esc([...new Set(data.map(x => '#' + (x.ext_no || '¿?')))].slice(0, 6).join(' · '))} · tocá para decidir a qué proyecto van</div></div></button>`;
+  box.firstElementChild.onclick = () => tkInboxModal(data, after);
+}
+function tkInboxModal(list, after){
+  const projOpts = x => { const own = TK.projects.filter(p => p.ticketera_id === x.ticketera_id), rest = TK.projects.filter(p => p.ticketera_id !== x.ticketera_id);
+    return `<option value="">Elegí el proyecto…</option>${own.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}${rest.length ? `<optgroup label="Otros proyectos">${rest.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</optgroup>` : ''}`; };
+  const m = modal(`<h2>📨 Mails para revisar</h2><p class="muted sm" style="margin-top:-4px">La app no los aplicó sola. Elegí el proyecto y aplicalos, o descartalos.</p>
+    <div style="display:grid;gap:10px;max-height:60vh;overflow:auto">${list.map(x => { const w = x.payload?.whd || {}, R = TK_MIB[x.reason] || ['', '#555'];
+      return `<div class="card" style="margin:0" data-id="${esc(x.id)}"><div class="row between" style="gap:8px"><b>#${esc(x.ext_no || '¿?')} · ${esc(w.title || x.subject || '')}</b><span class="pill" style="background:#fff;border:1px solid ${R[1]};color:${R[1]}">${esc(R[0])}</span></div>
+        <div class="sm muted">${esc(fmtDT(x.received_at))} · ${esc(x.detail || '')} · ${(w.notes || []).length} nota(s)${w.status ? ' · ' + esc(w.status) : ''}</div>
+        ${x.reason === 'sin_verificar' ? '<p class="sm" style="color:#B91C1C;margin:6px 0">Ojo: no se pudo comprobar que este mail sea del cliente. Aplicalo solo si sabés que el ticket es real.</p>' : ''}
+        <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><select class="ib-p" style="width:auto;flex:1;min-width:200px">${projOpts(x)}</select><button class="btn small ib-ok">Aplicar</button><button class="btn sec small ib-no">Descartar</button></div></div>`; }).join('')}</div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="ib-x">Cerrar</button></div>`, { wide: true });
+  $('#ib-x').onclick = () => { m.close(); after && after(); };
+  m.el.querySelectorAll('[data-id]').forEach(c => {
+    const id = c.dataset.id, done = txt => { c.innerHTML = `<div class="sm">${esc(txt)}</div>`; };
+    c.querySelector('.ib-ok').onclick = async () => { const p = c.querySelector('.ib-p').value; if (!p) return toast('Elegí el proyecto.');
+      const { data, error } = await sb.rpc('mail_inbox_apply', { p_id: id, p_project: p }); if (error) return toast(errText(error));
+      done(data?.nuevo ? '✔ Ticket cargado' : '✔ Ticket actualizado'); };
+    c.querySelector('.ib-no').onclick = async () => { const { error } = await sb.rpc('mail_inbox_drop', { p_id: id }); if (error) return toast(errText(error)); done('Descartado'); };
+  });
+}
+
+/* ---------- conexión del correo (dentro de ⚙ Ticketeras) ---------- */
+async function tkMailBox(box, parent, after){
+  if (!box) return;
+  const { data: src } = await sb.from('mail_sources').select('key_hint,forwarders,active,last_at,last_res,n_ok,n_err').maybeSingle();
+  const withMail = TK.tkr.filter(x => x.mail_from?.length), sf = TK.tkr.find(x => /santa\s*fe/i.test(x.name) && !x.mail_from?.length);
+  box.innerHTML = `<div class="card" style="margin:0;border:2px solid var(--line)"><h3 style="margin:0 0 4px">📨 Tickets por mail</h3>
+    <p class="sm muted" style="margin:0 0 8px">Tu Outlook reenvía los avisos de la ticketera a la casilla de la app; la app los lee cada 5 minutos, verifica las firmas y los carga solos.</p>
+    <div class="sm">${src?.key_hint ? `Clave cargada (termina en <b>${esc(src.key_hint)}</b>)` : '<b style="color:#B45309">Falta generar la clave</b>'}${src?.last_at ? ` · último mail ${esc(fmtDT(src.last_at))}: ${esc(src.last_res || '')} · ${src.n_ok} leídos, ${src.n_err} para revisar` : ' · todavía no llegó ningún mail'}</div>
+    ${!withMail.length ? `<p class="sm" style="color:#B45309">Ninguna ticketera tiene cargadas las casillas del cliente.${sf ? '' : ' Editá la ficha de la ticketera → 📨 Tickets por mail.'}</p>` : `<p class="sm" style="margin:6px 0 0">Lee los mails de: ${withMail.map(x => `<b>${esc(x.name)}</b> (${esc(x.mail_from.join(', '))})`).join(' · ')}</p>`}
+    ${sf ? `<button class="btn sec small" id="ml-sf" style="margin-top:6px">Completar "${esc(sf.name)}" con los datos del NOC Santa Fe</button>` : ''}
+    <label>Casillas que reenvían a la app <span class="muted sm">(la tuya y la de quien tenga la regla de Outlook; una por renglón)</span></label>
+    <textarea id="ml-fw" rows="2" placeholder="jlvilloldo@trans.com.ar">${esc((src?.forwarders || []).join('\n'))}</textarea>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn small" id="ml-save">Guardar casillas</button><button class="btn sec small" id="ml-key">${src?.key_hint ? 'Generar clave nueva' : 'Generar la clave'}</button><button class="btn sec small" id="ml-gs">Script de la casilla de Gmail</button></div>
+    <div id="ml-out"></div></div>`;
+  $('#ml-sf')?.addEventListener('click', async () => { const pz = TK_PRESETS.sf;
+    const { error } = await sb.from('ticketeras').update({ mail_from: pz.mail_from, mail_domain: pz.mail_domain, note_to: pz.note_to, note_subj: pz.note_subj, ...(sf.url_tpl ? {} : { url_tpl: pz.url_tpl }) }).eq('id', sf.id);
+    if (error) return toast(errText(error)); await IDB.del('kv', CUR_UID + ':tk-tkr').catch(() => {}); parent.close(); tkTicketerasModal(after); });
+  $('#ml-save').onclick = async () => { const f = $('#ml-fw').value.split(/[\s,;]+/).map(z => z.trim().toLowerCase()).filter(Boolean);
+    const { error } = await sb.rpc('mail_source_save', { p_forwarders: f, p_active: true }); if (error) return toast(errText(error)); toast('Guardado'); tkMailBox(box, parent, after); };
+  $('#ml-key').onclick = async () => {
+    if (src?.key_hint && !confirm('¿Generar una clave nueva? La anterior deja de funcionar: tenés que cargar la nueva en el script de Gmail.')) return;
+    const { data: key, error } = await sb.rpc('mail_source_key'); if (error) return toast(errText(error));
+    $('#ml-out').innerHTML = `<div class="tk-mailb" style="margin-top:10px;border-color:#B45309"><b>Clave nueva</b> <span class="sm muted">(se muestra una sola vez: copiala ahora)</span>
+      <div style="margin-top:6px"><code id="ml-k">${esc(key)}</code></div><div class="row" style="gap:8px;margin-top:6px"><button class="btn small" id="ml-kc">Copiar clave</button></div>
+      <p class="sm muted" style="margin:6px 0 0">Va en el script de Gmail → ⚙ Configuración del proyecto → Propiedades del script → <b>IA_MAIL_KEY</b>. No la mandes por mail ni la pegues en el código.</p></div>`;
+    $('#ml-kc').onclick = async () => { try { await navigator.clipboard.writeText(key); toast('Clave copiada'); } catch { toast('Seleccioná la clave y copiala con Ctrl+C'); } };
+  };
+  $('#ml-gs').onclick = () => tkScriptModal(after);
+}
+function tkScriptModal(after){
+  const m = modal(`<h2>Script de la casilla de Gmail</h2>
+    <ol class="sm" style="padding-left:18px;line-height:1.6;margin:0">
+      <li>Con la sesión de la casilla de la app abierta (apptransformandonos@gmail.com), entrá a <b>script.google.com</b> → <b>Nuevo proyecto</b> → nombre "InspectApp tickets".</li>
+      <li>Borrá lo que aparece, pegá el código de abajo y guardá.</li>
+      <li>⚙ <b>Configuración del proyecto</b> → <b>Propiedades del script</b> → agregá <b>IA_MAIL_KEY</b> con la clave de la app.</li>
+      <li>Arriba elegí la función <b>instalar</b> y tocá ▶ <b>Ejecutar</b>. Aceptá los permisos que pide Google.</li>
+      <li>Desde ahí revisa la casilla cada 5 minutos. Los mails leídos quedan con la etiqueta "InspectApp".</li></ol>
+    <pre style="background:#0F172A;color:#E2E8F0;border-radius:10px;padding:10px;font-size:12px;max-height:300px;overflow:auto;white-space:pre">${esc(TK_GS)}</pre>
+    <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn sec" id="gs-x">Cerrar</button><button class="btn" id="gs-c">Copiar el código</button></div>`, { wide: true });
+  $('#gs-x').onclick = () => { m.close(); tkTicketerasModal(after); };
+  $('#gs-c').onclick = async () => { try { await navigator.clipboard.writeText(TK_GS); toast('Código copiado'); } catch { toast('Seleccioná el código y copialo con Ctrl+C'); } };
 }
