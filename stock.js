@@ -95,6 +95,11 @@ const stkOpt = (list, cur) => list.map(x => `<option value="${esc(x)}" ${x === c
 function stkInval(){ for (const k of ['stk-assets', 'stk-places', 'stk-items', 'stk-moves', 'stk-cat']) IDB.del('kv', CUR_UID + ':' + k).catch(() => {}); STK.base = null; }
 
 
+// Columnas que necesitamos para las LISTAS (muchísimo menos payload que select('*')).
+// Las columnas pesadas (photos, docs, created_at, updated_at, created_by, activated_on,
+// deactivated_on, owner) se traen on-demand al abrir la ficha del activo.
+const STK_LIST_COLS = 'id,org_id,project_id,cat,code,ext_id,type,name,vendor,model,status,place_id,site_id,holder_staff_id,service_due,notes,extra,archived';
+
 /* ---------- carga paralela de tablas largas (assets, moves): tandas de 3 páginas en paralelo ---------- */
 async function stkPageParallel(mk){
   const first = await mk().range(0, 999);
@@ -142,7 +147,7 @@ async function stkLoadBase(force){
     loadSitesMap().catch(() => []),
     cached('stk-items', () => sb.from('stock_items').select('*').order('name')).catch(() => []),
     cached('stk-moves', () => stkPageParallel(() => sb.from('stock_moves').select('*').order('at').order('id'))).catch(() => []),
-    cached('stk-assets', () => stkPageParallel(() => sb.from('assets').select('*').order('code').order('id'))).catch(e => { console.warn('stk-assets', e); STK._assetsErr = errText(e); return []; }),
+    cached('stk-assets', () => stkPageParallel(() => sb.from('assets').select(STK_LIST_COLS).order('id'))).catch(e => { console.warn('stk-assets', e); STK._assetsErr = errText(e); return []; }),
     cached('stk-cfg', () => sb.from('org_settings').select('stock_cfg').eq('org_id', me.org_id).maybeSingle()).catch(() => null),
     cached('stk-cat', () => sb.from('stock_catalog').select('*').order('name')).catch(() => []),
     (async () => { try { if (typeof hhLoadBase === 'function' && !(HHS.staff || []).length) await hhLoadBase(); } catch {} })()]);
@@ -151,6 +156,7 @@ async function stkLoadBase(force){
     placeById: new Map(places.map(p => [p.id, p])), projById: new Map(projects.map(p => [p.id, p])), siteById: new Map(sites.map(s => [s.id, s])),
     staffById: new Map(staff.map(s => [s.id, s])), itemById: new Map(items.map(i => [i.id, i])) };
   STK_LOAD_AT = Date.now();
+  try { STK.base.assets.sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'es', { numeric: true })); } catch {}
   return STK.base;
 }
 // saldo de materiales por material · stock (general / proyecto) · lugar
@@ -171,7 +177,7 @@ async function viewStock(v, sub, id){
   stkSoftRefresh(v, sub, id);
   if (sub === 'a' && id) return stkAsset(v, id);
   let scope = { kind: 'gen' };
-  if (sub === 'p' && id){ if (!STK.base.projById.has(id)) throw new Error('No se encontró el proyecto (o no tenés acceso).'); scope = { kind: 'prj', id }; }
+  if (sub === 'p' && id){ if (!STK.base?.projById?.has(id)) throw new Error('No se encontró el proyecto (o no tenés acceso).'); scope = { kind: 'prj', id }; }
   else if (sub === 'l' && id) scope = { kind: 'place', id };
   else if (sub === 's' && id) scope = { kind: 'site', id };
   else if (sub === 'm' && id){ STK.tab = 'mat'; STK.openItem = id; }
@@ -436,8 +442,12 @@ function stkBulkModal(k, ids, sc){
 /* ---------- pantalla del activo ---------- */
 const STK_ATABS = [['res', 'Resumen'], ['act', 'Actividad'], ['det', 'Detalles'], ['doc', 'Documentos'], ['img', 'Imágenes'], ['mant', 'Mantenimiento'], ['uso', 'Uso']];
 async function stkAsset(v, id){
-  const B = STK.base, a = B.assets.find(x => x.id === id);
+  const B = STK.base; let a = B.assets.find(x => x.id === id);
   if (!a) throw new Error('No se encontró el activo (o no tenés acceso).');
+  // Trae el activo completo (photos, docs, fechas…) la primera vez que se abre.
+  if (!('photos' in a) || !('docs' in a) || !('activated_on' in a)){
+    try { const r = await sb.from('assets').select('*').eq('id', id).maybeSingle(); if (r.data){ Object.assign(a, r.data); } } catch {}
+  }
   const w = stkCan(2), C = STK_CAT[a.cat] || STK_CAT.equipo, l = stkLoc(a), back = a.project_id ? '#/stock/p/' + a.project_id : '#/stock';
   let evs = [];
   try { evs = await cached('stk-ev:' + id, () => sb.from('asset_events').select('*').eq('asset_id', id).order('at', { ascending: false }).limit(1000)); } catch {}

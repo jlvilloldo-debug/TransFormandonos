@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-rHmrIyTX4Tfj2fKtSZ2o6oyjnRP0dgfij6J00EbxMjI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-LbApyN1NrptaoOlsVEbVYTM+dzrP1pTrZeUPFQL8cBw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -399,6 +399,7 @@ tr.sor-bad td{background:var(--red-bg)}
 <!-- ====================== APLICACIÓN ====================== -->
 <section id="v-app" class="hidden">
   <header class="top">
+    <button id="b-back" title="Volver" aria-label="Volver" style="font-size:17px;padding:3px 10px;margin-right:4px" class="hidden">←</button>
     <div class="brand"><span id="logo-top"></span><div>InspectApp<small id="org-name">—</small></div></div>
     <div class="sp"></div>
     <button id="b-scope" class="hidden" title="Elegí con qué proyectos o grupos trabajás">🎯</button>
@@ -449,7 +450,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.22.4';
+const APP_VERSION = '5.22.5';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -1494,6 +1495,33 @@ async function route(){
   } catch (e){ console.error(e); v.innerHTML = `<div class="card"><b>${/OFFLINE|NEEDS_ONLINE/.test(e.message) || isNetErr(e) ? 'Sin conexión' : 'Algo salió mal'}</b><p class="muted">${esc(errText(e))}</p></div>`; }
   window.scrollTo(0, 0);
 }
+
+
+/* ---------- Botón "← Volver" del header: va a la pantalla anterior ---------- */
+const BACK_STACK = [];                                                   // hashes visitados en esta sesión
+let BACK_NAV = false;                                                     // true mientras se navega con el botón
+function backSyncBtn(){
+  const h = location.hash || '#/home';
+  const btn = document.getElementById('b-back');
+  if (btn) btn.classList.toggle('hidden', h === '#/home' || h === '#/' || h === '');
+}
+window.addEventListener('hashchange', () => {
+  const h = location.hash || '#/home';
+  const last = BACK_STACK[BACK_STACK.length - 1];
+  if (BACK_NAV){ BACK_NAV = false; }                                      // ya hicimos pop
+  else if (h !== last){ BACK_STACK.push(h); if (BACK_STACK.length > 40) BACK_STACK.shift(); }
+  backSyncBtn();
+});
+document.getElementById('b-back')?.addEventListener('click', () => {
+  if (BACK_STACK.length >= 2){
+    BACK_STACK.pop();
+    const prev = BACK_STACK[BACK_STACK.length - 1];
+    BACK_NAV = true; location.hash = prev;
+  } else if (window.history.length > 1) { window.history.back(); }
+  else { location.hash = '#/home'; }
+});
+// al cargar la app también evaluamos el botón (en caso de entrar directo por URL)
+BACK_STACK.push(location.hash || '#/home'); backSyncBtn();
 
 /* =========================================================
    LISTADOS DE INSPECCIONES (servidor + dispositivo)
