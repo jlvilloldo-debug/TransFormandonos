@@ -130,7 +130,8 @@ function tkWho(t){
 /* =====================================================================
    MESA DE DESPACHO  #/mesa
    ===================================================================== */
-async function viewMesa(v){
+async function viewMesa(v, id){
+  if (id) TK.filter = id;
   tkCss();
   if (!isManager()){ location.hash = '#/tickets'; return; }
   if (!needOnline()){ v.innerHTML = '<div class="card">La mesa necesita señal.</div>'; return; }
