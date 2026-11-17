@@ -94,6 +94,34 @@ const stkStatuses = cat => cat === 'herramienta' ? stkCfg().st_herr : stkCfg().s
 const stkOpt = (list, cur) => list.map(x => `<option value="${esc(x)}" ${x === cur ? 'selected' : ''}>${esc(x)}</option>`).join('');
 function stkInval(){ for (const k of ['stk-assets', 'stk-places', 'stk-items', 'stk-moves', 'stk-cat']) IDB.del('kv', CUR_UID + ':' + k).catch(() => {}); STK.base = null; }
 
+
+/* ---------- carga paralela de tablas largas (assets, moves): mucho más rápido ---------- */
+async function stkPageParallel(mk){
+  const first = await mk().range(0, 999);
+  if (first.error) return { data: null, error: first.error };
+  const out = first.data || [];
+  if (out.length < 1000) return { data: out, error: null };
+  // disparamos las páginas siguientes en paralelo (hasta 20 páginas = 20000 filas)
+  const reqs = [];
+  for (let from = 1000; from < 20000; from += 1000) reqs.push(mk().range(from, from + 999));
+  const results = await Promise.all(reqs);
+  for (const r of results){ if (r.error) return { data: null, error: r.error }; if (!r.data?.length) break; out.push(...r.data); if (r.data.length < 1000) break; }
+  return { data: out, error: null };
+}
+
+/* ---------- refresca STK.base en segundo plano cuando pasó demasiado tiempo ---------- */
+let STK_LOAD_AT = 0, STK_SOFT = 0;
+async function stkSoftRefresh(v, sub, id){
+  if (!online() || Date.now() - STK_LOAD_AT < 60000 || STK_SOFT) return;
+  STK_SOFT = Date.now();
+  try { stkInval(); await stkLoadBase(); } catch {}
+  STK_SOFT = 0;
+  // solo re-render si seguimos en la misma pantalla y no hay modal abierto
+  if (location.hash.startsWith('#/stock') && !document.querySelector('#modal-root .modal')){
+    try { viewStock(v, sub, id); } catch {}
+  }
+}
+
 async function stkLoadBase(force){
   if (STK.base && !force) return STK.base;
   const [places, projects, sites, items, moves, assets, cfgRow, catalog] = await Promise.all([
@@ -101,8 +129,8 @@ async function stkLoadBase(force){
     loadProjects().catch(() => []),
     loadSitesMap().catch(() => []),
     cached('stk-items', () => sb.from('stock_items').select('*').order('name')).catch(() => []),
-    cached('stk-moves', () => pageAll(() => sb.from('stock_moves').select('*').order('at').order('id'))).catch(() => []),
-    cached('stk-assets', () => pageAll(() => sb.from('assets').select('*').order('code').order('id'))),
+    cached('stk-moves', () => stkPageParallel(() => sb.from('stock_moves').select('*').order('at').order('id'))).catch(() => []),
+    cached('stk-assets', () => stkPageParallel(() => sb.from('assets').select('*').order('code').order('id'))),
     cached('stk-cfg', () => sb.from('org_settings').select('stock_cfg').eq('org_id', me.org_id).maybeSingle()).catch(() => null),
     cached('stk-cat', () => sb.from('stock_catalog').select('*').order('name')).catch(() => []),
     (async () => { try { if (typeof hhLoadBase === 'function' && !(HHS.staff || []).length) await hhLoadBase(); } catch {} })()]);
@@ -110,6 +138,7 @@ async function stkLoadBase(force){
   STK.base = { places, projects, sites, items, moves, assets, cfg: cfgRow?.stock_cfg || null, staff, catalog: (catalog || []).filter(c => c.active),
     placeById: new Map(places.map(p => [p.id, p])), projById: new Map(projects.map(p => [p.id, p])), siteById: new Map(sites.map(s => [s.id, s])),
     staffById: new Map(staff.map(s => [s.id, s])), itemById: new Map(items.map(i => [i.id, i])) };
+  STK_LOAD_AT = Date.now();
   return STK.base;
 }
 // saldo de materiales por material · stock (general / proyecto) · lugar
@@ -124,7 +153,10 @@ function stkBalances(){
 async function viewStock(v, sub, id){
   stkCss();
   if (id && !STK_UUID.test(id)) { location.hash = '#/stock'; return; }
-  await stkLoadBase(true);
+  // Usamos la caché local: si STK.base ya está cargado es instantáneo; si no, cached() trae de IDB o red.
+  await stkLoadBase();
+  // Si pasaron más de 60 s desde la última carga, refrescamos en segundo plano.
+  stkSoftRefresh(v, sub, id);
   if (sub === 'a' && id) return stkAsset(v, id);
   let scope = { kind: 'gen' };
   if (sub === 'p' && id){ if (!STK.base.projById.has(id)) throw new Error('No se encontró el proyecto (o no tenés acceso).'); scope = { kind: 'prj', id }; }
@@ -258,11 +290,25 @@ function stkAssetsTab(box, sc, cat){
 }
 
 /* ---------- ficha (alta / edición) ---------- */
+// Lista de opciones (lugares + sitios) para el combobox de ubicación del activo.
+// Devuelve el HTML del <input> + <datalist>. El valor a guardar queda en data-sel.
 function stkLocOptions(cur){
   const B = STK.base, pl = B.places.filter(p => p.active || p.id === cur.place_id);
-  return `<option value="">— Sin lugar —</option>
-    <optgroup label="Depósitos, bases y vehículos">${pl.map(p => `<option value="p:${p.id}" ${cur.place_id === p.id ? 'selected' : ''}>${(STK_PLACE_KIND[p.kind] || STK_PLACE_KIND.otro)[0]} ${esc(p.name)}${p.project_id ? ' · ' + esc(stkProjName(p.project_id)) : ''}</option>`).join('')}</optgroup>
-    <optgroup label="Sitios (instalado en)">${B.sites.slice(0, 3000).map(s => `<option value="s:${s.id}" ${cur.site_id === s.id ? 'selected' : ''}>📍 ${esc(s.name)}${s.localidad && s.localidad !== s.name ? ' · ' + esc(s.localidad) : ''}</option>`).join('')}</optgroup>`;
+  const items = [];
+  pl.forEach(p => items.push({ v: `${(STK_PLACE_KIND[p.kind] || STK_PLACE_KIND.otro)[0]} ${p.name}${p.project_id ? ' · ' + stkProjName(p.project_id) : ''}`, id: 'p:' + p.id }));
+  B.sites.forEach(s => items.push({ v: `📍 ${s.name}${s.localidad && s.localidad !== s.name ? ' · ' + s.localidad : ''}`, id: 's:' + s.id }));
+  const curId = cur.place_id ? 'p:' + cur.place_id : cur.site_id ? 's:' + cur.site_id : '';
+  const cur_v = items.find(x => x.id === curId)?.v || '';
+  // guardo el mapa para resolver al guardar
+  STK._locMap = new Map(items.map(x => [x.v, x.id]));
+  return `<input id="se-loc" list="se-loc-list" value="${esc(cur_v)}" data-sel="${esc(curId)}" autocomplete="off" placeholder="Escribí para buscar: depósito, vehículo o sitio…">
+    <datalist id="se-loc-list">${items.map(x => `<option value="${esc(x.v)}">`).join('')}</datalist>`;
+}
+// al perder foco o escribir: resolver el id a partir del nombre tecleado
+function stkLocBind(){
+  const el = document.getElementById('se-loc'); if (!el) return;
+  const upd = () => { const v = el.value.trim(); el.dataset.sel = STK._locMap?.get(v) || ''; el.style.borderColor = !v || el.dataset.sel ? '' : 'var(--amber)'; };
+  el.addEventListener('input', upd); el.addEventListener('change', upd); el.addEventListener('blur', upd);
 }
 function stkEdit(a, preset = {}){
   const B = STK.base, isNew = !a, cur = a || { cat: preset.cat || 'equipo', project_id: preset.project_id || null, status: (preset.cat === 'herramienta' ? stkCfg().st_herr : stkCfg().st_equipo)[0], extra: {} };
@@ -275,7 +321,7 @@ function stkEdit(a, preset = {}){
     <label>Tipo <span class="muted">(obligatorio)</span></label><div id="se-typew"></div>
     <label>ID único <span class="muted">(obligatorio)</span></label><div class="row" style="gap:6px;flex-wrap:nowrap"><input id="se-code" maxlength="120" value="${esc(cur.code || '')}" placeholder="Número de serie o código" style="flex:1"><button type="button" class="btn sec" id="se-scan" style="margin:0" title="Escanear">📷</button></div>
     <label>Estado</label><select id="se-st"></select>
-    <label>Site Name <span class="muted">(dónde está)</span></label><select id="se-loc">${stkLocOptions(cur)}</select>
+    <label>Site Name <span class="muted">(dónde está)</span></label>${stkLocOptions(cur)}
     <div id="se-holdw"><label>Responsable <span class="muted">(quién la tiene)</span></label><select id="se-hold"><option value="">— Nadie —</option>${B.staff.filter(s => s.active || s.id === cur.holder_staff_id).map(s => `<option value="${s.id}" ${s.id === cur.holder_staff_id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
     <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
     <label>Nombre mostrado</label><input id="se-name" maxlength="200" value="${esc(cur.name || '')}" placeholder="Ej.: ACCESS POINT MERAKI WI-FI 6 OUTDOOR AP">
@@ -314,7 +360,7 @@ function stkEdit(a, preset = {}){
     const st = $('#se-st'), curSt = st.value || cur.status; const list = stkStatuses(cat); st.innerHTML = stkOpt([...new Set([...list, ...(curSt ? [curSt] : [])])], list.includes(curSt) || curSt === cur.status ? curSt : list[0]);
     $('#se-holdw').classList.toggle('hidden', cat !== 'herramienta' && !cur.holder_staff_id); $('#se-calw').classList.toggle('hidden', cat !== 'herramienta');
   };
-  drawType(cur.type); drawVendor(cur.vendor); drawModel(cur.model);
+  drawType(cur.type); drawVendor(cur.vendor); drawModel(cur.model); stkLocBind();
   m.el.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { cat = b.dataset.cat; $('#se-st').value = ''; paint(); });
   paint();
   $('#se-scan').onclick = () => stkScan(t => { $('#se-code').value = String(t).slice(0, 120); });
@@ -328,7 +374,7 @@ function stkEdit(a, preset = {}){
     if (!code) return void (err.textContent = 'Falta el ID único.');
     const dup = B.assets.find(x => stkNorm(x.code) === stkNorm(code) && x.id !== cur.id);
     if (dup) return void (err.textContent = `Ya existe un activo con ese ID único (${dup.name || dup.type}).`);
-    const loc = $('#se-loc').value, extra = {};
+    const el_loc = $('#se-loc'); const loc = el_loc.dataset.sel || STK._locMap?.get((el_loc.value || '').trim()) || ''; const extra = {};
     m.el.querySelectorAll('.stk-ex').forEach(r => { const k = r.querySelector('[data-exk]').value.trim(), x = r.querySelector('[data-exv]').value.trim(); if (k) extra[k.slice(0, 60)] = x.slice(0, 200); });
     const row = { cat, type, code, status: $('#se-st').value, name: $('#se-name').value.trim() || null, vendor: $('#se-vendor').value.trim() || null, model: $('#se-model').value.trim() || null,
       activated_on: $('#se-act').value || null, deactivated_on: $('#se-deact').value || null, service_due: cat === 'herramienta' ? ($('#se-cal').value || null) : null,
@@ -350,15 +396,17 @@ function stkBulkModal(k, ids, sc){
   const B = STK.base, list = B.assets.filter(a => ids.includes(a.id));
   const cats = [...new Set(list.map(a => a.cat))];
   const title = { mv: '📍 Cambiar lugar', st: '🔄 Cambiar estado', pj: '📁 Asignar a proyecto', gen: '🏢 Devolver al stock general' }[k];
-  const body = k === 'mv' ? `<label>Nuevo lugar</label><select id="bk-v">${stkLocOptions({})}</select>`
+  const body = k === 'mv' ? `<label>Nuevo lugar</label>${stkLocOptions({})}`.replace('id="se-loc"', 'id="bk-v"').replace('id="se-loc-list"', 'id="bk-v-list"').replace('list="se-loc-list"', 'list="bk-v-list"')
     : k === 'st' ? `<label>Nuevo estado</label><select id="bk-v">${stkOpt([...new Set(cats.flatMap(stkStatuses))], '')}</select>`
     : k === 'pj' ? `<label>Proyecto</label><select id="bk-v">${B.projects.filter(p => p.active).map(p => `<option value="${p.id}">📁 ${esc(p.name)}</option>`).join('')}</select><p class="muted sm">Pasan del stock general al stock reservado del proyecto. Queda registrado en el historial de cada uno.</p>`
     : `<p>Los ${list.length} activos vuelven al <b>stock general de la empresa</b>. Queda registrado en el historial de cada uno.</p>`;
   const m = modal(`<h2>${title}</h2><p class="muted sm">${list.length} activo${list.length === 1 ? '' : 's'}: ${list.slice(0, 6).map(a => esc(a.code)).join(', ')}${list.length > 6 ? '…' : ''}</p>${body}
     <div class="err" id="bk-err"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="bk-x">Cancelar</button><button class="btn" id="bk-ok">Aplicar</button></div>`);
+  // en el modo "cambiar lugar", bind del combobox (variante con id="bk-v")
+  if (k === 'mv'){ const el = document.getElementById('bk-v'); if (el){ const upd = () => { const v = el.value.trim(); el.dataset.sel = STK._locMap?.get(v) || ''; el.style.borderColor = !v || el.dataset.sel ? '' : 'var(--amber)'; }; el.addEventListener('input', upd); el.addEventListener('change', upd); el.addEventListener('blur', upd); } }
   $('#bk-x').onclick = m.close;
   $('#bk-ok').onclick = async () => {
-    const val = $('#bk-v')?.value || null;
+    const bv = $('#bk-v'); const val = (k === 'mv' ? (bv?.dataset.sel || STK._locMap?.get((bv?.value || '').trim()) || '') : (bv?.value || null));
     let patch;
     if (k === 'mv') patch = { place_id: val?.startsWith('p:') ? val.slice(2) : null, site_id: val?.startsWith('s:') ? val.slice(2) : null };
     else if (k === 'st') patch = { status: val };
@@ -952,7 +1000,7 @@ async function stkContrSites(p, r, pss, contrs){
 const STK_CATK = { tipo: ['🏷', 'Tipos'], marca: ['🏭', 'Marcas'], modelo: ['📟', 'Modelos'] };
 const stkKey = x => stkNorm(x).replace(/[^a-z0-9]/g, '');
 async function stkCatalog(tab){
-  await stkLoadBase(true);
+  await stkLoadBase();
   const B = STK.base, CAT = B.catalog, w = stkCan(3);
   const of = k => CAT.filter(c => c.kind === k);
   const brands = of('marca'), bName = id => brands.find(b => b.id === id)?.name || '?';
