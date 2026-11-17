@@ -95,17 +95,28 @@ const stkOpt = (list, cur) => list.map(x => `<option value="${esc(x)}" ${x === c
 function stkInval(){ for (const k of ['stk-assets', 'stk-places', 'stk-items', 'stk-moves', 'stk-cat']) IDB.del('kv', CUR_UID + ':' + k).catch(() => {}); STK.base = null; }
 
 
-/* ---------- carga paralela de tablas largas (assets, moves): mucho más rápido ---------- */
+/* ---------- carga paralela de tablas largas (assets, moves): tandas de 3 páginas en paralelo ---------- */
 async function stkPageParallel(mk){
   const first = await mk().range(0, 999);
   if (first.error) return { data: null, error: first.error };
-  const out = first.data || [];
+  const out = [...(first.data || [])];
   if (out.length < 1000) return { data: out, error: null };
-  // disparamos las páginas siguientes en paralelo (hasta 20 páginas = 20000 filas)
-  const reqs = [];
-  for (let from = 1000; from < 20000; from += 1000) reqs.push(mk().range(from, from + 999));
-  const results = await Promise.all(reqs);
-  for (const r of results){ if (r.error) return { data: null, error: r.error }; if (!r.data?.length) break; out.push(...r.data); if (r.data.length < 1000) break; }
+  const C = 3;                 // concurrencia moderada: segura para Supabase y el navegador
+  let from = 1000;
+  for (let step = 0; step < 100; step++){
+    const batch = [];
+    for (let i = 0; i < C; i++){ const s0 = from + i * 1000; batch.push(mk().range(s0, s0 + 999)); }
+    const results = await Promise.all(batch);
+    let stop = false;
+    for (const r of results){
+      if (r.error) return { data: null, error: r.error };
+      const d = r.data || [];
+      out.push(...d);
+      if (d.length < 1000) stop = true;
+    }
+    if (stop) break;
+    from += C * 1000;
+  }
   return { data: out, error: null };
 }
 
@@ -124,13 +135,14 @@ async function stkSoftRefresh(v, sub, id){
 
 async function stkLoadBase(force){
   if (STK.base && !force) return STK.base;
+  STK._assetsErr = null;
   const [places, projects, sites, items, moves, assets, cfgRow, catalog] = await Promise.all([
     cached('stk-places', () => sb.from('stock_places').select('*').order('name')).catch(() => []),
     loadProjects().catch(() => []),
     loadSitesMap().catch(() => []),
     cached('stk-items', () => sb.from('stock_items').select('*').order('name')).catch(() => []),
     cached('stk-moves', () => stkPageParallel(() => sb.from('stock_moves').select('*').order('at').order('id'))).catch(() => []),
-    cached('stk-assets', () => stkPageParallel(() => sb.from('assets').select('*').order('code').order('id'))),
+    cached('stk-assets', () => stkPageParallel(() => sb.from('assets').select('*').order('code').order('id'))).catch(e => { console.warn('stk-assets', e); STK._assetsErr = errText(e); return []; }),
     cached('stk-cfg', () => sb.from('org_settings').select('stock_cfg').eq('org_id', me.org_id).maybeSingle()).catch(() => null),
     cached('stk-cat', () => sb.from('stock_catalog').select('*').order('name')).catch(() => []),
     (async () => { try { if (typeof hhLoadBase === 'function' && !(HHS.staff || []).length) await hhLoadBase(); } catch {} })()]);
@@ -194,7 +206,7 @@ function stkList(v, sc){
   const byPlace = new Map(); eq.concat(tl).forEach(a => { const l = stkLoc(a); byPlace.set(l.name, (byPlace.get(l.name) || 0) + 1); });
   const tabs = [['eq', `📡 Equipos (${eq.length})`], ['tl', `🧰 Herramientas (${tl.length})`], ['mat', `🧵 Materiales`], ...(['gen', 'prj'].includes(sc.kind) ? [['pl', '🏬 Lugares']] : [])];
   if (!tabs.some(t => t[0] === STK.tab)) STK.tab = 'eq';
-  v.innerHTML = `${stkScopeHead(sc)}
+  v.innerHTML = `${STK._assetsErr ? `<div class="banner warn" style="margin:0 0 12px" id="stk-ebox"><span class="dot"></span><div><b>No se pudieron cargar los activos: ${esc(STK._assetsErr)}</b><div class="sm">Revisá la conexión y tocá Reintentar.</div><button class="btn small" id="stk-retry" style="margin-top:6px">↻ Reintentar</button></div></div>` : ''}${stkScopeHead(sc)}
     <div class="stk-kpis">
       <div class="stk-kpi"><span>📡 Equipos</span><b>${eq.length}</b><small>${eq.filter(a => /instal|activ/i.test(a.status)).length} instalados / activos</small></div>
       <div class="stk-kpi" style="border-left-color:#1E40AF"><span>📦 En stock</span><b>${eq.filter(a => /stock/i.test(a.status)).length}</b><small>listos para usar</small></div>
@@ -207,6 +219,7 @@ function stkList(v, sc){
       <div class="card"><h2 style="margin-top:0">¿Dónde está?</h2>${byPlace.size ? chartHBars([...byPlace.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([l, n]) => ({ label: l, v: n, c: '#5B5BD6' }))) : '<div class="muted sm">Todavía no hay activos.</div>'}</div>
     </div>
     <div class="card"><div class="seg" id="stk-tabs">${tabs.map(([k, t]) => `<button data-st="${k}" class="${STK.tab === k ? 'on' : ''}">${t}</button>`).join('')}</div><div id="stk-body" style="margin-top:12px"></div></div>`;
+  document.getElementById('stk-retry')?.addEventListener('click', () => { stkInval(); route(); });
   bindTips(v);
   $('#stk-sw')?.addEventListener('change', e => { location.hash = e.target.value === 'gen' ? '#/stock' : '#/stock/p/' + e.target.value; });
   const body = $('#stk-body');
