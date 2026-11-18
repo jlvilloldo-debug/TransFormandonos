@@ -355,6 +355,7 @@ function bsPane(){
   P.querySelectorAll('[data-zc]').forEach(x => x.onclick = () => { const c = bsCrew(x.dataset.zc); BS.focus = c.id; const pts = Object.keys(c.cov).map(k => BS.byKey.get(k)).filter(Boolean).flatMap(it => it.path ? [it.path[0], it.path[it.path.length - 1]] : [it.c]); const b = bsBase(c.base); if (b) pts.push([b.lat, b.lng]); if (pts.length) BS.map.fitBounds(L.latLngBounds(pts).pad(0.15)); bsPane(); bsDraw(); });
   P.querySelectorAll('[data-go]').forEach(x => x.onclick = () => { const it = BS.byKey.get(x.dataset.go); if (!it) return; BS.map.setView(bsPos(it), 11); bsItemClick(it, bsPos(it)); });
   $('#bs-nb')?.addEventListener('click', () => bsEditBase(null));
+  $('#bs-r3')?.addEventListener('click', e => bsR3Load(e.currentTarget));
   $('#bs-nc')?.addEventListener('click', () => bsEditCrew(null));
   const q = $('#bs-q'); if (q){ q.oninput = () => { BS.q = q.value; const pos = q.selectionStart; bsPane(); const q2 = $('#bs-q'); q2.focus(); q2.setSelectionRange(pos, pos); }; }
   $('#bs-prom')?.addEventListener('click', bsPromote);
@@ -375,6 +376,7 @@ function bsPCrews(){
   return `<div class="row" style="justify-content:space-between"><h2>Bases y cuadrillas${BS.kind === 'borrador' ? ' · borrador' : ''}</h2>${can ? '<div class="row" style="gap:6px"><button class="btn sec small" id="bs-nb" style="margin:0">+ Base</button><button class="btn small" id="bs-nc" style="margin:0">+ Cuadrilla</button></div>' : ''}</div>
     ${!BS.sites.length && !BS.cables.length ? '<div class="bs-warn">El proyecto no tiene sitios con ubicación ni trazas cargadas. Sumá los sitios al proyecto, o cargá el KMZ de trazas en 🌐 Red de fibra.</div>' : ''}
     ${!BS.cables.length && BS.sites.length ? '<p class="muted sm" style="margin:0">Se ven los sitios del proyecto. Para ver los tramos de fibra, cargá el KMZ de trazas en 🌐 Red de fibra.</p>' : ''}
+    ${can ? `<button class="btn sec small" id="bs-r3" style="margin:0;justify-self:start">📄 Cargar la propuesta Renglón 3 (3 bases)</button>` : ''}
     ${empty ? `<div class="bs-card"><b>Cómo se arma</b><ol class="sm" style="margin:0;padding-left:18px;line-height:1.6"><li><b>+ Base</b>: nombre, de quién es, y la ubicás en el mapa.</li><li><b>+ Cuadrilla</b>: de qué base sale, qué servicios hace y sus recursos.</li><li>En la cuadrilla, <b>Cubrir lo más cercano a su base</b> arma una primera cobertura sola.</li><li>Con <b>🖌 Pintar cobertura</b> ajustás: tocás sitios o tramos, o marcás un área.</li></ol></div>` : ''}
     ${BS.plan.bases.map(b => { const cs = BS.plan.crews.filter(c => c.base === b.id);
       return `<div class="bs-base" style="--bc:${b.color}"><div class="row" style="gap:8px;align-items:center"><span class="bs-sw" style="background:${b.color}"></span><b style="flex:1">${esc(b.name)}</b><span class="bs-own">${esc(b.owner)}</span></div>
@@ -525,4 +527,66 @@ function bsEditCrew(c){
     };
   };
   const m = modal(body(), { wide:true }); bind(); $('#ce-n').focus();
+}
+
+/* =====================================================================
+   PLANTILLA · Propuesta de renovación Renglón 3 (sección 7.1 "Organización por bases")
+   Arma 3 bases con su cuadrilla, recursos y cobertura, reconociendo los sitios y tramos del
+   proyecto por su nombre (referencia: KMZ de trazas R3 del 16-04-2026).
+   ===================================================================== */
+const BS_R3 = {"n":{"guadalupe norte":[["AcN"],[-28.9404,-59.5648],0],"avellaneda":[["AcN"],[-29.1087,-59.6659],0],"lantieri":[["AcN"],[-28.8436,-59.6367],0],"malabrigo":[["AcS"],[-29.3448,-59.9758],0],"berna":[["AcS"],[-29.2756,-59.8428],0],"margarita":[["AcS"],[-29.691,-60.2534],0],"la gallareta":[["AcS"],[-29.6223,-60.2394],0],"fortin olmos":[["AcO"],[-29.0554,-60.4087],0],"el araza":[["AcO"],[-29.1313,-59.9492],0],"cacique ariacaiquin":[["T15"],[-30.6564,-60.2282],1],"la brava":[["T15"],[-30.4465,-60.1401],1],"colonia duran":[["T15"],[-29.561,-59.9273],1],"campo andino":[["T4"],[-31.2394,-60.5301],1],"nare":[["T4"],[-30.9494,-60.4672],1],"villa saralegui":[["T4"],[-30.5402,-60.7479],1],"soutomayor":[["T24"],[-30.9364,-61.1641],1],"sarmiento":[["T24"],[-31.0571,-61.1647],1],"villa ana":[["T3"],[-28.4955,-59.6134],1],"villa guillermina":[["T3"],[-28.2455,-59.4496],1],"santa lucia":[["T14"],[-29.2796,-60.4019],1],"la sarita":[["T14"],[-28.9711,-59.8489],1],"colonia san manuel":[["T14"],[-28.8711,-59.8601],1],"vera":[["T14"],[-29.457,-60.212],0],"toba":[["T14"],[-29.2674,-60.1712],0],"unidad penal 10":[["T14"],[-29.3638,-60.248],0],"km 302":[["T14"],[-29.0146,-60.1403],0],"garabato":[["T14"],[-28.9528,-60.1391],0],"pozo de los indios":[["T14"],[-28.9424,-60.25],0],"colmena":[["T14"],[-28.76,-60.0892],0],"intiyaco":[["T14"],[-28.6727,-60.073],0],"tartagal":[["T14"],[-28.6702,-59.8472],0],"golondrina":[["T14"],[-28.5587,-60.0214],0],"los tabanos":[["T14"],[-28.4568,-59.9823],0],"canada ombu":[["T14"],[-28.3096,-59.9822],0],"los amores":[["T14"],[-28.102,-59.9814],0],"recreo":[["T22","T4"],[-31.5113,-60.7287],0],"montevera":[["T22"],[-31.5167,-60.6798],0],"angel gallardo":[["T22"],[-31.5545,-60.6844],0],"arroyo aguiar":[["T22"],[-31.4266,-60.6653],0],"villa laura":[["T22"],[-31.3719,-60.6652],0],"laguna paiva":[["T22"],[-31.3145,-60.6609],0],"las garzas":[["T3"],[-28.8502,-59.5052],0],"ingeniero chanourdie":[["T3"],[-28.7591,-59.5776],0],"arroyo ceibal":[["T3"],[-28.7452,-59.4708],0],"el sombrerito":[["T3"],[-28.6549,-59.4262],0],"villa ocampo":[["T3"],[-28.5037,-59.346],0],"tacuarendi":[["T3"],[-28.4133,-59.2588],0],"san antonio de obligado":[["T3"],[-28.3827,-59.2647],0],"las toscas":[["T3"],[-28.3533,-59.258],0],"el rabon":[["T3"],[-28.2205,-59.2634],0],"florencia":[["T3"],[-28.0383,-59.2206],0],"nelson":[["T24","T4"],[-31.2705,-60.7622],0],"cululu":[["T24"],[-31.2076,-60.9285],0],"hipatia":[["T24"],[-31.1321,-61.033],0],"santo domingo":[["T24"],[-31.1238,-60.8938],0],"maria luisa":[["T24"],[-31.0105,-60.9152],0],"providencia":[["T24"],[-30.9841,-61.0206],0],"la pelada":[["T24"],[-30.8672,-60.9733],0],"jacinto l arauz":[["T24"],[-30.7357,-60.9749],0],"elisa":[["T24"],[-30.6927,-61.0495],0],"colonia la clara":[["T24"],[-30.5277,-61.0408],0],"soledad":[["T24"],[-30.6213,-60.9139],0],"data center santa fe":[["T15"],[-31.6598,-60.7106],0],"san jose del rincon":[["T15"],[-31.5902,-60.5644],0],"arroyo leyes":[["T15"],[-31.5633,-60.5272],0],"los zapallos":[["T15"],[-31.4911,-60.4296],0],"santa rosa de calchines":[["T15"],[-31.4209,-60.3321],0],"cayasta":[["T15"],[-31.2038,-60.1582],0],"helvecia":[["T15"],[-31.1092,-60.0988],0],"saladero cabal":[["T15"],[-30.882,-60.0372],0],"colonia mascias":[["T15"],[-30.804,-60.0058],0],"san javier":[["T15"],[-30.5821,-59.9443],0],"alejandra":[["T15"],[-29.9118,-59.8272],0],"romang":[["T15"],[-29.5071,-59.7517],0],"los laureles":[["T15"],[-29.3719,-59.7364],0],"reconquista":[["T15"],[-29.1471,-59.6574],0],"calchaqui":[["T4"],[-29.8922,-60.2799],0],"pedro gomez cello":[["T4"],[-30.039,-60.3144],0],"vera y pintado":[["T4"],[-30.1425,-60.3347],0],"la criolla":[["T4"],[-30.222,-60.3623],0],"la penca":[["T4"],[-30.3464,-60.5238],0],"colonia dolores":[["T4"],[-30.3818,-60.3297],0],"gobernador crespo":[["T4"],[-30.3588,-60.4002],0],"san martin norte":[["T4"],[-30.3482,-60.3052],0],"marcelino escalada":[["T4"],[-30.579,-60.4721],0],"ramayon":[["T4"],[-30.6731,-60.5058],0],"san justo":[["T4"],[-30.7859,-60.6048],0],"angeloni":[["T4"],[-30.8552,-60.6494],0],"san bernardo":[["T4"],[-30.8894,-60.5739],0],"videla":[["T4"],[-30.9383,-60.6559],0],"emilia":[["T4"],[-31.0627,-60.7353],0],"colonia esther":[["T4"],[-31.0408,-60.6439],0],"cayastacito":[["T4"],[-31.1124,-60.579],0],"cabal":[["T4"],[-31.1004,-60.7448],0],"llambi campbell":[["T4"],[-31.178,-60.7509],0],"candioti":[["T4"],[-31.4019,-60.7501],0]},"s":{"traza acueducto avellaneda":[["AcN",-29.155]],"traza acueducto avellaneda 2":[["AcN",-29.115]],"traza acueducto guadalupe norte":[["AcN",-28.954]],"traza acueducto lanteri":[["AcN",-28.839]],"traza acueducto lanteri 2":[["AcN",-28.914]],"traza acueducto margarita":[["AcS",-29.732]],"traza acueducto margarita a vera":[["AcS",-29.53]],"traza acueducto malabrigo":[["AcS",-29.38]],"traza acueducto berna":[["AcS",-29.33]],"recorrido acueducto reconquista":[["AcS",-29.158]],"recorrido acueducto reconquista 2":[["AcS",-29.154]],"traza acueducto el araza a fortin olmos":[["AcO",-29.131]],"traza acueducto toba a km 302":[["AcO",-29.103]],"recorrido de traza vera":[["T14",-29.441]],"recorrido de traza santa felicia":[["T14",-29.367]],"recorrido de traza toba":[["T14",-29.279]],"recorrido de traza km302":[["T14",-28.977]],"recorrido de traza pozo de los indios":[["T14",-28.941]],"recorrido de traza colmena":[["T14",-28.845]],"recorrido de traza intiyaco":[["T14",-28.684]],"recorrido de traza tartagal":[["T14",-28.666]],"recorrido de traza golondrina":[["T14",-28.588]],"recorrido de traza golondrina a los amores":[["T14",-28.309]],"ductos recreo":[["T22",-31.511],["T4",-31.511]],"recorrido de traza recreo":[["T22",-31.507]],"recorrido de traza angel gallardo":[["T22",-31.553]],"recorrido de traza arroyo aguiar":[["T22",-31.43]],"recorrido de traza villa laura":[["T22",-31.38]],"recorrido de traza laguna paiva":[["T22",-31.327]],"recorrido de traza las garzas a arroyo ceibal":[["T3",-28.774]],"recorrido de traza ingeniero chanourdie":[["T3",-28.776]],"recorrido de traza arroyo ceibal a el rabon":[["T3",-28.419]],"recorrido de traza el rabon a florencia":[["T3",-28.065]],"recorrido de traza nelson a elisa":[["T24",-31.011]],"recorrido de traza progreso":[["T24",-31.139]],"recorrido de traza providencia":[["T24",-30.994]],"recorrido de traza jacinto arauz":[["T24",-30.736]],"recorrido de traza soledad":[["T24",-30.678]],"recorrido de traza colonia la clara":[["T24",-30.531]],"conexion data center a camara entre rios y san jeronimo":[["T15",-31.66]],"conexion camara laprida e ituzaingo a ruta":[["T15",-31.641]],"recorrido 4":[["T15",-31.504],["T15",-31.504]],"recorrido 5":[["T15",-31.4],["T15",-31.413]],"recorrido 6":[["T15",-31.279]],"recorrido 7":[["T15",-31.22]],"recorrido 8":[["T15",-31.21]],"recorrido 9":[["T15",-31.2]],"recorrido 10":[["T15",-31.147]],"cruce rp1 soterrado":[["T15",-31.59],["T15",-31.368],["T15",-31.221],["T15",-31.212],["T15",-31.21],["T15",-31.186]],"recorrido de traza desde data center":[["T15",-31.643]],"recorrido 2":[["T15",-31.638]],"recorrido 3":[["T15",-31.591]],"recorrido de traza helvecia a saladero cabal":[["T15",-31.027]],"recorrido de traza saladero cabal a colonia mascias":[["T15",-30.841]],"recorrido de traza colonia mascias a san javier":[["T15",-30.621]],"recorrido de traza san javier a alejandra":[["T15",-30.236]],"recorrido de traza alejandra a romang":[["T15",-29.769]],"recorrido de traza romang a los laureles":[["T15",-29.451]],"recorrido de traza los laureles a reconquista":[["T15",-29.234]],"recorrido de traza recreo a candioti":[["T4",-31.438]],"recorrido de traza candioti a nelson":[["T4",-31.321]],"recorrido de traza nelson a san justo":[["T4",-31.065]],"recorrido de traza ramayon a marcelino escalada":[["T4",-30.595]],"recorrido de traza san justo a ramayon":[["T4",-30.77]],"recorrido de traza marcelino escalada a gobernador crespo":[["T4",-30.451]],"recorrido de traza gobernador crespo a la criolla":[["T4",-30.315]],"recorrido de traza la criolla a vera y pintado":[["T4",-30.219]],"recorrido de traza vera y pintado a pedro gomez cello":[["T4",-30.049]],"recorrido de traza pedro gomez cello a calchaqui":[["T4",-29.925]],"recorrido de traza san martin norte":[["T4",-30.349]],"recorrido de traza colonia dolores":[["T4",-30.386]],"recorrido de traza san bernardo":[["T4",-30.893]],"recorrido de traza emilia a colonia esther":[["T4",-31.073]],"recorrido de traza emilia a cayastacito":[["T4",-31.094]],"recorrido de traza angeloni":[["T4",-30.854]],"recorrido de traza la penca":[["T4",-30.347]]}};
+const bsK = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim().replace(/^(epi|nodo|sitio|shelter|radio)\s+/, '');
+function bsR3Plan(){
+  const LAT = { HEL:-31.1092, LAU:-29.3720, SJU:-30.7859, VER:-29.4570 };
+  const rule = (g, lat) => {
+    if (['T14', 'T3', 'AcN', 'AcO'].includes(g)) return 'r3b1';
+    if (['T24', 'T22'].includes(g)) return 'r3b3';
+    if (g === 'T15') return lat > LAT.LAU + 0.001 ? 'r3b1' : lat > LAT.HEL + 0.001 ? 'r3b2' : 'r3b3';
+    if (g === 'T4') return lat > LAT.SJU + 0.001 ? 'r3b2' : 'r3b3';
+    if (g === 'AcS') return lat > LAT.VER + 0.001 ? 'r3b1' : 'r3b2';
+    return null;
+  };
+  const res = () => [{ t:'persona', n:'Técnico 1' }, { t:'persona', n:'Técnico 2' }, { t:'persona', n:'Ayudante' }, { t:'vehiculo', n:'Camioneta con capacidad de arrastre' }, { t:'equipo', n:'OTDR, empalmadora, power meter y pinza amperométrica' }, { t:'equipo', n:'Desmalezadora y rociador' }];
+  const SVC = ['prev_epi', 'corr_epi', 'energia', 'fo_rep', 'fo_prev', 'radio'];
+  const bases = [
+    { id:'r3b1', name:'Base 1 – Avellaneda', owner:'Trans', lat:-29.1087, lng:-59.6659, color:'#2563eb', notes:'Traza 14 · Traza 3 · Traza 15 Reconquista–Los Laureles · Acueducto Norte · Acueducto Oeste · Acueducto Sur Reconquista–Vera' },
+    { id:'r3b2', name:'Base 2 – San Javier', owner:'Trans', lat:-30.5821, lng:-59.9443, color:'#d97706', notes:'Traza 15 Helvecia–Los Laureles (incluye Romang) · Traza 4 Calchaquí–San Justo · Acueducto Sur Vera–Calchaquí' },
+    { id:'r3b3', name:'Base 3 – Santa Fe', owner:'Trans', lat:-31.6598, lng:-60.7106, color:'#059669', notes:'Traza 24 · Traza 22 · Traza 4 Recreo–San Justo · Traza 15 Santa Fe–Helvecia' },
+  ];
+  const crews = bases.map((b, i) => ({ id:'r3c' + (i + 1), name:'Cuadrilla ' + b.name, owner:'Trans', base:b.id, color:b.color, svc:SVC.slice(), guard:true, res:res(), cov:{}, notes:'3 personas fijas, guardia 7x24' }));
+  const crewOf = bid => crews.find(c => c.base === bid);
+  const near = p => bases.map(b => ({ b, d:bsKm([b.lat, b.lng], p) })).sort((x, y) => x.d - y.d)[0].b.id;
+  const lims = {}, unk = [];
+  const LIM = { 'helvecia':['r3b2', 'r3b3'], 'los laureles':['r3b2', 'r3b1'], 'san justo':['r3b3', 'r3b2'], 'vera':['r3b1', 'r3b2'] };
+  // sitios: EPI por traza y latitud; radioenlaces con la base del EPI más cercano de su traza
+  const epiRef = Object.entries(BS_R3.n).filter(([, v]) => !v[2]);
+  for (const s of BS.sites){
+    const k = bsK(s.name), r = BS_R3.n[k] || BS_R3.n[bsK(s.loc)];
+    let bid = null;
+    if (LIM[k]){ const [t, a] = LIM[k]; crewOf(t).cov[s.key] = 'T'; crewOf(a).cov[s.key] = 'A'; lims[s.key] = true; continue; }
+    if (r && r[2]){ const g = r[0][0], e = epiRef.filter(([, v]) => v[0].includes(g)).sort((x, y) => bsKm(x[1][1], r[1]) - bsKm(y[1][1], r[1]))[0];
+      bid = e ? rule(g, e[1][1][0]) : null; }
+    else if (r) bid = rule(r[0][0], r[1][0]);
+    if (!bid){ bid = near(s.c); unk.push(s.name); }
+    crewOf(bid).cov[s.key] = 'T';
+  }
+  // tramos: por el nombre del recorrido del KMZ; si no se reconoce, la base más cercana
+  for (const c of BS.cables){
+    const m = BS_R3.s[bsK(c.name)], lat = c.mid[0];
+    let bid = null;
+    if (m){ const g = m.slice().sort((x, y) => Math.abs(x[1] - lat) - Math.abs(y[1] - lat))[0][0]; bid = rule(g, lat); }
+    if (!bid){ bid = near(c.mid); unk.push(c.name); }
+    crewOf(bid).cov[c.key] = 'T';
+  }
+  return { plan:{ bases, crews, lims }, unk };
+}
+function bsR3Load(btn){
+  if (!bsCan()) return;
+  const has = BS.plan.bases.length || BS.plan.crews.length;
+  if (has && !btn.dataset.sure){ btn.dataset.sure = 1; btn.textContent = 'Tocá otra vez: reemplaza las bases de este plan'; return; }
+  const { plan, unk } = bsR3Plan();
+  BS.plans[BS.kind] = BS.plan = plan;
+  bsChange(`Cargó la propuesta de renovación del Renglón 3: 3 bases con guardia 7x24 (sección 7.1).${unk.length ? ` ${unk.length} sitios o tramos no figuran en el KMZ de referencia y se asignaron a la base más cercana.` : ''}`);
+  bsRender(); bsFit();
+  toast(unk.length ? `Propuesta cargada. ${unk.length} puntos se asignaron por cercanía: revisalos en Límites.` : 'Propuesta del Renglón 3 cargada.');
 }
