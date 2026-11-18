@@ -594,6 +594,7 @@ async function tkDetailModal(id, after){
     <p>${esc([t.category, tkProblem(t.problem, t.category)].filter(Boolean).join(' · '))}</p>${t.description ? `<p class="sm muted" style="white-space:pre-wrap">${esc(t.description.slice(0, 1500))}</p>` : ''}
     ${t.capture_path ? '<p class="sm"><a href="#" id="dt-cap">Ver la captura original</a></p>' : ''}
     ${t.sol_note_at || t.ext_closed_at ? `<p class="sm">${t.sol_note_at ? `<b style="color:#15803D">Nota de solución en el NOC: ${esc(fmtDT(t.sol_note_at))}</b>${t.reported_at ? ' · nuestro tiempo ' + tkH((new Date(t.sol_note_at) - new Date(t.reported_at)) / 3600000) : ''}` : ''}${t.ext_closed_at ? ` · el cliente lo cerró ${esc(fmtDT(t.ext_closed_at))} (no cuenta)` : ''}</p>` : ''}
+    <div id="dt-cov"></div>
     <div id="dt-notes"></div>
     <details class="sm"><summary style="cursor:pointer">Historial (${(t.history || []).length})</summary>${(t.history || []).map(h => `<div style="padding:3px 0;border-bottom:1px solid var(--line)">${esc(fmtDT(h.at))} · ${esc(h.by || '')}: ${esc(h.ev === 'gracia' ? `gracia +${h.h} h (${h.motivo})` : TK_ST[h.ev] || h.ev)}</div>`).join('')}</details>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
@@ -607,6 +608,7 @@ async function tkDetailModal(id, after){
       <button class="btn sec" id="dt-x" style="margin-left:auto">Cerrar</button></div>`, { wide: true });
   $('#dt-x').onclick = m.close;
   tkNotesInto($('#dt-notes'), t).catch(() => {});
+  tkCovInto($('#dt-cov'), t).catch(() => {});
   $('#dt-nt')?.addEventListener('click', () => { m.close(); tkNoteModal(t, after); });
   $('#dt-as')?.addEventListener('click', () => { m.close(); tkAssignModal(t.id, after); });
   $('#dt-ed')?.addEventListener('click', () => { m.close(); tkEditModal(t, after); });
@@ -1149,4 +1151,16 @@ function tkScriptModal(after){
     <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn sec" id="gs-x">Cerrar</button><button class="btn" id="gs-c">Copiar el código</button></div>`, { wide: true });
   $('#gs-x').onclick = () => { m.close(); tkTicketerasModal(after); };
   $('#gs-c').onclick = async () => { try { await navigator.clipboard.writeText(TK_GS); toast('Código copiado'); } catch { toast('Seleccioná el código y copialo con Ctrl+C'); } };
+}
+
+/* ---------- 🗺 qué cuadrillas cubren el sitio del ticket (plan vigente del Mapa de bases) ---------- */
+async function tkCovInto(box, t){
+  if (!box || !t.site_id || !t.project_id) return;
+  const r = await cached('bs-cov-v-' + t.project_id, () => sb.from('cov_plans').select('data').eq('project_id', t.project_id).eq('kind', 'vigente').maybeSingle()).catch(() => null);
+  const crews = Array.isArray(r?.data?.crews) ? r.data.crews : [], bases = Array.isArray(r?.data?.bases) ? r.data.bases : [];
+  const key = 's:' + t.site_id, who = crews.filter(c => c && c.cov && (c.cov[key] === 'T' || c.cov[key] === 'A'));
+  if (!crews.length) return;
+  const SV = { prev_epi:'Preventivo EPI', corr_epi:'Correctivo EPI', energia:'Energía', fo_rep:'Reparación FO', fo_prev:'Recorrida FO', radio:'Radioenlaces', otro:'Otro' };
+  const col = c => /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#64748b';
+  box.innerHTML = `<div class="sm" style="margin:6px 0;display:grid;gap:3px"><b>🗺 Cubren este sitio</b>${who.length ? who.sort((a, b) => (a.cov[key] === 'T' ? 0 : 1) - (b.cov[key] === 'T' ? 0 : 1)).map(c => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col(c.color)}"></span> <b>${esc(c.name)}</b> · ${c.cov[key] === 'T' ? 'titular' : 'apoyo'} · ${esc((c.svc || []).map(s => SV[s] || '').filter(Boolean).join(', '))}${bases.find(b => b.id === c.base) ? ' · ' + esc(bases.find(b => b.id === c.base).name) : ''}</span>`).join('') : '<span class="muted">Ninguna cuadrilla tiene este sitio en el Mapa de bases.</span>'} <a href="#/bases/${esc(t.project_id)}">Ver el mapa de bases</a></div>`;
 }

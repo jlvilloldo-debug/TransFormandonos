@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-LbApyN1NrptaoOlsVEbVYTM+dzrP1pTrZeUPFQL8cBw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-opBFahBHsrvJeJyv6n83dhVPwE4c3BRZCw9hnhFi9F4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -450,11 +450,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.22.5';
+const APP_VERSION = '5.23.0';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', bases: () => typeof viewBases === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -1447,7 +1447,7 @@ async function route(){
   geoStop();
   const [, tab='home', id, id2] = (location.hash || '#/home').split('/');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
-  document.body.classList.toggle('wide-main', tab === 'agenda' || tab === 'recursos' || tab === 'red');
+  document.body.classList.toggle('wide-main', tab === 'agenda' || tab === 'recursos' || tab === 'red' || tab === 'bases');
   if (tab !== 'map' && typeof pmap !== 'undefined' && pmap){ pmap.remove(); pmap = null; }
   if (typeof fmap !== 'undefined' && fmap){ fmap.remove(); fmap = null; }
   $('#modal-root').innerHTML = ''; hideTip();
@@ -1476,6 +1476,7 @@ async function route(){
     else if (tab === 'hys'){ await needLib('hys'); await viewHys(v, id, id2); }
     else if (tab === 'agenda'){ await needLib('agenda'); await viewAgenda(v, id); }
     else if (tab === 'red'){ await needLib('red'); await viewRed(v, id, id2); }
+    else if (tab === 'bases'){ if (!id){ location.hash = '#/proj'; return; } await needLib('bases'); await viewBases(v, id); }
     else if (tab === 'recursos'){ if (!isManager()) { location.hash = '#/home'; return; } await needLib('recursos'); await viewRecursos(v, id, id2); }
     else if (tab === 'perms') await viewPerms(v);
     else if (tab === 'tools' && id) await viewFiberRoute(v, id);
