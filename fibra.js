@@ -236,7 +236,25 @@ function parseSor(buf){
     events.push({ n, m: tt * 1e-10 * c / ior, loss, refl: rl ? -Math.abs(rl) / 1000 : null, end: type[1] === 'E', reflective: type[0] === '1', comment: com.trim().slice(0, 80) });
   }
   let label = ''; const g = start('GenParams'); if (g != null){ try { let q = g + 2, t; [t, q] = cstr(q); [label] = cstr(q); } catch {} }
-  return { wl, pulse, ior, events, label: label.trim().slice(0, 80) };
+  // SupParams: fabricante, modelo y número de serie del OTDR y del módulo (sirve para saber con qué instrumento se midió)
+  let sup = null; const sp = start('SupParams'); if (sp != null){ try { let q = sp; const f = []; for (let i = 0; i < 5; i++){ let t; [t, q] = cstr(q); f.push(t.replace(/[^\x20-\x7E]/g, '').trim().slice(0, 60)); } sup = { vendor: f[0], model: f[1], sn: f[2], mod: f[3], msn: f[4] }; } catch {} }
+  return { wl, pulse, ior, events, label: label.trim().slice(0, 80), sup };
+}
+
+/* ---------- instrumento con el que se mide (Instrumental) ---------- */
+let FB_INSTR = null;
+async function fbInstrList(){ if (FB_INSTR) return FB_INSTR; try { const { data, error } = await sb.rpc('instr_pick'); if (error) throw error; FB_INSTR = data || []; } catch { FB_INSTR = []; } return FB_INSTR; }
+const fbAlnum = x => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+function fbInstrMatch(list, sup){
+  if (!sup) return null; const keys = [sup.sn, sup.msn].map(fbAlnum).filter(k => k.length >= 5);
+  return list.find(i => { const c = fbAlnum(i.code); return c.length >= 5 && keys.some(k => k === c || k.includes(c) || c.includes(k)); }) || null;
+}
+const fbInstrOk = i => !!i && (i.na || (!!i.due && i.due >= todayStr()));
+function fbInstrTxt(i){
+  if (!i) return '';
+  if (i.na) return `📏 ${esc(i.name)} · ${esc(i.code)} · no requiere calibración`;
+  return fbInstrOk(i) ? `📏 ${esc(i.name)} · ${esc(i.code)} · <span style="color:var(--green-d,#16a34a)">✅ calibrado hasta ${fmtDate(i.due + 'T12:00:00')}</span>`
+    : `📏 ${esc(i.name)} · ${esc(i.code)} · <b style="color:var(--red)">⚠ calibración ${i.due ? 'vencida el ' + fmtDate(i.due + 'T12:00:00') : 'sin dato'}</b>`;
 }
 
 function kindOf(name, folder){
@@ -568,7 +586,8 @@ async function viewFiberRoute(v, id){
         <div class="fl-otdr ${FSTATE.launch ? '' : 'hidden'}" id="fl-bl-w" style="width:120px"><label>Largo bobina (m)</label><input id="fl-bl" type="number" min="0" value="${Number(FSTATE.launchLen)}"></div>
         <button class="btn" id="fl-go">Ubicar</button>
         <label class="btn sec fl-otdr" style="margin:0">Subir .sor<input type="file" id="fl-sor" accept=".sor" class="hidden"></label>
-      </div>
+        <div class="fl-otdr" style="min-width:200px"><label>Instrumento</label><select id="fl-in"><option value="">— Sin indicar —</option></select></div>
+      </div><div id="fl-inst" class="sm" style="margin-top:6px"></div>
       <div id="fl-sorbox"></div><div id="fl-res"></div></div>
     <div class="card" style="padding:10px"><div class="layerbar" id="fl-layers" style="margin:0 0 8px">${[['botella', 'Botellas'], ['cruz', 'Cruces / reservas'], ['poste', 'Postes'], ['camara', 'Cámaras'], ['eventos', 'Eventos']].map(([k, t]) => `<button type="button" data-ly="${k}" class="${FSTATE.layers[k] ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div id="fmap"></div>
@@ -664,7 +683,7 @@ async function viewFiberRoute(v, id){
       ${near.map(x => `<div class="sm" style="padding:3px 0">${esc(FE_KINDS[x.e.kind])}: <b>${esc(x.e.name || '')}</b> — ${fmtM(Math.abs(x.d))} ${x.d < 0 ? 'hacia ' + esc(route.end_a || 'A') : 'hacia ' + esc(route.end_b || 'B')}${x.e.status === 'aproximado' ? ' <span class="pill p-pend">a confirmar</span>' : ''}</div>`).join('')}`;
     $('#fl-copy').onclick = () => navigator.clipboard.writeText(`${lat}, ${lng}`).then(() => toast('Coordenadas copiadas'));
     const evRow = () => ({ org_id: me.org_id, route_id: route.id, from_end: from, otdr_m: Math.round(dist * 10) / 10, launch_m: FSTATE.mode === 'otdr' && FSTATE.launch ? Number(FSTATE.launchLen) || 0 : 0,
-      loss_db: opts.loss ?? null, fiber_no: opts.fiber ?? null, chain_m: Math.round(c), lat: ll[1], lng: ll[0], window_m: Math.round(w), created_by: me.id, created_by_name: me.full_name || me.email });
+      loss_db: opts.loss ?? null, fiber_no: opts.fiber ?? null, chain_m: Math.round(c), lat: ll[1], lng: ll[0], window_m: Math.round(w), created_by: me.id, created_by_name: me.full_name || me.email, ...(FSTATE.instr ? { instr_id: FSTATE.instr } : {}) });
     $('#fl-save')?.addEventListener('click', async () => {
       if (FSTATE.mode === 'ruta' && !opts.sor) return toast('Se guardan los eventos ubicados con distancia OTDR.');
       const note = prompt('Nota del evento (opcional): causa, fibras afectadas…') ?? null;
@@ -682,9 +701,16 @@ async function viewFiberRoute(v, id){
   };
   $('#fl-go').onclick = () => { const d = Number($('#fl-d').value); if (!(d > 0)) return toast('Ingresá la distancia.'); locate(FSTATE.unit === 'km' ? d * 1000 : d); };
   $('#fl-d').onkeydown = e => { if (e.key === 'Enter') $('#fl-go').click(); };
+  const inShow = () => { const i = (FB_INSTR || []).find(x => x.id === $('#fl-in')?.value); FSTATE.instr = i ? i.id : null; if ($('#fl-inst')) $('#fl-inst').innerHTML = fbInstrTxt(i); };
+  fbInstrList().then(list => { const sel = $('#fl-in'); if (!sel) return; if (!list.length){ sel.closest('div').classList.add('hidden'); return; }
+    sel.insertAdjacentHTML('beforeend', list.map(i => `<option value="${i.id}">${esc(i.name)} · ${esc(i.code)}${!i.na && !fbInstrOk(i) ? ' ⚠' : ''}</option>`).join(''));
+    if (FSTATE.instr && list.some(i => i.id === FSTATE.instr)) sel.value = FSTATE.instr; sel.onchange = inShow; inShow(); });
   $('#fl-sor').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     let sor; try { sor = parseSor(await f.arrayBuffer()); } catch (x){ return toast(errText(x)); }
+    { const list = await fbInstrList(), hit = fbInstrMatch(list, sor.sup);
+      if (hit && $('#fl-in')){ $('#fl-in').value = hit.id; inShow(); if (!fbInstrOk(hit)) toast('⚠ El OTDR de este .sor tiene la calibración vencida.'); }
+      else if (sor.sup && (sor.sup.sn || sor.sup.model) && $('#fl-inst')) $('#fl-inst').innerHTML = `❔ El .sor es de ${esc([sor.sup.vendor, sor.sup.model].filter(Boolean).join(' '))}${sor.sup.sn ? ' serie ' + esc(sor.sup.sn) : ''}: no está en Instrumental. Elegilo de la lista o cargalo en 🔧 Instrumental.`; }
     const fib = (f.name.match(/(\d+)(?=\D*\.sor$)/i) || [])[1];
     const endEv = sor.events.find(x => x.end);
     $('#fl-sorbox').innerHTML = `<div class="card" style="margin:12px 0 0;background:var(--bg)"><div class="row between"><b>${esc(f.name)}</b><span class="muted sm">${sor.wl} nm · pulso ${sor.pulse} ns · IOR ${sor.ior}${endEv ? ` · fin de fibra ${fmtM(endEv.m)}` : ''}</span></div>
@@ -855,7 +881,7 @@ function renderFiberEvents(ctx){
   const { events, route } = ctx;
   box.innerHTML = `<h2>Eventos ubicados (${events.length})</h2>${events.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Fecha</th><th class="num">OTDR</th><th>Ubicación estimada</th><th class="hide-sm">Real</th><th></th></tr></thead><tbody>
     ${events.slice(0, 50).map(ev => { const err = ev.real_lat != null ? havm([ev.lng, ev.lat], [ev.real_lng, ev.real_lat]) : null;
-      return `<tr><td class="sm">${fmtDate(ev.created_at)}<div class="muted">${esc(ev.created_by_name || '')}</div></td><td class="num sm">${fmtM(ev.otdr_m)} desde ${ev.from_end}${ev.loss_db != null ? `<div class="muted">${ev.loss_db} dB</div>` : ''}</td>
+      return `<tr><td class="sm">${fmtDate(ev.created_at)}<div class="muted">${esc(ev.created_by_name || '')}</div></td><td class="num sm">${fmtM(ev.otdr_m)} desde ${ev.from_end}${ev.loss_db != null ? `<div class="muted">${ev.loss_db} dB</div>` : ''}${ev.instr_info ? `<div class="muted" title="${esc(ev.instr_info.name || '')} ${esc(ev.instr_info.code || '')}">${ev.instr_info.ok ? '📏 ✅' : '📏 ⚠ cal. vencida'}</div>` : ''}</td>
       <td class="sm">${Number(ev.lat).toFixed(5)}, ${Number(ev.lng).toFixed(5)} ±${Math.round(ev.window_m || 0)} m${ev.note ? `<div class="muted">${esc(ev.note)}</div>` : ''}</td>
       <td class="hide-sm sm">${err != null ? `a ${Math.round(err)} m de lo estimado` : '—'}</td>
       <td>${canWrite() && ev.real_lat == null ? `<button class="btn sec small" data-real="${ev.id}">Marcar ubicación real</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>

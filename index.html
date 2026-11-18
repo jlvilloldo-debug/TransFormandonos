@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-rlmCDdzHT5OOk8GfwGW9UJ8nudY/Cxk5o61BXvxYOGg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+AYtVeALw0Ya2DX29mM+dQPOhDb/AtJnQL1C2sMp1iU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -417,6 +417,7 @@ tr.sor-bad td{background:var(--red-bg)}
     <button data-tab="map">Mapa</button>
     <button data-tab="proj">Proyectos</button>
     <button data-tab="tools">🧰 Herramientas</button>
+    <button data-tab="instr" id="tab-instr">🔧 Instrumental</button>
     <button data-tab="insp">Inspecciones</button>
     <button data-tab="tasks" id="tab-tasks">Tareas</button>
     <button data-tab="stats">Estadísticas</button>
@@ -450,11 +451,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.24.0';
+const APP_VERSION = '5.25.0';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', bases: () => typeof viewBases === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', bases: () => typeof viewBases === 'function', instr: () => typeof viewInstr === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -1321,6 +1322,7 @@ async function boot(){
   ['stats','sites','tpl','org'].forEach(t => $(`#tabs [data-tab="${t}"]`).classList.toggle('hidden', contr));
   $('#tab-mesa').classList.toggle('hidden', !isManager());
   permApplyTabs(); scopeBtn();
+  $('#tab-instr').classList.toggle('hidden', contr || (typeof can === 'function' && !can('stock')));
   // horas para todos: vincula al usuario con su Recurso (por email o nombre; si no hay, lo crea). Una vez por sesión.
   if (online() && me.hh_enabled !== false && typeof can === 'function' && can('horas', 2)){
     const k = 'hhlink:' + CUR_UID;
@@ -1440,14 +1442,14 @@ function navMark(){
 }
 window.addEventListener('hashchange', navMark);
 let leaveGuard = null;
-const ONLINE_ONLY = ['org', 'admin', 'recursos'];
+const ONLINE_ONLY = ['org', 'admin', 'recursos', 'instr'];
 async function route(){
   if (!me) return;
   if (leaveGuard){ await leaveGuard(); leaveGuard = null; }
   geoStop();
   const [, tab='home', id, id2] = (location.hash || '#/home').split('/');
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
-  document.body.classList.toggle('wide-main', tab === 'agenda' || tab === 'recursos' || tab === 'red' || tab === 'bases');
+  document.body.classList.toggle('wide-main', tab === 'agenda' || tab === 'recursos' || tab === 'red' || tab === 'bases' || tab === 'instr');
   if (tab !== 'map' && typeof pmap !== 'undefined' && pmap){ pmap.remove(); pmap = null; }
   if (typeof fmap !== 'undefined' && fmap){ fmap.remove(); fmap = null; }
   $('#modal-root').innerHTML = ''; hideTip();
@@ -1476,6 +1478,7 @@ async function route(){
     else if (tab === 'hys'){ await needLib('hys'); await viewHys(v, id, id2); }
     else if (tab === 'agenda'){ await needLib('agenda'); await viewAgenda(v, id); }
     else if (tab === 'red'){ await needLib('red'); await viewRed(v, id, id2); }
+    else if (tab === 'instr'){ if (isContractor() || (typeof can === 'function' && !can('stock'))) { location.hash = '#/home'; return; } await needLib('instr'); await viewInstr(v, id); }
     else if (tab === 'bases'){ if (!id){ location.hash = '#/proj'; return; } await needLib('bases'); await viewBases(v, id); }
     else if (tab === 'recursos'){ if (!isManager()) { location.hash = '#/home'; return; } await needLib('recursos'); await viewRecursos(v, id, id2); }
     else if (tab === 'perms') await viewPerms(v);
@@ -1603,6 +1606,7 @@ async function viewHome(v){
   const showInstall = !isStandalone();
   v.innerHTML = `
     <div id="tk-home"></div>
+    <div id="instr-home"></div>
     <div id="hh-quick"></div>
     <div id="push-ask"></div>
     <div class="card row between" id="home-hello">
@@ -1625,7 +1629,22 @@ async function viewHome(v){
   hhHomeQuick($('#hh-quick'));
   empPushBanner($('#push-ask'));
   homeBoard($('#home-board'));
+  instrHomeAlert($('#instr-home'));
   if (typeof hhHomeAlert === 'function') hhHomeAlert($('#home-board'));
+}
+
+/* aviso en Inicio: instrumentos con la calibración vencida o por vencer en 30 días */
+async function instrHomeAlert(box){
+  if (!box || isContractor() || (typeof can === 'function' && !can('stock')) || !online()) return;
+  try {
+    const today = todayStr(), lim = (d => { d.setDate(d.getDate() + 30); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })(new Date());
+    const { data, error } = await sb.from('assets').select('id,name,code,service_due').eq('is_instr', true).eq('cal_na', false).eq('archived', false)
+      .not('status', 'in', '("Baja","Perdido")').lte('service_due', lim).order('service_due').limit(50);
+    if (error || !data?.length) return;
+    const venc = data.filter(a => a.service_due < today), prox = data.length - venc.length;
+    box.innerHTML = `<a class="card alertcard ${venc.length ? 'bad' : ''}" href="#/instr"><span style="font-size:26px">🔧</span><div class="grow"><b>Instrumental: ${venc.length ? `${venc.length} calibración${venc.length === 1 ? '' : 'es'} vencida${venc.length === 1 ? '' : 's'}` : ''}${venc.length && prox ? ' · ' : ''}${prox ? `${prox} vence${prox === 1 ? '' : 'n'} en 30 días` : ''}</b>
+      <div class="sm">${data.slice(0, 4).map(a => esc(a.name || a.code)).join(' · ')}${data.length > 4 ? ' …' : ''}</div></div><span>›</span></a>`;
+  } catch {}
 }
 
 /* =========================================================
