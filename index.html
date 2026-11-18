@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-w+d9SkogBzhYh/xIN5T1DvbZGSw2m21P6IIZ8yvR04s='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-xz2+e/mDnsIdHRINmV7OO9mBy0ZJBLRr5zCEOC4HzQc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -450,7 +450,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.23.2';
+const APP_VERSION = '5.23.3';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -2692,10 +2692,13 @@ async function editTask(t, contrs, preset){
   if (!needOnline()) return;
   contrs = (contrs || []).filter(c => c.active);
   const load = await contractorLoad();
-  const [tpls, sites] = await Promise.all([
+  const [tpls, sites, projs, psAll] = await Promise.all([
     cached('tpl-pub', () => sb.from('templates').select('id,name,kind,definition').eq('published', true).order('name')),
     cached('sites-min2', () => pageAll(() => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name').order('id'))).catch(() => []),
+    loadProjects().catch(() => []), loadPS().catch(() => []),
   ]);
+  const projOpts = (projs || []).filter(p => p.active !== false || (t && t.project_id === p.id));
+  const projSites = pid => { const ids = new Set(psAll.filter(x => x.project_id === pid).map(x => x.site_id)); return sites.filter(s => ids.has(s.id)); };
   if (!tpls.length) return toast('Primero cargá una plantilla.');
   try { await needLib('hys'); } catch {}
   const hysOn = typeof HYS_JOBS !== 'undefined';
@@ -2708,6 +2711,7 @@ async function editTask(t, contrs, preset){
   const m = modal(`<h2>${isNew ? (t.is_pending ? 'Nuevo pendiente' : 'Nueva tarea') : 'Editar tarea'}</h2>${t.is_pending && isNew ? '<p class="muted sm" style="margin-top:-6px">Aparece en el mapa con su semáforo. Plazo: crítico 24 h · alto 72 h · normal 5 días.</p>' : ''}
     ${isNew ? `<label>Contratista / cuadrilla</label><select id="nt-c"><option value="">— Sin asignar (la asigno después) —</option>${contrs.map(c => contrOption(c, load, t.contractor_id === c.id)).join('')}</select>` : '<p class="muted sm">Para cambiar la contratista usá el botón <b>Reasignar</b> de la tarea.</p>'}
     ${staffOpts.length && !t.ticket_id ? `<label>Técnicos que van (opcional)</label><div id="nt-st" class="row" style="gap:6px;flex-wrap:wrap">${staffOpts.map(s => `<label class="pill p-info" style="font-weight:400;cursor:pointer;display:inline-flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" class="nt-sti" value="${esc(s.id)}" ${(t.staff_ids || []).includes(s.id) ? 'checked' : ''} style="width:auto;margin:0"> ${esc(s.name)}</label>`).join('')}</div><p class="muted sm" style="margin:4px 0 0">Así aparecen con su nombre en el mapa "¿Dónde está cada uno?".</p>` : ''}
+    <label>Proyecto</label><select id="nt-pj"><option value="">— Sin proyecto —</option>${projOpts.map(p => `<option value="${esc(p.id)}" ${t.project_id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
     <label>Título</label><input id="nt-title" maxlength="300" value="${esc(t.title || '')}" placeholder="${t.is_pending ? 'Ej.: Cambiar grupo electrógeno' : 'Ej.: Preventivo Traza 15 – semana 43'}">
     <div class="row"><div class="grow"><label>Tipo</label><select id="nt-type">${Object.entries(TASK_TYPES).map(([k, x]) => `<option value="${k}" ${t.task_type === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
       <div class="grow"><label>Prioridad</label><select id="nt-pr">${Object.entries(PRIORITIES).map(([k, x]) => `<option value="${k}" ${t.priority === k ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
@@ -2716,8 +2720,8 @@ async function editTask(t, contrs, preset){
     <datalist id="nt-cl">${[...new Set(sites.map(s => s.grupo).filter(Boolean))].map(g => `<option value="${esc(g)}">`).join('')}</datalist>
     <label>Planilla con la que se cierra cada sitio</label><select id="nt-tpl">${tpls.map(x => `<option value="${x.id}" ${t.template_id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
     <label>Sitios</label>
-    <div class="row"><input id="nt-sq" class="grow" list="nt-sl" placeholder="Escribí y tocá Agregar" autocomplete="off"><button class="btn sec" id="nt-sadd" type="button">Agregar</button></div>
-    <datalist id="nt-sl">${sites.map(s => `<option value="${esc(s.name)}">`).join('')}</datalist>
+    <div class="row"><input id="nt-sq" class="grow" list="nt-sl" placeholder="Escribí y tocá Agregar" autocomplete="off"><button class="btn sec" id="nt-sadd" type="button">Agregar</button><button class="btn sec" id="nt-sall" type="button" hidden>+ Todos los sitios del proyecto</button></div>
+    <datalist id="nt-sl"></datalist>
     <div id="nt-chips" class="row" style="margin-top:8px"></div>
     <label>Indicaciones</label><textarea id="nt-desc" placeholder="Qué hay que hacer, materiales, contacto en sitio…">${esc(t.description || '')}</textarea>
     ${hysOn ? `<label>🦺 Trabajos de riesgo que incluye <span class="muted sm" style="font-weight:400">(pide charla o permiso antes de empezar)</span></label><div id="nt-hys" class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(HYS_JOBS).map(([k, j]) => `<label class="pill p-info" style="font-weight:400;cursor:pointer;display:inline-flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" class="nt-hj" value="${k}" ${(t.hys_jobs || []).includes(k) ? 'checked' : ''} style="width:auto;margin:0"> ${j.ic} ${esc(j.name)}</label>`).join('')}</div>` : ''}
@@ -2736,13 +2740,20 @@ async function editTask(t, contrs, preset){
     if (s?.grupo && !$('#nt-ct').value.trim()) $('#nt-ct').value = s.grupo;
     $('#nt-sq').value = ''; chips();
   };
+  // con proyecto elegido, primero se ofrecen sus sitios
+  const syncProj = () => { const pid = $('#nt-pj').value, ps = pid ? projSites(pid) : [], ids = new Set(ps.map(s => s.id));
+    $('#nt-sl').innerHTML = [...ps, ...sites.filter(s => !ids.has(s.id))].map(s => `<option value="${esc(s.name)}">`).join('');
+    $('#nt-sall').hidden = !ps.length; $('#nt-sall').textContent = `+ Todos los sitios del proyecto (${ps.length})`;
+    const p = projOpts.find(x => x.id === pid); if (p?.contract && !$('#nt-ct').value.trim()) $('#nt-ct').value = p.contract; };
+  $('#nt-pj').onchange = syncProj; syncProj();
+  $('#nt-sall').onclick = () => { let n = 0; for (const s of projSites($('#nt-pj').value)) if (!chosen.some(c => c.site_id === s.id)){ chosen.push({ site_id:s.id, site_name:s.name, inspection_id:null, done:false }); n++; } chips(); toast(n ? `${n} sitios agregados.` : 'Ya estaban todos.'); };
   $('#nt-sadd').onclick = add; $('#nt-sq').onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } };
   chips();
   $('#nt-x').onclick = m.close;
   $('#nt-ok').onclick = async () => {
     const row = { title: $('#nt-title').value.trim(), task_type: $('#nt-type').value, priority: $('#nt-pr').value,
       due_date: $('#nt-due').value, template_id: $('#nt-tpl').value, sites: chosen, description: $('#nt-desc').value.trim() || null,
-      contract: $('#nt-ct').value.trim() || null,
+      contract: $('#nt-ct').value.trim() || null, project_id: $('#nt-pj').value || null,
       ...(m.el.querySelector('#nt-hys') ? { hys_jobs: [...m.el.querySelectorAll('.nt-hj:checked')].map(c => c.value) } : {}),
       ...(m.el.querySelector('#nt-st') ? { staff_ids: [...m.el.querySelectorAll('.nt-sti:checked')].map(c => c.value) } : {}) };
     if (!row.title) return ($('#nt-err').textContent = 'Poné un título.');
