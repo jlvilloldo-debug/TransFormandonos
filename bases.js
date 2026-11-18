@@ -350,6 +350,7 @@ function bsPane(){
   P.querySelectorAll('[data-fc]').forEach(x => x.onclick = () => { BS.focus = BS.focus === x.dataset.fc ? null : x.dataset.fc; if (BS.paint && BS.focus) BS.paint.crew = BS.focus; bsPane(); bsDraw(); bsPaintBar(); });
   P.querySelectorAll('[data-hc]').forEach(x => x.onclick = () => { const id = x.dataset.hc; BS.hide.has(id) ? BS.hide.delete(id) : BS.hide.add(id); bsPane(); bsDraw(); });
   P.querySelectorAll('[data-ec]').forEach(x => x.onclick = () => bsEditCrew(bsCrew(x.dataset.ec)));
+  P.querySelectorAll('button[data-ro]').forEach(x => x.onclick = () => bsRotEditor(bsCrew(x.dataset.ro), t => { if (t){ bsChange(t); bsRender(); toast('Rotación guardada.'); } }));
   P.querySelectorAll('[data-eb]').forEach(x => x.onclick = () => bsEditBase(bsBase(x.dataset.eb)));
   P.querySelectorAll('[data-mv]').forEach(x => x.onclick = () => { BS.moving = BS.moving === x.dataset.mv ? null : x.dataset.mv; const b = bsBase(x.dataset.mv); if (BS.moving){ BS.map.panTo([b.lat, b.lng]); toast('Arrastrá la base en el mapa y soltala donde va.'); } bsPane(); bsDraw(); });
   P.querySelectorAll('[data-zc]').forEach(x => x.onclick = () => { const c = bsCrew(x.dataset.zc); BS.focus = c.id; const pts = Object.keys(c.cov).map(k => BS.byKey.get(k)).filter(Boolean).flatMap(it => it.path ? [it.path[0], it.path[it.path.length - 1]] : [it.c]); const b = bsBase(c.base); if (b) pts.push([b.lat, b.lng]); if (pts.length) BS.map.fitBounds(L.latLngBounds(pts).pad(0.15)); bsPane(); bsDraw(); });
@@ -368,7 +369,9 @@ function bsCrewCard(c, st){
     <div class="bs-chips">${c.svc.map(x => `<span>${BS_SVC[x][0]} ${BS_SVC[x][1]}</span>`).join('') || '<span>Sin servicios</span>'}${c.guard ? '<span>📟 Guardia 7x24</span>' : ''}</div>
     <div class="bs-kv"><div><b>${s.t}</b>sitios tit.</div><div><b>${s.a}</b>apoyo</div><div><b>${Math.round(s.km)}</b>km tramo</div><div><b>${c.svc.includes('prev_epi') ? Math.ceil(s.t / 3) : '—'}</b>EPI/mes</div></div>
     <div class="bs-chips">${c.res.map(r => `<span>${BS_RT[r.t][0]} ${esc(r.n)}</span>`).join('') || '<span class="muted">Sin recursos cargados</span>'}</div>
-    <div class="row" style="gap:6px">${bsCan() ? `<button class="btn sec small" data-ec="${c.id}" style="margin:0">✏️ Editar y recursos</button>` : ''}<button class="btn sec small" data-zc="${c.id}" style="margin:0">🔍 Ver</button></div></div>`;
+    ${c.notes ? `<div class="muted sm">${esc(c.notes)}</div>` : ''}
+    ${bsRotHtml(c)}
+    <div class="row" style="gap:6px">${bsCan() ? `<button class="btn sec small" data-ec="${c.id}" style="margin:0">✏️ Editar y recursos</button><button class="btn sec small" data-ro="${c.id}" style="margin:0">📟 Rotación</button>` : ''}<button class="btn sec small" data-zc="${c.id}" style="margin:0">🔍 Ver</button></div></div>`;
 }
 function bsPCrews(){
   const st = bsStats(BS.plan), can = bsCan(), loose = BS.plan.crews.filter(c => !bsBase(c.base));
@@ -376,7 +379,7 @@ function bsPCrews(){
   return `<div class="row" style="justify-content:space-between"><h2>Bases y cuadrillas${BS.kind === 'borrador' ? ' · borrador' : ''}</h2>${can ? '<div class="row" style="gap:6px"><button class="btn sec small" id="bs-nb" style="margin:0">+ Base</button><button class="btn small" id="bs-nc" style="margin:0">+ Cuadrilla</button></div>' : ''}</div>
     ${!BS.sites.length && !BS.cables.length ? '<div class="bs-warn">El proyecto no tiene sitios con ubicación ni trazas cargadas. Sumá los sitios al proyecto, o cargá el KMZ de trazas en 🌐 Red de fibra.</div>' : ''}
     ${!BS.cables.length && BS.sites.length ? '<p class="muted sm" style="margin:0">Se ven los sitios del proyecto. Para ver los tramos de fibra, cargá el KMZ de trazas en 🌐 Red de fibra.</p>' : ''}
-    ${can ? `<button class="btn sec small" id="bs-r3" style="margin:0;justify-self:start">📄 Cargar la propuesta Renglón 3 (3 bases)</button>` : ''}
+    ${can ? `<button class="btn sec small" id="bs-r3" style="margin:0;justify-self:start">📄 Cargar la propuesta Renglón 3 (3 bases con técnicos)</button>` : ''}
     ${empty ? `<div class="bs-card"><b>Cómo se arma</b><ol class="sm" style="margin:0;padding-left:18px;line-height:1.6"><li><b>+ Base</b>: nombre, de quién es, y la ubicás en el mapa.</li><li><b>+ Cuadrilla</b>: de qué base sale, qué servicios hace y sus recursos.</li><li>En la cuadrilla, <b>Cubrir lo más cercano a su base</b> arma una primera cobertura sola.</li><li>Con <b>🖌 Pintar cobertura</b> ajustás: tocás sitios o tramos, o marcás un área.</li></ol></div>` : ''}
     ${BS.plan.bases.map(b => { const cs = BS.plan.crews.filter(c => c.base === b.id);
       return `<div class="bs-base" style="--bc:${b.color}"><div class="row" style="gap:8px;align-items:center"><span class="bs-sw" style="background:${b.color}"></span><b style="flex:1">${esc(b.name)}</b><span class="bs-own">${esc(b.owner)}</span></div>
@@ -393,7 +396,7 @@ function bsPQuien(){
     res.length ? res.map(it => { const who = bsWho(it.key), ds = it.c ? BS.plan.bases.map(b => ({ b, d:bsKm([b.lat, b.lng], it.c) })).sort((x, y) => x.d - y.d) : [];
       const tit = who.filter(w => w.r === 'T'), near = ds[0]?.b, titBases = new Set(tit.map(w => w.c.base));
       return `<div class="bs-card"><div class="row" style="justify-content:space-between"><b>${esc(it.name)}</b><span class="muted sm">${it.path ? 'Tramo · ' + it.km + ' km' : esc(it.loc || 'Sitio')}</span></div>
-        ${who.length ? who.map(w => `<div class="sm"><span class="bs-sw" style="background:${w.c.color}"></span> <b>${esc(w.c.name)}</b> · ${w.r === 'T' ? 'titular' : 'apoyo'} · ${w.c.svc.map(s => BS_SVC[s][1]).join(', ') || 'sin servicios'}${bsBase(w.c.base) ? ' · sale de ' + esc(bsBase(w.c.base).name) : ''}</div>`).join('') : '<div class="bs-warn">Ninguna cuadrilla lo cubre.</div>'}
+        ${who.length ? who.map(w => { const g = bsRotNow(w.c); return `<div class="sm"><span class="bs-sw" style="background:${w.c.color}"></span> <b>${esc(w.c.name)}</b> · ${w.r === 'T' ? 'titular' : 'apoyo'} · ${w.c.svc.map(s => BS_SVC[s][1]).join(', ') || 'sin servicios'}${bsBase(w.c.base) ? ' · sale de ' + esc(bsBase(w.c.base).name) : ''}${g && !g.before ? `<br>📟 De guardia hoy: <b>${(g.w.guard || []).map(esc).join(' + ') || '—'}</b>` : ''}</div>`; }).join('') : '<div class="bs-warn">Ninguna cuadrilla lo cubre.</div>'}
         ${BS.plan.lims[it.key] ? '<div class="sm">📍 Punto límite</div>' : ''}
         ${ds.length ? `<div class="muted sm">Bases más cerca: ${ds.slice(0, 3).map(({ b, d }) => `${esc(bsShort(b.name))} ${d.toFixed(0)} km`).join(' · ')}${tit.length && near && !titBases.has(near.id) ? ' · <b style="color:#B45309">la titular no sale de la base más cercana</b>' : ''}</div>` : ''}
         <div><button class="btn sec small" data-go="${it.key}" style="margin:0">Ver en el mapa</button></div></div>`; }).join('') : '<p class="muted sm">No encontré ese lugar en el proyecto.</p>'}`;
@@ -546,15 +549,31 @@ function bsR3Plan(){
     if (g === 'AcS') return lat > LAT.VER + 0.001 ? 'r3b1' : 'r3b2';
     return null;
   };
-  const res = () => [{ t:'persona', n:'Técnico 1' }, { t:'persona', n:'Técnico 2' }, { t:'persona', n:'Ayudante' }, { t:'vehiculo', n:'Camioneta con capacidad de arrastre' }, { t:'equipo', n:'OTDR, empalmadora, power meter y pinza amperométrica' }, { t:'equipo', n:'Desmalezadora y rociador' }];
-  const SVC = ['prev_epi', 'corr_epi', 'energia', 'fo_rep', 'fo_prev', 'radio'];
+  const EQ = [{ t:'vehiculo', n:'Camioneta con capacidad de arrastre' }, { t:'equipo', n:'OTDR, empalmadora, power meter y pinza amperométrica' }, { t:'equipo', n:'Desmalezadora y rociador' }];
+  const P = (n, r) => ({ t:'persona', n:n + ' · ' + r });
+  const ALL = ['prev_epi', 'corr_epi', 'energia', 'fo_rep', 'fo_prev', 'radio'];
+  const W = (off, g1, g2) => ({ off:[off], guard:[g1, g2] });
+  const ROT_NOTE = '4 técnicos en 21x7 (siempre 3 en base). Guardia 24 h: 1 fusionador + 1 operario.';
   const bases = [
-    { id:'r3b1', name:'Base 1 – Avellaneda', owner:'Trans', lat:-29.1087, lng:-59.6659, color:'#2563eb', notes:'Traza 14 · Traza 3 · Traza 15 Reconquista–Los Laureles · Acueducto Norte · Acueducto Oeste · Acueducto Sur Reconquista–Vera' },
+    { id:'r3b1', name:'Base 1 – Avellaneda', owner:'Trans', lat:-29.1087, lng:-59.6659, color:'#2563eb', notes:'Traza 14 · Traza 3 · Traza 15 Reconquista–Los Laureles · Acueductos Norte, Oeste y Sur (Reconquista–Vera)' },
     { id:'r3b2', name:'Base 2 – San Javier', owner:'Trans', lat:-30.5821, lng:-59.9443, color:'#d97706', notes:'Traza 15 Helvecia–Los Laureles (incluye Romang) · Traza 4 Calchaquí–San Justo · Acueducto Sur Vera–Calchaquí' },
-    { id:'r3b3', name:'Base 3 – Santa Fe', owner:'Trans', lat:-31.6598, lng:-60.7106, color:'#059669', notes:'Traza 24 · Traza 22 · Traza 4 Recreo–San Justo · Traza 15 Santa Fe–Helvecia' },
+    { id:'r3b3', name:'Base 3 – Santa Fe', owner:'Contratistas (Saguir y SIP)', lat:-31.6598, lng:-60.7106, color:'#059669', notes:'Traza 24 · Traza 22 · Traza 4 Recreo–San Justo · Traza 15 Santa Fe–Helvecia' },
   ];
-  const crews = bases.map((b, i) => ({ id:'r3c' + (i + 1), name:'Cuadrilla ' + b.name, owner:'Trans', base:b.id, color:b.color, svc:SVC.slice(), guard:true, res:res(), cov:{}, notes:'3 personas fijas, guardia 7x24' }));
-  const crewOf = bid => crews.find(c => c.base === bid);
+  const crews = [
+    { id:'r3c1', name:'Cuadrilla Avellaneda', owner:'Trans', base:'r3b1', color:'#2563eb', svc:ALL.slice(), guard:true, notes:ROT_NOTE + ' Marcelo Díaz no maneja: lo acompaña un fusionador.',
+      res:[P('Marcos Paz', 'fusionador'), P('Franco Pórfido', 'fusionador'), P('Juan Mercado', 'operario'), P('Marcelo Díaz', 'operario (no maneja)'), ...EQ], cov:{},
+      rot:{ start:'2026-11-09', weeks:[W('Marcos Paz', 'Franco Pórfido', 'Juan Mercado'), W('Marcelo Díaz', 'Franco Pórfido', 'Juan Mercado'), W('Franco Pórfido', 'Marcos Paz', 'Marcelo Díaz'), W('Juan Mercado', 'Marcos Paz', 'Marcelo Díaz')] } },
+    { id:'r3c2', name:'Cuadrilla San Javier', owner:'Trans', base:'r3b2', color:'#d97706', svc:ALL.slice(), guard:true, notes:ROT_NOTE,
+      res:[P('Pablo Candia', 'fusionador'), P('Gonzalo Mercado', 'fusionador'), P('Carlos Ahumada', 'operario'), P('Ramón Chino', 'operario'), ...EQ], cov:{},
+      rot:{ start:'2026-11-09', weeks:[W('Pablo Candia', 'Gonzalo Mercado', 'Carlos Ahumada'), W('Ramón Chino', 'Gonzalo Mercado', 'Carlos Ahumada'), W('Gonzalo Mercado', 'Pablo Candia', 'Ramón Chino'), W('Carlos Ahumada', 'Pablo Candia', 'Ramón Chino')] } },
+    { id:'r3c3', name:'Saguir · Fibra óptica', owner:'Saguir', base:'r3b3', color:'#059669', svc:['fo_rep', 'fo_prev'], guard:true, notes:'Contratista de FO: se arregla con sus propios recursos.',
+      res:[{ t:'equipo', n:'Recursos propios del contratista' }], cov:{} },
+    { id:'r3c4', name:'SIP · EPI', owner:'SIP Servicios Integrales', base:'r3b3', color:'#0891b2', svc:['prev_epi', 'corr_epi', 'energia', 'radio'], guard:true, notes:'Contratista de mantenimiento de EPI: se arregla con sus propios recursos.',
+      res:[{ t:'equipo', n:'Recursos propios del contratista' }], cov:{} },
+  ];
+  // a qué cuadrillas de la base va cada cosa: los tramos van a quien hace FO; los EPI a quien hace EPI o FO; los radioenlaces a quien hace radio
+  const crewsFor = (bid, what) => crews.filter(c => c.base === bid && (what === 'cab' ? c.svc.includes('fo_rep') : what === 'radio' ? c.svc.includes('radio') : true));
+  const put = (bid, what, key, role) => crewsFor(bid, what).forEach(c => { if (c.cov[key] !== 'T') c.cov[key] = role; });
   const near = p => bases.map(b => ({ b, d:bsKm([b.lat, b.lng], p) })).sort((x, y) => x.d - y.d)[0].b.id;
   const lims = {}, unk = [];
   const LIM = { 'helvecia':['r3b2', 'r3b3'], 'los laureles':['r3b2', 'r3b1'], 'san justo':['r3b3', 'r3b2'], 'vera':['r3b1', 'r3b2'] };
@@ -563,12 +582,12 @@ function bsR3Plan(){
   for (const s of BS.sites){
     const k = bsK(s.name), r = BS_R3.n[k] || BS_R3.n[bsK(s.loc)];
     let bid = null;
-    if (LIM[k]){ const [t, a] = LIM[k]; crewOf(t).cov[s.key] = 'T'; crewOf(a).cov[s.key] = 'A'; lims[s.key] = true; continue; }
+    if (LIM[k]){ const [t, a] = LIM[k]; put(t, 'epi', s.key, 'T'); put(a, 'epi', s.key, 'A'); lims[s.key] = true; continue; }
     if (r && r[2]){ const g = r[0][0], e = epiRef.filter(([, v]) => v[0].includes(g)).sort((x, y) => bsKm(x[1][1], r[1]) - bsKm(y[1][1], r[1]))[0];
       bid = e ? rule(g, e[1][1][0]) : null; }
     else if (r) bid = rule(r[0][0], r[1][0]);
     if (!bid){ bid = near(s.c); unk.push(s.name); }
-    crewOf(bid).cov[s.key] = 'T';
+    put(bid, r && r[2] ? 'radio' : 'epi', s.key, 'T');
   }
   // tramos: por el nombre del recorrido del KMZ; si no se reconoce, la base más cercana
   for (const c of BS.cables){
@@ -576,7 +595,7 @@ function bsR3Plan(){
     let bid = null;
     if (m){ const g = m.slice().sort((x, y) => Math.abs(x[1] - lat) - Math.abs(y[1] - lat))[0][0]; bid = rule(g, lat); }
     if (!bid){ bid = near(c.mid); unk.push(c.name); }
-    crewOf(bid).cov[c.key] = 'T';
+    put(bid, 'cab', c.key, 'T');
   }
   return { plan:{ bases, crews, lims }, unk };
 }
@@ -586,7 +605,55 @@ function bsR3Load(btn){
   if (has && !btn.dataset.sure){ btn.dataset.sure = 1; btn.textContent = 'Tocá otra vez: reemplaza las bases de este plan'; return; }
   const { plan, unk } = bsR3Plan();
   BS.plans[BS.kind] = BS.plan = plan;
-  bsChange(`Cargó la propuesta de renovación del Renglón 3: 3 bases con guardia 7x24 (sección 7.1).${unk.length ? ` ${unk.length} sitios o tramos no figuran en el KMZ de referencia y se asignaron a la base más cercana.` : ''}`);
+  bsChange(`Cargó la propuesta del Renglón 3: Base 1 Avellaneda y Base 2 San Javier (Trans, 4 técnicos en 21x7 con guardia), Base 3 Santa Fe (Saguir FO y SIP EPI).${unk.length ? ` ${unk.length} sitios o tramos no figuran en el KMZ de referencia y se asignaron a la base más cercana.` : ''}`);
   bsRender(); bsFit();
   toast(unk.length ? `Propuesta cargada. ${unk.length} puntos se asignaron por cercanía: revisalos en Límites.` : 'Propuesta del Renglón 3 cargada.');
+}
+
+/* ---------- rotación y guardia ---------- */
+const bsDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+function bsRotNow(c, when){
+  const r = c?.rot; if (!r || !r.start || !Array.isArray(r.weeks) || !r.weeks.length) return null;
+  const st = bsDay(r.start + 'T00:00:00'), d = bsDay(when || new Date()), days = Math.floor((d - st) / 864e5);
+  if (days < 0) return { before:true, start:st };
+  const n = r.weeks.length, i = Math.floor(days / 7) % n, from = new Date(st.getTime() + Math.floor(days / 7) * 7 * 864e5);
+  return { i, n, w:r.weeks[i], from, to:new Date(from.getTime() + 6 * 864e5) };
+}
+const bsFmtD = d => d.toLocaleDateString('es-AR', { weekday:'short', day:'2-digit', month:'2-digit' });
+function bsRotHtml(c){
+  const now = bsRotNow(c); if (!now) return '';
+  if (now.before) return `<div class="sm">📅 Rotación desde el ${esc(bsFmtD(now.start))}</div>`;
+  const nm = a => (a || []).map(esc).join(' + ') || '—';
+  return `<div class="sm" style="background:#ECFDF5;border-radius:8px;padding:6px 8px;display:grid;gap:2px"><b>📟 Esta semana (${now.i + 1} de ${now.n}, ${esc(bsFmtD(now.from))} al ${esc(bsFmtD(now.to))})</b>
+    <span>De guardia: <b>${nm(now.w.guard)}</b></span><span>De franco: ${nm(now.w.off)}</span></div>
+    <details class="sm"><summary style="cursor:pointer">Ver la rotación completa</summary><table class="bs-t" style="margin-top:4px"><thead><tr><th>Sem.</th><th style="text-align:left">De franco</th><th style="text-align:left">Guardia</th></tr></thead><tbody>
+      ${c.rot.weeks.map((w, k) => `<tr style="${k === now.i ? 'background:#ECFDF5;font-weight:700' : ''}"><td>${k + 1}</td><td style="text-align:left;white-space:normal">${nm(w.off)}</td><td style="text-align:left;white-space:normal">${nm(w.guard)}</td></tr>`).join('')}</tbody></table></details>`;
+}
+function bsRotEditor(c, done){
+  const r = c.rot ? JSON.parse(JSON.stringify(c.rot)) : { start:'', weeks:[{ off:[], guard:[] }, { off:[], guard:[] }, { off:[], guard:[] }, { off:[], guard:[] }] };
+  const people = c.res.filter(x => x.t === 'persona').map(x => x.n.split(' · ')[0]);
+  const draw = () => {
+    const m = modal(`<h2>📟 Rotación y guardia · ${esc(c.name)}</h2>
+      <p class="muted sm" style="margin-top:-4px">Una fila por semana del ciclo. Se repite desde la fecha de inicio. Escribí los nombres separados por coma.</p>
+      <label for="ro-s">Fecha de inicio (lunes)</label><input type="date" id="ro-s" value="${esc(r.start || '')}">
+      <datalist id="ro-p">${people.map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+      <div style="display:grid;gap:6px;margin-top:8px">${r.weeks.map((w, k) => `<div class="row" style="gap:6px;align-items:center"><b style="width:56px">Sem. ${k + 1}</b>
+        <input data-ro="${k}" data-f="off" list="ro-p" placeholder="De franco" value="${esc((w.off || []).join(', '))}" style="flex:1;min-width:120px">
+        <input data-ro="${k}" data-f="guard" list="ro-p" placeholder="De guardia" value="${esc((w.guard || []).join(', '))}" style="flex:1;min-width:120px">
+        <button class="btn sec small" data-rk="${k}" style="margin:0">✕</button></div>`).join('')}</div>
+      <div class="row" style="margin-top:6px"><button class="btn sec small" id="ro-add" style="margin:0" ${r.weeks.length >= 8 ? 'disabled' : ''}>+ Semana</button>${c.rot ? '<button class="btn sec small" id="ro-del" style="margin:0;color:#B91C1C">Sacar la rotación</button>' : ''}</div>
+      <p class="muted sm">Personas de la cuadrilla: ${people.map(esc).join(', ') || 'cargalas en Recursos'}.</p>
+      <div class="err" id="ro-e"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn sec" id="ro-x">Cancelar</button><button class="btn" id="ro-ok">Guardar</button></div>`, { wide:true });
+    const read = () => { r.start = $('#ro-s').value; m.el.querySelectorAll('[data-ro]').forEach(i => { r.weeks[+i.dataset.ro][i.dataset.f] = i.value.split(',').map(x => x.trim()).filter(Boolean).slice(0, 6); }); };
+    m.el.querySelectorAll('[data-rk]').forEach(b => b.onclick = () => { read(); r.weeks.splice(+b.dataset.rk, 1); draw(); });
+    $('#ro-add').onclick = () => { read(); r.weeks.push({ off:[], guard:[] }); draw(); };
+    $('#ro-x').onclick = () => { m.close(); done(false); };
+    $('#ro-del')?.addEventListener('click', () => { c.rot = null; m.close(); done('Sacó la rotación de ' + c.name + '.'); });
+    $('#ro-ok').onclick = () => { read();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(r.start)) return void ($('#ro-e').textContent = 'Poné la fecha de inicio.');
+      if (!r.weeks.length) return void ($('#ro-e').textContent = 'Agregá al menos una semana.');
+      c.rot = r; m.close(); done(`${c.name}: cambió la rotación (${r.weeks.length} semanas desde el ${r.start}).`); };
+  };
+  draw();
 }

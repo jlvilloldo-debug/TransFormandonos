@@ -1162,5 +1162,14 @@ async function tkCovInto(box, t){
   if (!crews.length) return;
   const SV = { prev_epi:'Preventivo EPI', corr_epi:'Correctivo EPI', energia:'Energía', fo_rep:'Reparación FO', fo_prev:'Recorrida FO', radio:'Radioenlaces', otro:'Otro' };
   const col = c => /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#64748b';
-  box.innerHTML = `<div class="sm" style="margin:6px 0;display:grid;gap:3px"><b>🗺 Cubren este sitio</b>${who.length ? who.sort((a, b) => (a.cov[key] === 'T' ? 0 : 1) - (b.cov[key] === 'T' ? 0 : 1)).map(c => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col(c.color)}"></span> <b>${esc(c.name)}</b> · ${c.cov[key] === 'T' ? 'titular' : 'apoyo'} · ${esc((c.svc || []).map(s => SV[s] || '').filter(Boolean).join(', '))}${bases.find(b => b.id === c.base) ? ' · ' + esc(bases.find(b => b.id === c.base).name) : ''}</span>`).join('') : '<span class="muted">Ninguna cuadrilla tiene este sitio en el Mapa de bases.</span>'} <a href="#/bases/${esc(t.project_id)}">Ver el mapa de bases</a></div>`;
+  box.innerHTML = `<div class="sm" style="margin:6px 0;display:grid;gap:3px"><b>🗺 Cubren este sitio</b>${who.length ? who.sort((a, b) => (a.cov[key] === 'T' ? 0 : 1) - (b.cov[key] === 'T' ? 0 : 1)).map(c => `<span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${col(c.color)}"></span> <b>${esc(c.name)}</b> · ${c.cov[key] === 'T' ? 'titular' : 'apoyo'} · ${esc((c.svc || []).map(s => SV[s] || '').filter(Boolean).join(', '))}${bases.find(b => b.id === c.base) ? ' · ' + esc(bases.find(b => b.id === c.base).name) : ''}${tkGuardToday(c)}</span>`).join('') : '<span class="muted">Ninguna cuadrilla tiene este sitio en el Mapa de bases.</span>'} <a href="#/bases/${esc(t.project_id)}">Ver el mapa de bases</a></div>`;
+}
+
+// quién está de guardia hoy según la rotación de la cuadrilla (Mapa de bases)
+function tkGuardToday(c){
+  const r = c?.rot; if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(r.start || '') || !Array.isArray(r.weeks) || !r.weeks.length) return '';
+  const st = new Date(r.start + 'T00:00:00'), d = new Date(); d.setHours(0, 0, 0, 0);
+  const days = Math.floor((d - st) / 864e5); if (days < 0) return '';
+  const w = r.weeks[Math.floor(days / 7) % r.weeks.length];
+  return w && (w.guard || []).length ? ` · 📟 de guardia hoy: <b>${w.guard.map(esc).join(' + ')}</b>` : '';
 }
