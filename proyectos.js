@@ -429,7 +429,7 @@ async function viewProject(v, id){
         <div><h1 style="margin:0">${esc(p.name)}</h1><div class="muted sm">${esc([PROJ_KIND[p.kind], p.client, p.contract].filter(Boolean).join(' · '))}${p.start_date || p.end_date ? ` · ${fmtD(p.start_date)} → ${fmtD(p.end_date)}` : ''}</div>${['mantenimiento', 'mixto'].includes(p.kind) ? `<div class="sm" style="margin-top:4px">${(() => { const k = typeof tkTkr === 'function' && p.ticketera_id ? tkTkr(p.ticketera_id) : null; return k ? `🎫 Ticketera: <b>${esc(k.name)}</b>` : `<span style="color:#B45309">🎫 Sin ticketera asignada</span> · <a href="#" data-sla="1">asignarla en Contrato y SLA</a>`; })()}</div>` : ''}</div></div>
       <div class="row" style="gap:6px;flex-wrap:wrap">${can('stock') ? `<a class="btn" href="#/stock/p/${p.id}" style="margin:0;background:#7C3AED;border-color:#7C3AED">📦 Stock</a>` : ''}${isManager() ? `<a class="btn" href="#/recursos/p/${p.id}" style="margin:0">🏗 Equipo del proyecto</a>` : ''}<a class="btn sec" href="#/red/p/${p.id}" style="margin:0">🌐 Red de fibra</a><a class="btn sec" href="#/bases/${p.id}" style="margin:0">🗺 Mapa de bases</a>${isManager() && canWrite() ? '<button class="btn" id="pj-task" style="margin:0">📋 Asignar tarea</button>' : ''}${['mantenimiento', 'mixto'].includes(p.kind) ? `<a class="btn" href="#/mesa/${p.id}" style="margin:0;background:#C2410C;border-color:#C2410C">🎫 Tickets</a>` : ''}${!isContractor() ? '<button class="btn sec" id="pj-mem" style="margin:0">👥 Integrantes</button>' : ''}${manage && online() && can('proj', 3) ? '<button class="btn sec" id="pj-edit" style="margin:0">Editar proyecto</button>' : ''}</div></div>
       <div class="row" style="margin-top:12px;gap:12px"><b style="font-size:22px">${Math.round(sm.pct)}%</b><div class="progress grow" style="height:10px"><i style="width:${Math.round(sm.pct)}%"></i></div></div>
-      <div class="seg" id="pj-tabs" style="margin-top:12px">${[['res', 'Resumen'], ['sit', `Sitios (${sm.n})`], ['gan', 'Gantt'], ['inv', `Inventario${equip.length ? ' (' + equip.length + ')' : ''}`], ...(['mantenimiento', 'mixto'].includes(p.kind) && typeof tkProjSla === 'function' ? [['sla', 'Contrato y SLA']] : [])].map(([k, t]) => `<button type="button" data-pt="${k}" class="${PTAB === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="seg" id="pj-tabs" style="margin-top:12px">${[['res', 'Resumen'], ['sit', `Sitios (${sm.n})`], ['gan', 'Gantt'], ['inv', `Inventario${equip.length ? ' (' + equip.length + ')' : ''}${equip.some(e => eqFailLate(e) || eqRmaLate(e)) ? ' ⚠' : ''}`], ...(['mantenimiento', 'mixto'].includes(p.kind) && typeof tkProjSla === 'function' ? [['sla', 'Contrato y SLA']] : [])].map(([k, t]) => `<button type="button" data-pt="${k}" class="${PTAB === k ? 'on' : ''}">${t}</button>`).join('')}</div>
     </div>
     <div id="pj-body"></div>`;
   $('#pj-edit')?.addEventListener('click', () => editProject(p));
@@ -1237,142 +1237,373 @@ function exportGantt(ctx, groups, view){
 }
 
 /* =====================================================================
-   INVENTARIO DE EQUIPOS
+   INVENTARIO DE EQUIPOS — ciclo de vida, movimientos e historial
+   Cada acción pasa por la base (eq_action), que valida permisos y deja el historial.
    ===================================================================== */
-const EQ_ST = { a_instalar: 'A instalar', instalado: 'Instalado', retirado: 'Retirado' };
+const EQ_ST = { a_instalar: ['A instalar', 'p-pend'], instalado: ['Instalado', 'p-ok'], falla: ['Con falla', 'p-bad'], reparacion: ['En reparación', 'p-pend'], rma: ['En RMA', 'p-info'],
+  disponible: ['Disponible (reparado)', 'p-ok'], deposito: ['En depósito', 'p-info'], retirado: ['Retirado', ''], baja: ['Baja / desguace', 'p-bad'] };
+const EQ_FAIL_DAYS = 7, EQ_RMA_DAYS = 30;
+const eqStName = s => EQ_ST[s]?.[0] || s;
+const eqPill = s => `<span class="pill ${EQ_ST[s]?.[1] || ''}">${esc(eqStName(s))}</span>`;
+const eqDays = d => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : 0;
+const eqFailLate = e => e.status === 'falla' && e.fail_at && eqDays(e.fail_at) > EQ_FAIL_DAYS;
+const eqRmaLate = e => e.status === 'rma' && e.rma_sent && eqDays(e.rma_sent) > EQ_RMA_DAYS;
+let EQ_PLACES = null, EQ_STAFF = null;
+async function eqPlaces(){
+  if (EQ_PLACES) return EQ_PLACES;
+  try { const { data, error } = await sb.from('stock_places').select('id,name,kind,active').order('name').limit(500); if (error) throw error; EQ_PLACES = data || []; } catch { EQ_PLACES = []; }
+  return EQ_PLACES;
+}
+async function eqStaff(){
+  if (EQ_STAFF) return EQ_STAFF;
+  try { const { data } = await sb.from('hh_staff').select('name').order('name').limit(500); EQ_STAFF = [...new Set((data || []).map(x => x.name).filter(Boolean))]; } catch { EQ_STAFF = []; }
+  if (me?.full_name && !EQ_STAFF.includes(me.full_name)) EQ_STAFF.unshift(me.full_name);
+  return EQ_STAFF;
+}
+function eqLoc(e, siteById){
+  if (e.place_id) return '🏬 ' + (EQ_PLACES?.find(x => x.id === e.place_id)?.name || 'Depósito');
+  if (e.status === 'rma') return '📦 Proveedor ' + (e.rma_vendor || '');
+  const s = siteById.get(e.site_id)?.name || '?';
+  return ['instalado', 'a_instalar'].includes(e.status) ? '📍 ' + s : 'Retirado de ' + s;
+}
 function projInventory(box, ctx){
   const { p, equip, siteById, ps } = ctx;
   const manage = isManager() && canWrite() && online();
   const els = p.elements || [], elName = id => els.find(e => e.id === id)?.name || id;
   const mySites = new Set(ps.map(x => x.site_id));
-  const canTick = e => canWrite() && (isManager() || me.role === 'inspector' || (isContractor() && mySites.has(e.site_id)));
-  box.innerHTML = `<div class="card"><div class="row between"><div class="row">
-      <input id="iv-q" placeholder="Buscar nombre, serie, MAC, IP o sitio" style="max-width:280px">
-      <select id="iv-s" style="width:auto"><option value="">Todos los estados</option>${Object.entries(EQ_ST).map(([k, x]) => `<option value="${k}">${x}</option>`).join('')}</select>
-      ${els.length ? `<select id="iv-e" style="width:auto"><option value="">Todos los elementos</option>${els.map(e => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select>` : ''}</div>
-    <div class="row">${manage ? `<label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="iv-xl" class="hidden"></label><button class="btn sec small" id="iv-add">+ Equipo</button>` : ''}<button class="btn sec small" id="iv-exp">Exportar Excel</button></div></div>
-    <p class="muted sm" style="margin:8px 0 0">Cada equipo con su serie, MAC e IP. Al marcarlo instalado se suma al avance del sitio. ${manage ? 'Importá un Excel con una hoja por sitio (como el relevamiento por rack) o con una columna Sitio.' : ''}</p></div>
-    <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr><th>Sitio</th><th>Equipo</th><th class="hide-sm">Serie / MAC</th><th class="hide-sm">IP</th><th>Estado</th><th></th></tr></thead><tbody id="iv-rows"></tbody></table></div><p class="muted sm" id="iv-foot"></p></div>`;
+  const canAct = e => canWrite() && (isManager() || me.role === 'inspector' || (isContractor() && mySites.has(e.site_id)));
+  const byId = new Map(equip.map(e => [e.id, e]));
+  let quick = false;
+  const late = equip.filter(e => eqFailLate(e) || eqRmaLate(e));
+  const cnt = {}; equip.forEach(e => { cnt[e.status] = (cnt[e.status] || 0) + 1; });
+  box.innerHTML = `${late.length ? `<div class="card alertcard bad" style="cursor:pointer" id="iv-late"><span style="font-size:24px">⚠</span><div class="grow"><b>${late.length} equipo${late.length === 1 ? '' : 's'} esperando una decisión</b>
+      <div class="sm">${equip.filter(eqFailLate).length ? `${equip.filter(eqFailLate).length} con falla hace más de ${EQ_FAIL_DAYS} días sin destino` : ''}${equip.filter(eqFailLate).length && equip.filter(eqRmaLate).length ? ' · ' : ''}${equip.filter(eqRmaLate).length ? `${equip.filter(eqRmaLate).length} en RMA hace más de ${EQ_RMA_DAYS} días` : ''} · tocá para verlos</div></div></div>` : ''}
+    <div class="card"><div class="row between"><div class="row">
+      <input id="iv-q" placeholder="Buscar nombre, serie, MAC, IP, sitio o quién lo tiene" style="max-width:300px">
+      <select id="iv-s" style="width:auto"><option value="">Todos los estados</option><option value="late">⚠ Esperando decisión</option>${Object.entries(EQ_ST).map(([k, x]) => `<option value="${k}">${x[0]}${cnt[k] ? ' (' + cnt[k] + ')' : ''}</option>`).join('')}</select>
+      ${els.length > 1 ? `<select id="iv-e" style="width:auto"><option value="">Todos los elementos</option>${els.map(e => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select>` : ''}</div>
+    <div class="row">${manage ? `<label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="iv-xl" class="hidden"></label><button class="btn sec small" id="iv-add">+ Equipo</button><button class="btn sec small" id="iv-qk">✏ Edición rápida</button>` : ''}<button class="btn sec small" id="iv-exp">Exportar Excel</button></div></div>
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${Object.entries(EQ_ST).filter(([k]) => cnt[k]).map(([k, x]) => `<button type="button" class="pill ${x[1]}" data-cf="${k}" style="border:0;cursor:pointer;font-size:12px">${x[0]}: <b>${cnt[k]}</b></button>`).join('')}</div>
+    <p class="muted sm" style="margin:8px 0 0">Tocá un equipo para ver su historial y las acciones: mover, reportar falla, reemplazar, enviar a RMA, recibir o dar de baja. Todo queda registrado con fecha y autor.</p></div>
+    <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr><th>Sitio</th><th>Equipo</th><th class="hide-sm">Serie / MAC</th><th class="hide-sm">IP</th><th>Estado</th><th class="hide-sm">Dónde está · quién lo tiene</th><th class="hide-sm">Obs</th></tr></thead><tbody id="iv-rows"></tbody></table></div><p class="muted sm" id="iv-foot"></p></div>`;
+  const siteOpts = [...mySites].map(id => siteById.get(id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
   const render = () => {
     const q = norm($('#iv-q').value), s = $('#iv-s').value, e = $('#iv-e')?.value || '';
-    const rows = equip.filter(x => (!s || x.status === s) && (!e || x.element === e) && (!q || norm([x.name, x.serial, x.mac, x.ip, siteById.get(x.site_id)?.name].join(' ')).includes(q)));
-    $('#iv-rows').innerHTML = rows.slice(0, 800).map(x => `<tr><td class="sm">${esc(siteById.get(x.site_id)?.name || '—')}</td>
-      <td><b>${esc(x.name || elName(x.element))}</b><div class="muted sm">${esc(elName(x.element))}</div></td>
-      <td class="hide-sm sm">${esc(x.serial || '')}${x.mac ? `<div class="muted">${esc(x.mac)}</div>` : ''}</td><td class="hide-sm sm">${esc(x.ip || '')}</td>
-      <td><span class="pill ${x.status === 'instalado' ? 'p-ok' : x.status === 'retirado' ? '' : 'p-pend'}">${EQ_ST[x.status]}</span>${x.installed_at ? `<div class="muted sm">${fmtDate(x.installed_at)}</div>` : ''}</td>
-      <td>${canTick(x) ? `<button class="btn sec small" data-eq="${x.id}">${x.status === 'instalado' ? 'Editar' : 'Instalado ✓'}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Sin equipos cargados.</td></tr>';
-    $('#iv-foot').textContent = `${equip.filter(x => x.status === 'instalado').length} de ${equip.length} instalados` + (rows.length > 800 ? ` · se muestran 800 de ${rows.length}` : '');
-    box.querySelectorAll('[data-eq]').forEach(b => b.onclick = () => equipModal(ctx, equip.find(x => x.id === b.dataset.eq)));
+    const rows = equip.filter(x => (!s || (s === 'late' ? eqFailLate(x) || eqRmaLate(x) : x.status === s)) && (!e || x.element === e)
+      && (!q || norm([x.name, x.serial, x.mac, x.ip, x.holder, x.rma_no, x.ticket, x.notes, siteById.get(x.site_id)?.name].join(' ')).includes(q)));
+    $('#iv-rows').innerHTML = rows.slice(0, 800).map(x => quick ? `<tr data-row="${x.id}"><td><select data-qs="${x.id}" style="min-width:130px">${siteOpts.map(o => `<option value="${o.id}" ${o.id === x.site_id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select></td>
+        <td><b>${esc(x.name || elName(x.element))}</b><div class="muted sm">${esc(x.serial || '')}</div></td><td class="hide-sm sm">${esc(x.mac || '')}</td><td class="hide-sm sm">${esc(x.ip || '')}</td>
+        <td><select data-qt="${x.id}" style="width:auto">${Object.entries(EQ_ST).map(([k, v]) => `<option value="${k}" ${k === x.status ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></td>
+        <td class="hide-sm sm">${esc(eqLoc(x, siteById))}${x.holder ? `<div class="muted">👤 ${esc(x.holder)}</div>` : ''}</td><td class="hide-sm"><input data-qo="${x.id}" maxlength="1000" value="${esc(x.notes || '')}" style="min-width:160px"></td></tr>`
+      : `<tr data-eq="${x.id}" style="cursor:pointer"><td class="sm">${esc(siteById.get(x.site_id)?.name || '—')}</td>
+        <td><b>${esc(x.name || elName(x.element))}</b><div class="muted sm">${esc(elName(x.element))}${x.replaces ? ' · 🔄 reemplazo' : ''}</div></td>
+        <td class="hide-sm sm">${esc(x.serial || '')}${x.mac && x.mac !== x.serial ? `<div class="muted">${esc(x.mac)}</div>` : ''}</td><td class="hide-sm sm">${esc(x.ip || '')}</td>
+        <td>${eqPill(x.status)}${eqFailLate(x) ? `<div class="sm" style="color:var(--red)">⚠ hace ${eqDays(x.fail_at)} días</div>` : eqRmaLate(x) ? `<div class="sm" style="color:var(--red)">⚠ RMA hace ${eqDays(x.rma_sent)} días</div>` : x.status === 'instalado' && x.installed_at ? `<div class="muted sm">${fmtDate(x.installed_at)}</div>` : ''}</td>
+        <td class="hide-sm sm">${esc(eqLoc(x, siteById))}${x.holder ? `<div class="muted">👤 ${esc(x.holder)}</div>` : ''}${x.status === 'rma' && x.rma_no ? `<div class="muted">RMA ${esc(x.rma_no)}</div>` : ''}</td>
+        <td class="hide-sm sm muted">${esc((x.notes || '').slice(0, 80))}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Sin equipos cargados.</td></tr>';
+    $('#iv-foot').textContent = `${cnt.instalado || 0} de ${equip.length} instalados` + (rows.length > 800 ? ` · se muestran 800 de ${rows.length}` : '');
+    box.querySelectorAll('tr[data-eq]').forEach(tr => tr.onclick = () => eqDetail(ctx, byId.get(tr.dataset.eq)));
+    if (quick){
+      const save = async (id, patch, el) => {
+        const x = byId.get(id), prev = { site_id: x.site_id, status: x.status };
+        el.disabled = true;
+        const { error } = await sb.from('equipment').update(patch).eq('id', id);
+        el.disabled = false;
+        if (error){ toast(errText(error)); render(); return; }
+        Object.assign(x, patch); el.style.outline = '2px solid var(--green-d,#16a34a)'; setTimeout(() => { el.style.outline = ''; }, 900);
+        if (patch.status || patch.site_id){ await syncDoneFromEquip(ctx, prev.site_id, x.element).catch(() => {}); if (patch.site_id) await syncDoneFromEquip(ctx, x.site_id, x.element).catch(() => {}); }
+        IDB.del('kv', CUR_UID + ':equip:' + p.id).catch(() => {});
+      };
+      box.querySelectorAll('[data-qs]').forEach(el => el.onchange = () => save(el.dataset.qs, { site_id: el.value }, el));
+      box.querySelectorAll('[data-qt]').forEach(el => el.onchange = () => save(el.dataset.qt, { status: el.value }, el));
+      box.querySelectorAll('[data-qo]').forEach(el => el.onchange = () => save(el.dataset.qo, { notes: el.value.trim() || null }, el));
+    }
   };
+  eqPlaces().then(() => { if (equip.some(x => x.place_id)) render(); });
   $('#iv-q').oninput = render; $('#iv-s').onchange = render; $('#iv-e') && ($('#iv-e').onchange = render);
+  $('#iv-late')?.addEventListener('click', () => { $('#iv-s').value = 'late'; render(); });
+  box.querySelectorAll('[data-cf]').forEach(b => b.onclick = () => { $('#iv-s').value = b.dataset.cf; render(); });
+  $('#iv-qk')?.addEventListener('click', () => { quick = !quick; $('#iv-qk').textContent = quick ? '✓ Terminar edición' : '✏ Edición rápida'; $('#iv-qk').classList.toggle('sec', !quick); if (!quick) refreshProject(); else render(); });
   $('#iv-add')?.addEventListener('click', () => equipModal(ctx, null));
   $('#iv-xl')?.addEventListener('change', ev => importEquipment(ev.target.files[0], ctx));
-  $('#iv-exp').onclick = () => xlSave(`Inventario ${p.name} ${todayStr()}`, [['Inventario', [['Sitio', 'Elemento', 'Nombre', 'Serie', 'MAC', 'IP', 'Estado', 'Instalado el', 'Instalado por', 'Notas', ...[...new Set(equip.flatMap(x => Object.keys(x.data || {})))].slice(0, 30)],
-    ...equip.map(x => { const dk = [...new Set(equip.flatMap(y => Object.keys(y.data || {})))].slice(0, 30); return [siteById.get(x.site_id)?.name || '', elName(x.element), x.name || '', x.serial || '', x.mac || '', x.ip || '', EQ_ST[x.status], x.installed_at ? fmtDate(x.installed_at) : '', x.installed_by || '', x.notes || '', ...dk.map(k => xlStr(x.data?.[k] ?? ''))]; })], [24, 16, 34, 18, 18, 14, 11, 12, 18, 30]]]);
+  $('#iv-exp').onclick = () => eqExport(ctx);
   render();
+}
+/* Excel con el mismo formato de la planilla de control + historial de movimientos */
+async function eqExport(ctx){
+  const { p, equip, siteById } = ctx, els = p.elements || [], elName = id => els.find(e => e.id === id)?.name || id;
+  await eqPlaces();
+  const byId = new Map(equip.map(e => [e.id, e]));
+  let evs = [];
+  try { evs = await pageAll(() => sb.from('equip_events').select('equip_id,at,by_name,kind,text').eq('project_id', p.id).order('id')); } catch {}
+  const lastMv = new Map(); evs.forEach(v => lastMv.set(v.equip_id, v));
+  const dk = [...new Set(equip.flatMap(x => Object.keys(x.data || {})))].slice(0, 30);
+  const rows = equip.map(x => [siteById.get(x.site_id)?.name || '', x.name || elName(x.element), x.serial || '', x.ip || '', eqStName(x.status), x.notes || '',
+    elName(x.element), x.mac && x.mac !== x.serial ? x.mac : '', eqLoc(x, siteById).replace(/^[^\wÁ-ú]+\s*/, ''), x.holder || '', x.fail_at ? fmtDate(x.fail_at) : '', x.fail_desc || '', x.ticket || '',
+    x.rma_vendor || '', x.rma_no || '', x.rma_sent ? fmtDate(x.rma_sent) : '', x.replaces ? byId.get(x.replaces)?.serial || 'sí' : '', x.replaced_by ? byId.get(x.replaced_by)?.serial || 'sí' : '',
+    x.installed_at ? fmtDate(x.installed_at) : '', lastMv.get(x.id) ? `${fmtDT(lastMv.get(x.id).at)} · ${lastMv.get(x.id).text}`.slice(0, 300) : '', ...dk.map(k => xlStr(x.data?.[k] ?? ''))]);
+  xlSave(`Inventario ${p.name} ${todayStr()}`, [
+    ['Inventario', [['Sitio', 'Equipo', 'Serie / MAC', 'IP', 'Estado', 'obs', 'Elemento', 'MAC', 'Dónde está', 'Quién lo tiene', 'Falla desde', 'Falla', 'Ticket', 'Proveedor RMA', 'Nº RMA', 'Enviado a RMA', 'Reemplaza a', 'Reemplazado por', 'Instalado el', 'Último movimiento', ...dk], ...rows],
+      [22, 14, 18, 14, 18, 30, 16, 18, 24, 18, 11, 28, 10, 18, 12, 11, 16, 16, 11, 50]],
+    ['Movimientos', [['Fecha', 'Sitio', 'Equipo', 'Serie', 'Movimiento', 'Detalle', 'Quién'], ...evs.map(v => { const x = byId.get(v.equip_id) || {}; return [fmtDT(v.at), siteById.get(x.site_id)?.name || '', x.name || elName(x.element) || '', x.serial || '', EQ_EV[v.kind]?.[1] || v.kind, v.text, v.by_name || '']; })],
+      [16, 22, 14, 18, 16, 80, 18]]]);
+}
+const EQ_EV = { alta: ['➕', 'Alta'], estado: ['🔘', 'Cambio de estado'], mover: ['🔁', 'Movimiento'], falla: ['⚠️', 'Falla'], reemplazo: ['🔄', 'Reemplazo'], rma: ['📦', 'Envío a RMA'], reparacion: ['🛠', 'A reparación'],
+  recibido: ['✅', 'Recibido'], baja: ['🗑', 'Baja'], dato: ['✏️', 'Datos'], nota: ['📝', 'Nota'], importado: ['📥', 'Excel'], instalado: ['✅', 'Instalado'] };
+/* ficha del equipo: datos, protocolo de reemplazo, acciones e historial */
+async function eqDetail(ctx, e){
+  if (!e) return;
+  const { p, siteById, ps, equip } = ctx, els = p.elements || [], elName = id => els.find(x => x.id === id)?.name || id;
+  const mySites = new Set(ps.map(x => x.site_id));
+  const can = canWrite() && online() && (isManager() || me.role === 'inspector' || (isContractor() && mySites.has(e.site_id)));
+  const mgr = isManager() && canWrite() && online();
+  await eqPlaces();
+  const other = id => equip.find(x => x.id === id);
+  const st = e.status, A = [];
+  if (can && st !== 'baja'){
+    if (st === 'a_instalar') A.push(['instalar', '✅ Marcar instalado']);
+    if (['instalado', 'falla'].includes(st) && !e.replaced_by) A.push(['reemplazar', '🔄 Reemplazar']);
+    if (['instalado', 'disponible', 'deposito', 'retirado', 'a_instalar'].includes(st)) A.push(['falla', '⚠️ Reportar falla']);
+    if (['falla', 'retirado', 'deposito', 'disponible'].includes(st)) A.push(['reparacion', '🛠 A reparación']);
+    if (['falla', 'reparacion', 'retirado', 'deposito'].includes(st)) A.push(['rma', '📦 Enviar a RMA']);
+    if (['rma', 'reparacion'].includes(st)) A.push(['recibir', '✅ Recibir reparado']);
+    if (st !== 'rma') A.push(['mover', '🔁 Mover / instalar en otro sitio']);
+    if (mgr) A.push(['baja', '🗑 Dar de baja']);
+  }
+  if (can) A.push(['datos', '✏️ Editar datos'], ['nota', '📝 Nota']);
+  const proto = (e.fail_at || e.replaced_by) ? [
+    ['Falla reportada', !!e.fail_desc], ['Equipo nuevo instalado con su serie', !!e.replaced_by],
+    ['Retirado con responsable o en depósito', !!(e.holder || e.place_id || ['rma', 'reparacion', 'disponible', 'baja'].includes(st))],
+    ['Llevado al depósito', !!(e.place_id || ['rma', 'reparacion', 'disponible', 'baja'].includes(st))],
+    ['Destino definido: reparación, RMA o baja', ['rma', 'reparacion', 'disponible', 'baja'].includes(st)],
+    ['Informado al NOC / cliente (nº de ticket)', !!e.ticket]] : null;
+  const row = (k, v) => v ? `<div><span class="muted">${k}:</span> ${v}</div>` : '';
+  const m = modal(`<h2>${esc(e.name || elName(e.element))} ${eqPill(st)}</h2>
+    <div class="sm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 16px">
+      ${row('Elemento', esc(elName(e.element)))}${row('Serie', esc(e.serial || '—'))}${row('MAC', e.mac && e.mac !== e.serial ? esc(e.mac) : '')}${row('IP', esc(e.ip || ''))}
+      ${row('Dónde está', esc(eqLoc(e, siteById)))}${row('Lo tiene', e.holder ? '👤 ' + esc(e.holder) : '')}
+      ${row('Instalado', e.installed_at ? `${fmtDate(e.installed_at)}${e.installed_by ? ' · ' + esc(e.installed_by) : ''}` : '')}
+      ${row('Falla', e.fail_at && ['falla', 'reparacion', 'rma'].includes(st) ? `${fmtDate(e.fail_at)} (hace ${eqDays(e.fail_at)} días)${e.fail_desc ? ' · ' + esc(e.fail_desc) : ''}` : e.fail_desc ? esc(e.fail_desc) : '')}
+      ${row('Ticket', esc(e.ticket || ''))}
+      ${row('RMA', e.rma_vendor || e.rma_no ? esc([e.rma_vendor, e.rma_no && 'Nº ' + e.rma_no].filter(Boolean).join(' · ')) + (st === 'rma' && e.rma_sent ? ` · enviado hace ${eqDays(e.rma_sent)} días` : '') : '')}
+      ${row('Reemplaza a', e.replaces ? `<button class="link" data-go="${e.replaces}">${esc(other(e.replaces)?.serial || 'ver equipo')}</button>` : '')}
+      ${row('Reemplazado por', e.replaced_by ? `<button class="link" data-go="${e.replaced_by}">${esc(other(e.replaced_by)?.serial || 'ver equipo')}</button>` : '')}
+      ${row('Obs', esc(e.notes || ''))}</div>
+    ${eqFailLate(e) ? `<p class="sm" style="color:var(--red);margin:8px 0 0">⚠ Hace ${eqDays(e.fail_at)} días que tiene falla y todavía no tiene destino (reparación, RMA o baja).</p>` : ''}
+    ${eqRmaLate(e) ? `<p class="sm" style="color:var(--red);margin:8px 0 0">⚠ Hace ${eqDays(e.rma_sent)} días que está en RMA. Reclamá al proveedor.</p>` : ''}
+    ${proto ? `<details ${proto.every(x => x[1]) ? '' : 'open'} style="margin-top:10px"><summary class="sm" style="cursor:pointer"><b>Protocolo de reemplazo por falla</b> · ${proto.filter(x => x[1]).length} de ${proto.length}</summary>
+      <div class="sm" style="margin-top:4px">${proto.map(([t, ok]) => `<div>${ok ? '✅' : '⬜'} ${t}</div>`).join('')}</div></details>` : ''}
+    ${A.length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:12px">${A.map(([k, t]) => `<button class="btn ${['reemplazar', 'instalar', 'recibir'].includes(k) ? '' : 'sec'} small" data-act="${k}">${t}</button>`).join('')}</div>` : ''}
+    ${Object.keys(e.data || {}).length ? `<details style="margin-top:10px"><summary class="sm" style="cursor:pointer">Datos del relevamiento</summary><div class="sm">${Object.entries(e.data).map(([k, v]) => `<div><b>${esc(k)}:</b> ${esc(v)}</div>`).join('')}</div></details>` : ''}
+    <h3 style="margin:14px 0 6px">Historial</h3><div id="eq-hist" class="sm muted">Cargando…</div>
+    <div class="row between" style="margin-top:12px">${mgr ? '<button class="btn danger small" id="eq-del">Eliminar del inventario</button>' : '<span></span>'}<button class="btn sec" id="eq-x">Cerrar</button></div>`, { wide: true });
+  $('#eq-x').onclick = m.close;
+  m.el.querySelectorAll('[data-go]').forEach(b => b.onclick = () => eqDetail(ctx, other(b.dataset.go)));
+  m.el.querySelectorAll('[data-act]').forEach(b => b.onclick = () => eqActModal(ctx, e, b.dataset.act));
+  $('#eq-del')?.addEventListener('click', () => {
+    const b = $('#eq-del'); if (b.dataset.ok !== '1'){ b.dataset.ok = '1'; b.textContent = '¿Seguro? Se borra con su historial. Tocá de nuevo'; return; }
+    (async () => { const { error } = await sb.from('equipment').delete().eq('id', e.id); if (error) return toast(errText(error));
+      await syncDoneFromEquip(ctx, e.site_id, e.element).catch(() => {}); m.close(); await IDB.del('kv', CUR_UID + ':equip:' + p.id).catch(() => {}); refreshProject(); })();
+  });
+  try {
+    const { data, error } = await sb.from('equip_events').select('at,by_name,kind,text').eq('equip_id', e.id).order('id', { ascending: false }).limit(300);
+    if (error) throw error;
+    const h = $('#eq-hist'); if (!h) return;
+    h.classList.remove('muted');
+    h.innerHTML = (data || []).map(v => `<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)"><span>${EQ_EV[v.kind]?.[0] || '•'}</span><div class="grow"><div>${esc(v.text)}</div><div class="muted">${fmtDT(v.at)} · ${esc(v.by_name || '')}</div></div></div>`).join('')
+      || '<span class="muted">Sin movimientos registrados todavía (el historial empieza con la versión 5.24).</span>';
+  } catch (er){ const h = $('#eq-hist'); if (h) h.textContent = errText(er); }
+}
+/* formulario de cada acción */
+async function eqActModal(ctx, e, act){
+  if (!needOnline()) return;
+  const { p, ps, siteById, equip } = ctx, els = p.elements || [];
+  const [places, staff] = await Promise.all([eqPlaces(), eqStaff()]);
+  const act_places = places.filter(x => x.active !== false);
+  const sites = ps.map(x => siteById.get(x.site_id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
+  const holderIn = (def = '') => `<label>¿Quién lo tiene?</label><input id="ea-h" maxlength="120" list="ea-hl" value="${esc(def)}" placeholder="Técnico, depósito o taller"><datalist id="ea-hl">${staff.map(n => `<option value="${esc(n)}">`).join('')}</datalist>`;
+  const placeSel = (lbl, opt) => act_places.length ? `<label>${lbl}</label><select id="ea-pl">${opt ? '<option value="">— Ninguno —</option>' : ''}${act_places.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>` : '';
+  const noteIn = (lbl = 'Nota (opcional)') => `<label>${lbl}</label><textarea id="ea-n" maxlength="500" rows="2"></textarea>`;
+  const me_name = me.full_name || me.email || '';
+  const spares = equip.filter(x => ['disponible', 'deposito'].includes(x.status) && x.serial && x.element === e.element && x.id !== e.id);
+  const F = {
+    instalar: ['✅ Marcar instalado', `<div class="row"><div class="grow"><label>Serie</label><input id="ea-s" maxlength="120" value="${esc(e.serial || '')}"></div><div class="grow"><label>MAC</label><input id="ea-m" maxlength="60" value="${esc(e.mac && e.mac !== e.serial ? e.mac : '')}"></div></div>${noteIn()}`],
+    reemplazar: ['🔄 Reemplazar equipo', `<p class="sm muted" style="margin-top:-4px">Sale <b>${esc(e.serial || 'sin serie')}</b> de ${esc(siteById.get(e.site_id)?.name || '')}. Cargá la serie del que queda instalado.</p>
+      <div class="row"><div class="grow"><label>Serie del equipo nuevo *</label><input id="ea-s" maxlength="120" list="ea-sp" autocomplete="off"><datalist id="ea-sp">${spares.map(x => `<option value="${esc(x.serial)}">${esc(eqStName(x.status))} · ${esc(eqLoc(x, siteById))}</option>`).join('')}</datalist></div>
+        <div class="grow"><label>MAC nueva</label><input id="ea-m" maxlength="60"></div></div>
+      <p class="sm muted" id="ea-sph" style="margin:2px 0 0">${spares.length ? `Hay ${spares.length} repuesto${spares.length === 1 ? '' : 's'} disponible${spares.length === 1 ? '' : 's'}: elegilo de la lista o escribí una serie nueva.` : 'Si la serie ya está cargada como repuesto, se usa ese equipo; si no, se da de alta.'}</p>
+      <label>IP</label><input id="ea-ip" maxlength="60" value="${esc(e.ip || '')}">
+      ${e.status !== 'falla' ? `<label>¿Qué falla tenía? *</label><input id="ea-d" maxlength="500">` : ''}
+      <label>El retirado queda</label><select id="ea-os"><option value="falla">Con falla (para reparar, RMA o baja)</option><option value="retirado">Retirado sin falla</option></select>
+      ${holderIn(me_name)}<label>Nº de ticket (NOC / cliente)</label><input id="ea-t" maxlength="60" value="${esc(e.ticket || '')}">${noteIn()}`],
+    falla: ['⚠️ Reportar falla', `<label>Descripción de la falla *</label><input id="ea-d" maxlength="500" placeholder="Ej.: no arranca, batería agotada, alarma de temperatura">
+      <label>Nº de ticket (NOC / cliente)</label><input id="ea-t" maxlength="60">${holderIn('')}<p class="sm muted">Si lo vas a cambiar ahora, usá <b>🔄 Reemplazar</b> y cargá la serie nueva.</p>${noteIn()}`],
+    reparacion: ['🛠 A reparación', `${holderIn(e.holder || '')}${noteIn()}`],
+    rma: ['📦 Enviar a RMA', `<label>Proveedor *</label><input id="ea-v" maxlength="120" value="${esc(e.rma_vendor || '')}"><div class="row"><div class="grow"><label>Nº de RMA</label><input id="ea-r" maxlength="60"></div><div class="grow"><label>Fecha de envío</label><input id="ea-dt" type="date" value="${todayStr()}"></div></div>
+      <p class="sm muted">Si en ${EQ_RMA_DAYS} días no volvió, aparece en "Esperando decisión".</p>${noteIn()}`],
+    recibir: ['✅ Recibir reparado', `${placeSel('Vuelve a', true)}${holderIn('')}<label>Serie (si el proveedor devolvió otro equipo)</label><input id="ea-s" maxlength="120" placeholder="${esc(e.serial || '')}">${noteIn()}`],
+    mover: ['🔁 Mover', `<div class="seg" id="ea-to" style="margin-bottom:6px"><button type="button" data-to="site" class="on">A un sitio</button>${act_places.length ? '<button type="button" data-to="place">A depósito / vehículo</button>' : ''}<button type="button" data-to="hold">Lo tiene alguien</button></div>
+      <div id="ea-site"><label>Sitio</label><select id="ea-si">${sites.map(s => `<option value="${s.id}" ${s.id === e.site_id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+        <label>Queda</label><select id="ea-ss"><option value="instalado">Instalado</option><option value="a_instalar">A instalar</option></select></div>
+      <div id="ea-place" class="hidden">${placeSel('Depósito / vehículo', false)}</div>${holderIn('')}${noteIn()}`],
+    baja: ['🗑 Dar de baja / desguace', `<p class="sm" style="color:var(--red)">El equipo queda como baja. Solo coordinación puede revertirlo.</p>${noteIn('Motivo *')}`],
+    datos: ['✏️ Editar datos', `<div class="row"><div class="grow"><label>Serie</label><input id="ea-s" maxlength="120" value="${esc(e.serial || '')}"></div><div class="grow"><label>MAC</label><input id="ea-m" maxlength="60" value="${esc(e.mac || '')}"></div></div>
+      ${isManager() ? `<label>IP</label><input id="ea-ip" maxlength="60" value="${esc(e.ip || '')}">` : ''}<label>Obs</label><textarea id="ea-o" maxlength="1000" rows="2">${esc(e.notes || '')}</textarea>`],
+    nota: ['📝 Nota', noteIn('Nota *')]
+  };
+  const [title, body] = F[act] || F.nota;
+  const m = modal(`<h2>${title}</h2><p class="muted sm" style="margin-top:-6px">${esc(e.name || '')} · ${esc(e.serial || 'sin serie')} · ${esc(siteById.get(e.site_id)?.name || '')}</p>${body}
+    <div class="err" id="ea-err"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="ea-x">Volver</button><button class="btn" id="ea-ok">Guardar</button></div>`);
+  const v = id => ($('#' + id)?.value || '').trim();
+  let to = 'site';
+  m.el.querySelectorAll('[data-to]').forEach(b => b.onclick = () => { to = b.dataset.to; m.el.querySelectorAll('[data-to]').forEach(x => x.classList.toggle('on', x === b));
+    $('#ea-site').classList.toggle('hidden', to !== 'site'); $('#ea-place').classList.toggle('hidden', to !== 'place'); });
+  $('#ea-s')?.addEventListener('input', () => { const sp = spares.find(x => norm(x.serial) === norm(v('ea-s'))); if ($('#ea-sph') && act === 'reemplazar') $('#ea-sph').textContent = sp ? `Se usa el repuesto ya cargado (${eqStName(sp.status)} · ${eqLoc(sp, siteById)}).` : 'Serie nueva: se da de alta en el inventario.'; });
+  $('#ea-x').onclick = () => eqDetail(ctx, e);
+  $('#ea-ok').onclick = async () => {
+    const P = { note: v('ea-n') || undefined, holder: v('ea-h') || undefined };
+    if (act === 'instalar') Object.assign(P, { serial: v('ea-s'), mac: v('ea-m') });
+    if (act === 'reemplazar'){ Object.assign(P, { serial: v('ea-s'), mac: v('ea-m'), ip: v('ea-ip'), desc: v('ea-d') || undefined, old_status: v('ea-os'), ticket: v('ea-t') });
+      if (!P.serial) return ($('#ea-err').textContent = 'Cargá la serie del equipo nuevo.');
+      if ($('#ea-d') && !P.desc) return ($('#ea-err').textContent = 'Contá qué falla tenía.'); }
+    if (act === 'falla'){ Object.assign(P, { desc: v('ea-d'), ticket: v('ea-t') }); if (!P.desc) return ($('#ea-err').textContent = 'Describí la falla.'); }
+    if (act === 'rma'){ Object.assign(P, { vendor: v('ea-v'), rma: v('ea-r'), sent: v('ea-dt') }); if (!P.vendor) return ($('#ea-err').textContent = 'Indicá el proveedor.'); }
+    if (act === 'recibir') Object.assign(P, { place: v('ea-pl') || undefined, serial: v('ea-s') || undefined });
+    if (act === 'mover'){ if (to === 'site') Object.assign(P, { site: v('ea-si'), status: v('ea-ss') }); else if (to === 'place') P.place = v('ea-pl');
+      else if (!P.holder) return ($('#ea-err').textContent = 'Indicá quién lo tiene.'); }
+    if (act === 'baja' && !P.note) return ($('#ea-err').textContent = 'Indicá el motivo.');
+    if (act === 'nota' && !P.note) return ($('#ea-err').textContent = 'Escribí la nota.');
+    if (act === 'datos') Object.assign(P, { serial: v('ea-s'), mac: v('ea-m'), notes: v('ea-o'), ...($('#ea-ip') ? { ip: v('ea-ip') } : {}) });
+    $('#ea-ok').disabled = true;
+    const { data, error } = await sb.rpc('eq_action', { p_id: e.id, p_act: act, p: JSON.parse(JSON.stringify(P)) });
+    if (error){ $('#ea-ok').disabled = false; return ($('#ea-err').textContent = errText(error)); }
+    if (['instalar', 'reemplazar', 'falla', 'mover', 'baja', 'reparacion', 'rma'].includes(act)){
+      await syncDoneFromEquip(ctx, e.site_id, e.element).catch(() => {});
+      if (act === 'mover' && P.site && P.site !== e.site_id) await syncDoneFromEquip(ctx, P.site, e.element).catch(() => {});
+    }
+    m.close(); toast(act === 'reemplazar' ? 'Reemplazo registrado. Seguí el protocolo con el equipo retirado.' : 'Guardado');
+    await IDB.del('kv', CUR_UID + ':equip:' + p.id).catch(() => {}); refreshProject();
+  };
 }
 /* recalcula lo instalado de un elemento en el sitio a partir del inventario */
 async function syncDoneFromEquip(ctx, siteId, element){
   const x = ctx.ps.find(y => y.site_id === siteId); if (!x) return;
-  const { data } = await sb.from('equipment').select('id', { count: 'exact' }).eq('project_id', ctx.p.id).eq('site_id', siteId).eq('element', element).eq('status', 'instalado');
-  const n = (data || []).length;
+  const { count } = await sb.from('equipment').select('id', { count: 'exact', head: true }).eq('project_id', ctx.p.id).eq('site_id', siteId).eq('element', element).eq('status', 'instalado');
+  const n = count || 0;
   if (Number(x.done?.[element] || 0) !== n) await sb.rpc('ps_progress', { p_ps: x.id, p_done: { [element]: n }, p_reason: 'Inventario' });
 }
+/* alta manual de un equipo */
 function equipModal(ctx, e){
   if (!needOnline()) return;
-  const { p, ps, siteById } = ctx, els = p.elements || [], isNew = !e, manage = isManager() && canWrite();
-  e = e || { status: 'a_instalar', element: els[0]?.id || '' };
-  if (isNew && !els.length) return toast('Primero agregá elementos al proyecto (Editar proyecto).');
+  if (e) return eqDetail(ctx, e);
+  const { p, ps, siteById } = ctx, els = p.elements || [];
+  if (!els.length) return toast('Primero agregá elementos al proyecto (Editar proyecto).');
   const sites = ps.map(x => siteById.get(x.site_id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
-  const m = modal(`<h2>${isNew ? 'Nuevo equipo' : esc(e.name || 'Equipo')}</h2>
-    ${isNew ? `<label>Sitio</label><select id="eq-si">${sites.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
-      <label>Elemento</label><select id="eq-el">${els.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>
-      <label>Nombre / ubicación</label><input id="eq-n" maxlength="200">` : `<p class="muted sm" style="margin-top:-6px">${esc(siteById.get(e.site_id)?.name || '')} · ${esc(els.find(x => x.id === e.element)?.name || e.element)}</p>`}
-    <div class="row"><div class="grow"><label>Serie</label><input id="eq-s" maxlength="120" value="${esc(e.serial || '')}"></div><div class="grow"><label>MAC</label><input id="eq-m" maxlength="60" value="${esc(e.mac || '')}"></div></div>
-    ${isNew || manage ? `<label>IP</label><input id="eq-ip" maxlength="60" value="${esc(e.ip || '')}">` : ''}
-    <label>Estado</label><select id="eq-st">${Object.entries(EQ_ST).map(([k, x]) => `<option value="${k}" ${e.status === k ? 'selected' : ''}>${x}</option>`).join('')}</select>
-    <label>Notas</label><input id="eq-no" maxlength="1000" value="${esc(e.notes || '')}">
-    ${!isNew && Object.keys(e.data || {}).length ? `<details style="margin-top:10px"><summary class="sm" style="cursor:pointer">Datos del relevamiento</summary><div class="sm">${Object.entries(e.data).map(([k, v]) => `<div><b>${esc(k)}:</b> ${esc(v)}</div>`).join('')}</div></details>` : ''}
+  const m = modal(`<h2>Nuevo equipo</h2>
+    <label>Sitio</label><select id="eq-si">${sites.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
+    <label>Elemento</label><select id="eq-el">${els.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>
+    <label>Nombre / ubicación</label><input id="eq-n" maxlength="200">
+    <div class="row"><div class="grow"><label>Serie</label><input id="eq-s" maxlength="120"></div><div class="grow"><label>MAC</label><input id="eq-m" maxlength="60"></div></div>
+    <label>IP</label><input id="eq-ip" maxlength="60">
+    <label>Estado</label><select id="eq-st">${Object.entries(EQ_ST).filter(([k]) => k !== 'baja').map(([k, x]) => `<option value="${k}">${x[0]}</option>`).join('')}</select>
+    <label>Obs</label><input id="eq-no" maxlength="1000">
     <div class="err" id="eq-err"></div>
-    <div class="row between" style="margin-top:10px">${!isNew && manage ? '<button class="btn danger small" id="eq-del">Eliminar</button>' : '<span></span>'}<div class="row"><button class="btn sec" id="eq-x">Cancelar</button><button class="btn" id="eq-ok">Guardar</button></div></div>`);
-  if (!isNew && e.status !== 'instalado') $('#eq-st').value = 'instalado';
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="eq-x">Cancelar</button><button class="btn" id="eq-ok">Guardar</button></div>`);
   $('#eq-x').onclick = m.close;
   $('#eq-ok').onclick = async () => {
     $('#eq-ok').disabled = true;
-    let error, site = e.site_id, el = e.element;
-    if (isNew){
-      site = $('#eq-si').value; el = $('#eq-el').value;
-      ({ error } = await sb.from('equipment').insert({ org_id: me.org_id, project_id: p.id, site_id: site, element: el, name: $('#eq-n').value.trim() || null, serial: $('#eq-s').value.trim() || null, mac: $('#eq-m').value.trim() || null, ip: $('#eq-ip').value.trim() || null, status: $('#eq-st').value, notes: $('#eq-no').value.trim() || null, installed_at: $('#eq-st').value === 'instalado' ? new Date().toISOString() : null, installed_by: $('#eq-st').value === 'instalado' ? (me.full_name || me.email) : null }));
-    } else {
-      ({ error } = await sb.rpc('equip_set', { p_id: e.id, p_status: $('#eq-st').value, p_serial: $('#eq-s').value, p_mac: $('#eq-m').value, p_notes: $('#eq-no').value }));
-      if (!error && manage && $('#eq-ip') && $('#eq-ip').value.trim() !== (e.ip || '')) ({ error } = await sb.from('equipment').update({ ip: $('#eq-ip').value.trim() || null }).eq('id', e.id));
-    }
+    const site = $('#eq-si').value, el = $('#eq-el').value;
+    const { error } = await sb.from('equipment').insert({ org_id: me.org_id, project_id: p.id, site_id: site, element: el, name: $('#eq-n').value.trim() || null, serial: $('#eq-s').value.trim() || null, mac: $('#eq-m').value.trim() || null, ip: $('#eq-ip').value.trim() || null, status: $('#eq-st').value, notes: $('#eq-no').value.trim() || null });
     if (error){ $('#eq-ok').disabled = false; return ($('#eq-err').textContent = errText(error)); }
     await syncDoneFromEquip(ctx, site, el).catch(() => {});
     m.close(); toast('Equipo guardado'); await IDB.del('kv', CUR_UID + ':equip:' + p.id).catch(() => {}); refreshProject();
   };
-  $('#eq-del')?.addEventListener('click', async () => {
-    if (!confirm('¿Eliminar el equipo del inventario?')) return;
-    const { error } = await sb.from('equipment').delete().eq('id', e.id); if (error) return toast(errText(error));
-    await syncDoneFromEquip(ctx, e.site_id, e.element).catch(() => {}); m.close(); refreshProject();
-  });
 }
+/* estados escritos a mano en la planilla → estado de la app */
+function eqStParse(t){
+  const n = norm(t); if (!n) return null;
+  if (/desgua|baja|chatarr|descart|desech/.test(n)) return 'baja';
+  if (/\brma\b|garantia/.test(n)) return 'rma';
+  if (/en reparacion|reparando|taller/.test(n)) return 'reparacion';
+  if (/reparad|disponible|repuesto/.test(n)) return 'disponible';
+  if (/defect|falla|roto|averi|no funciona|no anda/.test(n)) return 'falla';
+  if (/a instalar|por instalar|pendiente/.test(n)) return 'a_instalar';
+  if (/instalad|operativ|funcionando|en servicio|\bok\b/.test(n)) return 'instalado';
+  if (/deposito|stock|guardad/.test(n)) return 'deposito';
+  if (/retirad|desmont/.test(n)) return 'retirado';
+  return null;
+}
+const EQ_MAC_RE = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$|^([0-9a-f]{4}\.){2}[0-9a-f]{4}$/i;
 async function importEquipment(file, ctx){
   if (!file) return;
-  const { p, ps, siteById } = ctx, els = p.elements || [];
+  const { p, ps, siteById, equip } = ctx, els = p.elements || [];
   if (!els.length) return toast('Primero agregá elementos al proyecto (Editar proyecto).');
   let wb; try { wb = await readWorkbook(file); } catch (e){ return toast('No se pudo leer el Excel: ' + errText(e)); }
   const psSites = ps.map(x => siteById.get(x.site_id)).filter(Boolean);
   const findSite = txt => { const n = norm(txt); if (!n) return null; return psSites.find(s => norm(s.name) === n) || psSites.find(s => (s.aliases || []).some(a => norm(a) === n)) || psSites.find(s => norm(s.name).replace(/\s/g, '') === n.replace(/\s/g, '')) || null; };
-  const found = [];
+  const elFind = t => { const n = norm(t); return n ? els.find(e => norm(e.name) === n || norm(e.id) === n || n.includes(norm(e.name).replace(/s$/, ''))) : null; };
+  const found = [], badSites = new Set();
   for (const sn of wb.SheetNames){
     const rows = sheetRows(wb.Sheets[sn]);
-    const hi = rows.slice(0, 15).findIndex(r => r.filter(c => /^(mac|serie|serial|s\/n|ip|nombre|equipo|nombre de la camara|modelo)/.test(norm(c))).length >= 2);
+    const hi = rows.slice(0, 15).findIndex(r => r.filter(c => /^(mac|serie|serial|s\/n|ip|nombre|equipo|nombre de la camara|modelo|estado|sitio)/.test(norm(c))).length >= 2);
     if (hi < 0) continue;
     const H = rows[hi].map(norm), head = rows[hi].map(xlStr);
     const col = (...res) => H.findIndex(h => res.some(r => r.test(h)));
-    const C = { site: col(/^sitio/, /^rack$/, /^ubicacion del rack/), name: col(/^nombre/, /^equipo/, /^descripcion/), serial: col(/^serie/, /^serial/, /^s\/n/, /^nro de serie/), mac: col(/mac/), ip: col(/^ip$/, /^ip /, /^direccion ip/), el: col(/^elemento/, /^tipo de equipo/) };
+    const C = { site: col(/^sitio/, /^rack$/, /^ubicacion del rack/), name: col(/^nombre/, /^equipo/, /^descripcion/), serial: col(/^serie/, /^serial/, /^s\/n/, /^nro de serie/), mac: col(/mac/), ip: col(/^ip$/, /^ip /, /^direccion ip/),
+      el: col(/^elemento/, /^tipo de equipo/), st: col(/^estado/, /^situacion/), obs: col(/^obs/, /^observ/, /^notas?$/, /^comentario/) };
+    const joint = C.mac >= 0 && C.mac === C.serial;   // columna "Serie / MAC"
+    if (joint) C.mac = -1;
     const sheetSite = findSite(sn);
     const items = [];
     for (const r of rows.slice(hi + 1)){
-      const name = C.name >= 0 ? xlStr(r[C.name]) : '', serial = C.serial >= 0 ? xlStr(r[C.serial]) : '', mac = C.mac >= 0 ? xlStr(r[C.mac]) : '';
+      const name = C.name >= 0 ? xlStr(r[C.name]) : '';
+      let serial = C.serial >= 0 ? xlStr(r[C.serial]) : '', mac = C.mac >= 0 ? xlStr(r[C.mac]) : '';
+      if (joint && EQ_MAC_RE.test(serial)){ mac = serial; serial = ''; }
       if (!name && !serial && !mac) continue;
-      const site = C.site >= 0 ? findSite(xlStr(r[C.site])) || sheetSite : sheetSite;
-      const data = {}; head.forEach((h, i) => { if (![C.site, C.name, C.serial, C.mac, C.ip, C.el].includes(i) && h && xlStr(r[i]) !== '' && Object.keys(data).length < 30) data[h.slice(0, 60)] = xlStr(r[i]).slice(0, 200); });
-      const elTxt = C.el >= 0 ? norm(r[C.el]) : '';
-      items.push({ site, name: name.slice(0, 200) || null, serial: serial.slice(0, 120) || null, mac: mac.slice(0, 60) || null, ip: C.ip >= 0 ? xlStr(r[C.ip]).slice(0, 60) || null : null, el: els.find(e => elTxt && (norm(e.name) === elTxt || elTxt.includes(norm(e.name).replace(/s$/, ''))))?.id || null, data });
+      const siteTxt = C.site >= 0 ? xlStr(r[C.site]) : '';
+      const site = siteTxt ? findSite(siteTxt) || (C.site >= 0 ? null : sheetSite) : sheetSite;
+      if (!site && siteTxt) badSites.add(siteTxt);
+      const stTxt = C.st >= 0 ? xlStr(r[C.st]) : '';
+      const data = {}; head.forEach((h, i) => { if (![C.site, C.name, C.serial, C.mac, C.ip, C.el, C.st, C.obs].includes(i) && h && xlStr(r[i]) !== '' && Object.keys(data).length < 30) data[h.slice(0, 60)] = xlStr(r[i]).slice(0, 200); });
+      items.push({ site, name: name.slice(0, 200) || null, serial: serial.slice(0, 120) || null, mac: mac.slice(0, 60) || null, ip: C.ip >= 0 ? xlStr(r[C.ip]).slice(0, 60) || null : null,
+        el: (C.el >= 0 ? elFind(r[C.el]) : null)?.id || elFind(name)?.id || null, st: eqStParse(stTxt), stTxt, notes: C.obs >= 0 ? xlStr(r[C.obs]).slice(0, 1000) || null : null, data });
     }
     if (items.length) found.push({ sn, sheetSite, items });
   }
-  if (!found.length) return toast('No encontré hojas con columnas de equipos (Nombre, Serie, MAC, IP).');
-  const total = found.reduce((a, f) => a + f.items.length, 0), noSite = found.reduce((a, f) => a + f.items.filter(i => !i.site).length, 0);
+  if (!found.length) return toast('No encontré hojas con columnas de equipos (Sitio, Equipo, Serie, MAC, IP, Estado).');
+  const all = found.flatMap(f => f.items), ok = all.filter(i => i.site);
+  const known = new Set(equip.filter(x => x.serial).map(x => norm(x.serial)));
+  const nUpd = ok.filter(i => i.serial && known.has(norm(i.serial))).length;
+  const unknownSt = [...new Set(ok.filter(i => i.stTxt && !i.st).map(i => i.stTxt))];
+  const stCnt = {}; ok.forEach(i => { if (i.st) stCnt[i.st] = (stCnt[i.st] || 0) + 1; });
   const m = modal(`<h2>Importar inventario</h2>
-    <p><b>${total}</b> equipos en ${found.length} hoja${found.length === 1 ? '' : 's'}.</p>
-    <div class="tblwrap" style="max-height:240px;overflow:auto"><table class="tbl"><thead><tr><th>Hoja</th><th>Sitio del proyecto</th><th class="num">Equipos</th></tr></thead><tbody>
-      ${found.map(f => `<tr><td class="sm">${esc(f.sn)}</td><td class="sm">${f.sheetSite ? esc(f.sheetSite.name) : f.items.some(i => i.site) ? 'por columna Sitio' : '<span style="color:var(--red)">sin sitio: se omite</span>'}</td><td class="num">${f.items.length}</td></tr>`).join('')}</tbody></table></div>
-    ${noSite ? `<p class="sm" style="color:var(--amber)">${noSite} equipos no tienen un sitio del proyecto con ese nombre y no se importan. Revisá que la hoja se llame igual que el sitio.</p>` : ''}
+    <p><b>${ok.length}</b> equipos para importar: <b>${ok.length - nUpd}</b> nuevos y <b>${nUpd}</b> que ya estaban (se actualizan por número de serie, sin duplicar; cada cambio queda en el historial).${nUpd ? ' <b>Ojo:</b> el estado, el sitio y la obs de la planilla reemplazan los que tiene la app.' : ''}</p>
+    ${Object.keys(stCnt).length ? `<div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(stCnt).map(([k, n]) => `${eqPill(k)} <span class="sm">${n}</span>`).join(' ')}</div>` : ''}
+    ${all.length - ok.length ? `<p class="sm" style="color:var(--amber)">${all.length - ok.length} filas no tienen un sitio del proyecto con ese nombre y no se importan${badSites.size ? ': ' + esc([...badSites].slice(0, 8).join(', ')) + (badSites.size > 8 ? '…' : '') : ''}.</p>` : ''}
+    ${unknownSt.length ? `<p class="sm" style="color:var(--amber)">No reconozco estos estados y se usa el de abajo: ${esc(unknownSt.slice(0, 8).join(', '))}.</p>` : ''}
     <label>Elemento (para las filas que no lo indican)</label><select id="ie-el">${els.map(e => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select>
-    <label>Estado inicial</label><select id="ie-st"><option value="a_instalar">A instalar</option><option value="instalado">Instalado</option></select>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="ie-pl" style="width:auto" checked> Usar la cantidad de equipos como cantidad prevista del sitio</label>
+    <label>Estado para las filas sin estado</label><select id="ie-st"><option value="a_instalar">A instalar</option><option value="instalado">Instalado</option></select>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="ie-pl" style="width:auto" ${nUpd ? '' : 'checked'}> Usar la cantidad de equipos como cantidad prevista del sitio</label>
     <div class="err" id="ie-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="ie-x">Cancelar</button><button class="btn" id="ie-ok">Importar</button></div>`, { wide: true });
   $('#ie-x').onclick = m.close;
   $('#ie-ok').onclick = async () => {
     if (!needOnline()) return;
-    $('#ie-ok').disabled = true;
-    const defEl = $('#ie-el').value, stt = $('#ie-st').value;
-    const rows = found.flatMap(f => f.items.filter(i => i.site).map(i => ({ org_id: me.org_id, project_id: p.id, site_id: i.site.id, element: i.el || defEl, name: i.name, serial: i.serial, mac: i.mac, ip: i.ip, status: stt, data: i.data,
-      installed_at: stt === 'instalado' ? new Date().toISOString() : null, installed_by: stt === 'instalado' ? (me.full_name || me.email) : null })));
+    $('#ie-ok').disabled = true; $('#ie-ok').textContent = 'Importando…';
+    const defEl = $('#ie-el').value, defSt = $('#ie-st').value;
+    const rows = ok.map(i => ({ site: i.site.id, element: i.el || defEl, name: i.name, serial: i.serial, mac: i.mac, ip: i.ip, status: i.st || defSt, notes: i.notes, data: i.data }));
     try {
-      for (let i = 0; i < rows.length; i += 200){ const { error } = await sb.from('equipment').insert(rows.slice(i, i + 200)); if (error) throw error; }
+      const tot = { nuevos: 0, actualizados: 0, iguales: 0 };
+      for (let i = 0; i < rows.length; i += 500){ const { data, error } = await sb.rpc('eq_import', { p_project: p.id, p_rows: rows.slice(i, i + 500) }); if (error) throw error; for (const k in tot) tot[k] += data?.[k] || 0; }
+      const cnt = {}; rows.forEach(r => { cnt[r.site] = cnt[r.site] || {}; cnt[r.site][r.element] = (cnt[r.site][r.element] || 0) + 1; });
       if ($('#ie-pl').checked){
-        const cnt = {}; rows.forEach(r => { const k = r.site_id; cnt[k] = cnt[k] || {}; cnt[k][r.element] = (cnt[k][r.element] || 0) + 1; });
         for (const [sid, c] of Object.entries(cnt)){ const x = ps.find(y => y.site_id === sid); if (!x) continue;
-          const { error } = await sb.from('project_sites').update({ planned: { ...(x.planned || {}), ...c }, last_reason: 'Inventario importado' }).eq('id', x.id); if (error) throw error;
-          if (stt === 'instalado') await sb.rpc('ps_progress', { p_ps: x.id, p_done: c, p_reason: 'Inventario importado' }); }
+          const { error } = await sb.from('project_sites').update({ planned: { ...(x.planned || {}), ...c }, last_reason: 'Inventario importado' }).eq('id', x.id); if (error) throw error; }
       }
-      m.close(); toast(`${rows.length} equipos importados`); await IDB.del('kv', CUR_UID + ':equip:' + p.id).catch(() => {}); refreshProject();
-    } catch (e){ $('#ie-ok').disabled = false; $('#ie-err').textContent = errText(e); }
+      for (const [sid, c] of Object.entries(cnt)) for (const el of Object.keys(c)) await syncDoneFromEquip(ctx, sid, el).catch(() => {});
+      m.close(); toast(`Inventario: ${tot.nuevos} nuevos · ${tot.actualizados} actualizados · ${tot.iguales} sin cambios`);
+      await IDB.del('kv', CUR_UID + ':equip:' + p.id).catch(() => {}); refreshProject();
+    } catch (e){ $('#ie-ok').disabled = false; $('#ie-ok').textContent = 'Importar'; $('#ie-err').textContent = errText(e); }
   };
 }
 
