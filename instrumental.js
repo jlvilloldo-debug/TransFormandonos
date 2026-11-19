@@ -72,7 +72,7 @@ async function viewInstr(v, id){
   </style>
   <div class="card"><div class="row between"><div><h2 style="margin:0">🔧 Instrumental</h2><p class="muted sm" style="margin:4px 0 0">Calibraciones, certificados, quién tiene cada instrumento y avisos antes de que venzan.</p></div>
     <div class="row" style="gap:6px;flex-wrap:wrap">${w ? '<button class="btn small" id="in-new">+ Instrumento</button><label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls" id="in-xl" class="hidden"></label>' : ''}
-      <button class="btn sec small" id="in-exp">Exportar DO-05-02</button><button class="btn sec small" id="in-wa">📣 Avisar</button>${inCanCfg() ? '<button class="btn sec small" id="in-cfg">⚙ Responsables y avisos</button>' : ''}</div></div>
+      <button class="btn sec small" id="in-exp">Exportar DO-05-02</button><button class="btn sec small" id="in-wa">📣 Avisar</button>${inCanCfg() ? '<button class="btn sec small" id="in-cfg">⚙ Responsables y avisos</button><button class="btn sec small" id="in-delh">🗑 Eliminados</button>' : ''}</div></div>
     <div id="in-resp" class="sm muted" style="margin-top:8px"></div></div>
   <div class="in-kpis" id="in-kpis"></div>
   <div class="card"><div class="row between"><h2 style="margin:0">📅 Calendario de vencimientos</h2><span class="muted sm">próximos 12 meses · tocá un instrumento</span></div><div class="in-tl" id="in-tl" style="margin-top:10px"></div></div>
@@ -116,6 +116,7 @@ async function viewInstr(v, id){
   $('#in-exp').onclick = inExport;
   $('#in-wa').onclick = () => inAvisar(null);
   $('#in-cfg')?.addEventListener('click', inCfg);
+  $('#in-delh')?.addEventListener('click', inDeletedList);
   draw();
   if (id && IN.list.some(a => a.id === id)) inDetail(id);
 }
@@ -144,14 +145,14 @@ async function inDetail(id){
       ${w ? (a.holder_name ? '<button class="btn small" data-x="back">📥 Devolver</button>' : `<button class="btn small" data-x="out" ${['Baja', 'Perdido'].includes(a.status) ? 'disabled' : ''}>📤 Entregar</button>`) : ''}
       ${w && a.status !== 'En calibración' && !a.cal_na ? '<button class="btn sec small" data-x="send">🧪 Enviar a calibrar</button>' : ''}
       ${w ? '<button class="btn sec small" data-x="cal">✅ Registrar calibración</button><button class="btn sec small" data-x="edit">✏️ Editar</button>' : ''}
-      <button class="btn sec small" data-x="avisar">📣 Avisar</button><a class="btn sec small" href="#/stock/a/${a.id}">📦 Ver en Stock</a></div>
+      <button class="btn sec small" data-x="avisar">📣 Avisar</button><a class="btn sec small" href="#/stock/a/${a.id}">📦 Ver en Stock</a>${inCanCfg() ? '<button class="btn sec small" data-x="del" style="color:var(--red)">🗑 Eliminar</button>' : ''}</div>
     <div class="in-sec"><h3>📄 Certificados</h3><div id="in-cals" class="sm muted">Cargando…</div></div>
     <div class="in-sec"><h3>👷 Préstamos</h3><div id="in-loans" class="sm muted">Cargando…</div></div>
     <div class="in-sec"><h3>📏 Mediciones OTDR con este instrumento</h3><div id="in-meas" class="sm muted">Cargando…</div></div>
     <details class="in-sec"><summary class="sm" style="cursor:pointer"><b>Historial completo</b></summary><div id="in-hist" class="sm muted">Cargando…</div></details>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="in-x">Cerrar</button></div>`, { wide: true });
   $('#in-x').onclick = () => { m.close(); if (location.hash !== '#/instr') history.replaceState(null, '', '#/instr'); };
-  m.el.querySelectorAll('[data-x]').forEach(b => b.onclick = () => ({ out: inOut, back: inBack, send: inSend, cal: inCal, edit: inEdit, avisar: inAvisar })[b.dataset.x](a));
+  m.el.querySelectorAll('[data-x]').forEach(b => b.onclick = () => ({ out: inOut, back: inBack, send: inSend, cal: inCal, edit: inEdit, avisar: inAvisar, del: inDel })[b.dataset.x](a));
   const [cals, loans, meas, hist] = await Promise.all([
     sb.from('instr_cals').select('*').eq('asset_id', a.id).order('cal_date', { ascending: false }).limit(50).then(r => r.data || []).catch(() => []),
     sb.from('instr_loans').select('*').eq('asset_id', a.id).order('out_date', { ascending: false }).order('id', { ascending: false }).limit(200).then(r => r.data || []).catch(() => []),
@@ -442,4 +443,55 @@ async function inExport(){
         Math.round(((l.back_date ? new Date(l.back_date) : new Date(todayStr())) - new Date(l.out_date)) / 86400000), l.note || '']; })], [28, 20, 12, 20, 18, 20, 12, 18, 6, 30]],
     ['Calibraciones', [['Equipo', 'Identificación', 'Fecha calibración', 'Vencimiento', 'Nº certificado', 'Laboratorio', 'Resultado', 'Cargó'],
       ...cals.map(k => { const a = byId.get(k.asset_id) || {}; return [inName(a), a.code || '', d(k.cal_date), d(k.due), k.cert_no || '', k.lab || '', k.result, k.by_name || '']; })], [28, 20, 12, 12, 16, 20, 10, 18]]]);
+}
+
+/* ---------------- borrar con evidencia ---------------- */
+async function inDel(a){
+  if (!needOnline()) return;
+  const [nc, nl, nm] = await Promise.all([
+    sb.from('instr_cals').select('id', { count: 'exact', head: true }).eq('asset_id', a.id).then(r => r.count || 0).catch(() => 0),
+    sb.from('instr_loans').select('id', { count: 'exact', head: true }).eq('asset_id', a.id).then(r => r.count || 0).catch(() => 0),
+    sb.from('fiber_events').select('id', { count: 'exact', head: true }).eq('instr_id', a.id).then(r => r.count || 0).catch(() => 0)]);
+  const m = modal(`<h2 style="color:var(--red)">🗑 Eliminar instrumento</h2>
+    <p style="margin-top:-4px"><b>${esc(inName(a))}</b> · ${esc(a.code)}</p>
+    <div class="sm" style="background:#FEF2F2;color:#991B1B;padding:10px;border-radius:10px">Se borra de Instrumental y de Stock junto con ${nc} calibración${nc === 1 ? '' : 'es'} y ${nl} préstamo${nl === 1 ? '' : 's'}.
+      ${nm ? `Las ${nm} medición${nm === 1 ? '' : 'es'} OTDR hechas con él conservan los datos del instrumento de ese día.` : ''}
+      Antes de borrar se guarda una copia completa con tu nombre, la fecha y el motivo, que nadie puede modificar (🗑 Eliminados).</div>
+    <label>Motivo *</label><input id="ia-rs" maxlength="500" placeholder="Ej.: cargado con la serie equivocada, duplicado…">
+    <label>Para confirmar, escribí la identificación: <b>${esc(a.code)}</b></label><input id="ia-cd" maxlength="120" autocomplete="off">
+    ${inFoot('Eliminar definitivamente')}`);
+  $('#ia-ok').classList.add('danger');
+  m.el.querySelectorAll('#ia-rs,#ia-cd').forEach(x => x.oninput = () => { $('#ia-err').textContent = ''; });
+  $('#ia-x').onclick = () => inDetail(a.id);
+  $('#ia-ok').onclick = async () => {
+    const rs = inVal('ia-rs'), cd = inVal('ia-cd');
+    if (rs.length < 5) return ($('#ia-err').textContent = 'Escribí el motivo.');
+    if (norm(cd) !== norm(a.code)) return ($('#ia-err').textContent = 'La identificación no coincide.');
+    $('#ia-ok').disabled = true;
+    const { error } = await sb.rpc('instr_delete', { p_asset: a.id, p_code: cd, p_reason: rs });
+    if (error){ $('#ia-ok').disabled = false; return ($('#ia-err').textContent = errText(error)); }
+    m.close(); toast('Instrumento eliminado. Quedó la constancia en 🗑 Eliminados.'); IDB.del('kv', CUR_UID + ':stk-base').catch(() => {});
+    history.replaceState(null, '', '#/instr'); inReload();
+  };
+}
+async function inDeletedList(){
+  if (!needOnline()) return;
+  const { data, error } = await sb.from('instr_deleted').select('id,code,name,reason,by_name,at,snapshot').order('at', { ascending: false }).limit(200);
+  if (error) return toast(errText(error));
+  const m = modal(`<h2>🗑 Instrumentos eliminados</h2><p class="muted sm" style="margin-top:-6px">Constancia de cada borrado: quién, cuándo y por qué, con la copia completa de los datos. No se puede modificar.</p>
+    <div class="tblwrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Instrumento</th><th>Motivo</th><th>Quién</th><th></th></tr></thead><tbody>
+    ${(data || []).map(d => `<tr><td class="sm">${fmtDT(d.at)}</td><td><b>${esc(d.name || '')}</b><div class="muted sm">${esc(d.code || '')}</div></td><td class="sm">${esc(d.reason)}</td><td class="sm">${esc(d.by_name || '')}</td>
+      <td><button class="btn sec small" data-xl="${d.id}">Excel</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No se eliminó ningún instrumento.</td></tr>'}</tbody></table></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="ia-x">Cerrar</button></div>`, { wide: true });
+  $('#ia-x').onclick = m.close;
+  m.el.querySelectorAll('[data-xl]').forEach(b => b.onclick = () => {
+    const d = data.find(x => String(x.id) === b.dataset.xl); if (!d) return;
+    const sn = d.snapshot || {}, a = sn.asset || {};
+    xlSave(`Instrumento eliminado ${d.code} ${String(d.at).slice(0, 10)}`, [
+      ['Constancia', [['Instrumento', d.name || ''], ['Identificación', d.code || ''], ['Eliminado el', fmtDT(d.at)], ['Por', d.by_name || ''], ['Motivo', d.reason],
+        ['Mediciones OTDR hechas con él', sn.measurements ?? 0], [], ['Datos al momento de borrar'], ...Object.entries(a).filter(([k]) => !['org_id', 'docs', 'extra'].includes(k)).map(([k, v]) => [k, v == null ? '' : String(v)])], [30, 60]],
+      ['Calibraciones', [['Fecha', 'Vencimiento', 'Certificado', 'Laboratorio', 'Resultado', 'Cargó'], ...(sn.cals || []).map(c => [c.cal_date, c.due || '', c.cert_no || '', c.lab || '', c.result, c.by_name || ''])], [12, 12, 16, 20, 10, 18]],
+      ['Préstamos', [['Entrega', 'A quién', 'Obra', 'Devolución', 'Recibió'], ...(sn.loans || []).map(l => [l.out_date, l.to_name, l.obra || '', l.back_date || '', l.back_by || ''])], [12, 22, 22, 12, 18]],
+      ['Historial', [['Fecha', 'Quién', 'Qué', 'Antes', 'Después'], ...(sn.events || []).map(e => [fmtDT(e.at), e.by_name || '', e.field || e.kind || '', e.old_v || '', e.new_v || ''])], [16, 18, 20, 30, 40]]]);
+  });
 }
