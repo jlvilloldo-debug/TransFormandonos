@@ -1689,7 +1689,8 @@ async function homeBoard(box){
 async function pendStats(box, f){
   if (!box) return;
   let tasks = [], sites = [];
-  try { [tasks, sites] = await Promise.all([cached('stats-pend', () => sb.from('tasks').select('id,priority,status,created_at,completed_at,sites,contractor_id').eq('is_pending', true).order('created_at', { ascending: false }).limit(3000)), loadSitesMap()]); } catch { return; }
+  try { [tasks, sites] = await Promise.all([cached('stats-pend2', () => sb.from('tasks').select('id,priority,status,created_at,completed_at,sites,contractor_id,project_id').eq('is_pending', true).order('created_at', { ascending: false }).limit(3000)), loadSitesMap()]); } catch { return; }
+  if (CUR_PROJ) tasks = tasks.filter(t => t.project_id === CUR_PROJ);   // dentro del proyecto: solo sus pendientes
   if (!tasks.length) return;
   const from = new Date(Date.now() - Number(f.per) * 86400000).toISOString();
   const sById = new Map(sites.map(s => [s.id, s]));

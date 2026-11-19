@@ -243,6 +243,15 @@ async function stxSection(box){
     ]);
   } catch (e){ box.innerHTML = `<div class="card"><b>Histórico</b><p class="muted">${esc(errText(e))}</p></div>`; return; }
   rows = rows || []; plan = plan || [];
+  // dentro de un proyecto: solo los sitios de ese proyecto (por id o por nombre, para el histórico de la planilla)
+  if (typeof CUR_PROJ !== 'undefined' && CUR_PROJ){
+    const [allS, psAll] = await Promise.all([loadSitesMap().catch(() => []), loadPS().catch(() => [])]);
+    const ids = new Set(psAll.filter(x => x.project_id === CUR_PROJ).map(x => x.site_id));
+    const names = new Set(allS.filter(t => ids.has(t.id)).map(t => stxK(t.name)));
+    const mine = r => (r.site_id && ids.has(r.site_id)) || (!r.site_id && names.has(stxK(r.site_name)));
+    rows = rows.filter(mine); plan = plan.filter(mine);
+    if (!rows.length && !plan.length){ box.innerHTML = ''; return; }   // este proyecto no tiene histórico de mantenimiento
+  }
   const pers = Array.from({ length: 13 }, (_, i) => stxAddMonths(from, i));
   const P = Object.fromEntries(pers.map(p => [p, { prev: new Set(), corr: new Set(), due: 0, done: 0, res: [], inTtr: 0, withTtr: 0 }]));
   const corrRows = [];

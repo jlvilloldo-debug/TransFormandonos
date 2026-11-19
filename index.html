@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-2W+kaTdsxZQ7LTrqzvUep0QHc4NszT3AinWse+hweXA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-OmlTgxYrJKs2bmsZfG/YH39UVlvPEWicrpEuM8d/RWQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -452,7 +452,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.26.0';
+const APP_VERSION = '5.26.1';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -2495,10 +2495,11 @@ async function viewStats(v){
     <div id="st-body"><div class="card muted">Cargando…</div></div>`;
   stxCss(); if (online()) stxSection($('#st-hist')).catch(() => {});
   $('#sf-per').value = saved.per || '90'; $('#sf-traza').value = saved.traza || ''; $('#sf-kind').value = saved.kind || '';
-  if ($('#sf-ct') && contratos.includes(saved.ct)) $('#sf-ct').value = saved.ct;
+  if (CUR_PROJ) $('#sf-ct')?.remove();   // dentro del proyecto ya se ve solo lo suyo
+  else if ($('#sf-ct') && contratos.includes(saved.ct)) $('#sf-ct').value = saved.ct;
   const load = async () => {
     const f = { per: $('#sf-per').value, traza: $('#sf-traza').value, kind: $('#sf-kind').value, ct: $('#sf-ct')?.value || '' };
-    try { localStorage.setItem('ia_stats', JSON.stringify(f)); } catch {}
+    if (!CUR_PROJ) { try { localStorage.setItem('ia_stats', JSON.stringify(f)); } catch {} }
     const from = new Date(Date.now() - Number(f.per) * 86400000);
     let rows = [];
     try {
@@ -2522,7 +2523,7 @@ async function viewStats(v){
         loadContractors()]);
       const tsel = tasks.filter(t => (!f.ct || t.contract === f.ct) && (!CUR_PROJ || t.project_id === CUR_PROJ));
       perf = contractorPerformance(tsel, contrs, rows);
-      perf.byContract = contractSummary(tasks, contrs, rows);
+      perf.byContract = contractSummary(CUR_PROJ ? tasks.filter(t => t.project_id === CUR_PROJ) : tasks, contrs, rows);
       perf.ct = f.ct;
     } catch {}
     renderStats($('#st-body'), rows, sites.filter(s => inTraza(s) && (!f.ct || s.grupo === f.ct)), from, f, perf);
