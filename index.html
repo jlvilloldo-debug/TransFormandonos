@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-69HaV9gZKlZl1aRzcxtBaocbBdUQobGBxC1BbjyKANw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-b1RB4HtojzMCSenZngn4g2VyyhcpB6QhAeyA6WkWFv4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -405,6 +405,7 @@ tr.sor-bad td{background:var(--red-bg)}
     <div class="sp"></div>
     <button id="b-scope" class="hidden" title="Elegí con qué proyectos o grupos trabajás">🎯</button>
     <button id="b-sos" title="Emergencia: llamar, ubicación, accidente" aria-label="Emergencia" style="font-size:15px;padding:5px 10px;background:#DC2626;color:#fff;border-color:#DC2626;font-weight:700">🆘</button>
+    <button id="b-help" title="Ayuda y manual" aria-label="Ayuda" style="font-size:16px;padding:5px 10px">❓</button>
     <button id="b-search" title="Buscar (Ctrl+K)" aria-label="Buscar" style="font-size:16px;padding:5px 10px">🔍</button>
     <span id="net" class="netpill hidden" title="Tocar para enviar ahora"></span>
     <button id="b-install" class="hidden">Instalar</button>
@@ -452,11 +453,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.27.2';
+const APP_VERSION = '5.27.3';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', bases: () => typeof viewBases === 'function', instr: () => typeof viewInstr === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', help: 'help.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', bases: () => typeof viewBases === 'function', instr: () => typeof viewInstr === 'function', help: () => typeof viewHelp === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -1273,6 +1274,7 @@ function searchOpen(){
   $('#sr-scan').onclick = async () => { m.close(); try { await needLib('stock'); } catch (e){ return toast(errText(e)); } stkScan(txt => { const mm = /#\/stock\/a\/([0-9A-Za-z-]{1,40})/.exec(txt); if (mm){ location.hash = '#/stock/a/' + mm[1]; return; } searchOpen(); const i = $('#sr-q'); if (i){ i.value = txt.slice(0, 60); i.dispatchEvent(new Event('input')); } }); };
 }
 $('#b-search').onclick = searchOpen;
+$('#b-help').onclick = async () => { await needLib('help'); location.hash = '#/ayuda/' + helpTopicFor(location.hash); };
 $('#b-scope').onclick = () => scopeModal();
 $('#b-sos').onclick = async () => { try { await needLib('hys'); hysSOS(); } catch (e){ modal(`<h2 style="color:#B91C1C;margin-top:0">🆘 Emergencia</h2><div class="row" style="gap:8px;flex-wrap:wrap"><a class="btn danger" href="tel:911">📞 911</a><a class="btn danger" href="tel:107">🚑 107</a><a class="btn danger" href="tel:100">🚒 100</a><button class="btn sec" data-close-modal>Cerrar</button></div>`); } };
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && me){ e.preventDefault(); searchOpen(); } });
@@ -1506,6 +1508,7 @@ async function route(){
     else if (tab === 'hys'){ await needLib('hys'); await viewHys(v, id, id2); }
     else if (tab === 'agenda'){ await needLib('agenda'); await viewAgenda(v, id); }
     else if (tab === 'red'){ await needLib('red'); await viewRed(v, id, id2); }
+    else if (tab === 'ayuda'){ await needLib('help'); await viewHelp(v, id); }
     else if (tab === 'instr'){ if (isContractor() || (typeof can === 'function' && !can('stock'))) { location.hash = '#/home'; return; } await needLib('instr'); await viewInstr(v, id); }
     else if (tab === 'bases'){ if (!id){ location.hash = '#/proj'; return; } await needLib('bases'); await viewBases(v, id); }
     else if (tab === 'recursos'){ if (!isManager()) { location.hash = '#/home'; return; } await needLib('recursos'); await viewRecursos(v, id, id2); }

@@ -397,15 +397,15 @@ function gbPortPanel(){
 
 /* --- cordones --- */
 function gbVIc(){
-  const g = GB.g, grp = new Map(); g.cords.forEach(x => { const k = (x.why || 'Sin descripción') + '|' + x.a[0] + '|' + x.b[0]; if (!grp.has(k)) grp.set(k, []); grp.get(k).push(x); });
-  const eg = new Map(); g.eq.forEach(x => { const k = x.eq + '|' + x.why; if (!eg.has(k)) eg.set(k, []); eg.get(k).push(x); });
+  const g = GB.g, grp = new Map(); GB._cg = grp; GB._eg = null; g.cords.forEach(x => { const k = (x.why || 'Sin descripción') + '|' + x.a[0] + '|' + x.b[0]; if (!grp.has(k)) grp.set(k, []); grp.get(k).push(x); });
+  const eg = new Map(); GB._eg = eg; g.eq.forEach(x => { const k = x.eq + '|' + x.why; if (!eg.has(k)) eg.set(k, []); eg.get(k).push(x); });
   const rg = l => { const ps = l.map(Number).sort((a, b) => a - b); const out = []; for (const p of ps){ const last = out[out.length - 1]; if (last && p === last[1] + 1) last[1] = p; else out.push([p, p]); } return out.map(([a, b]) => a === b ? a : a + '–' + b).join(', '); };
   return `<div class="gb-grid"><div class="gb-card"><div class="gb-row" style="justify-content:space-between"><h2>Cordones del nodo</h2>${gbCanEd() && g.odfs.length ? '<button class="btn small" id="gb-bulk">＋ Cordones en bloque</button>' : ''}</div>
       <p class="muted sm" style="margin:0 0 8px">Unen puertos de ODF entre sí (para que un pelo siga de largo dentro del gabinete) o un ODF con un equipo.</p>
       <table class="gb-t"><thead><tr><th>Qué conecta</th><th>Desde</th><th>Hasta</th><th>Pelos</th><th></th></tr></thead><tbody>
-      ${grp.size ? [...grp.values()].map(l => `<tr><td>${esc(l[0].why || '—')}</td><td>${esc(gbOdfShort(l[0].a[0]))} ${rg(l.map(x => x.a[1]))}</td><td>${esc(gbOdfShort(l[0].b[0]))} ${rg(l.map(x => x.b[1]))}</td><td>${l.length}</td><td>${l.some(x => x.st === 'plan') ? '<span class="gb-chip plan">proyectado</span>' : ''}</td></tr>`).join('') : `<tr><td colspan="5" class="muted">${g.acom ? 'Sin cordones ODF ⇄ ODF: en este nodo lo que sigue de largo se resuelve en la caja de empalme.' : 'Todavía no hay cordones ODF ⇄ ODF cargados.'}</td></tr>`}
+      ${grp.size ? [...grp.entries()].map(([k, l]) => `<tr><td>${esc(l[0].why || '—')}</td><td>${esc(gbOdfShort(l[0].a[0]))} ${rg(l.map(x => x.a[1]))}</td><td>${esc(gbOdfShort(l[0].b[0]))} ${rg(l.map(x => x.b[1]))}</td><td>${l.length}</td><td>${l.some(x => x.st === 'plan') ? '<span class="gb-chip plan">proyectado</span>' : ''}${gbCanEd() ? ` <button class="btn sec small" data-cdel="${esc(k)}" style="color:var(--red)" title="Quitar estos ${l.length} cordones">🗑 Quitar</button>` : ''}</td></tr>`).join('') : `<tr><td colspan="5" class="muted">${g.acom ? 'Sin cordones ODF ⇄ ODF: en este nodo lo que sigue de largo se resuelve en la caja de empalme.' : 'Todavía no hay cordones ODF ⇄ ODF cargados.'}</td></tr>`}
       <tr><td colspan="5" style="padding-top:12px"><b>A equipos</b></td></tr>
-      ${eg.size ? [...eg.values()].map(l => `<tr><td>${esc(l[0].why || '—')}</td><td>${esc(gbOdfShort(l[0].odf))} ${rg(l.map(x => x.port))}</td><td>${esc(gbUnit(l[0].eq)?.n || '')} · ${esc([...new Set(l.map(x => x.ep))].join(', '))}</td><td>${l.length}</td><td>${l.some(x => x.st === 'plan') ? '<span class="gb-chip plan">proyectado</span>' : ''}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">Ningún equipo conectado todavía. Se conectan desde el puerto del equipo, en la pestaña Gabinete.</td></tr>'}
+      ${eg.size ? [...eg.entries()].map(([k, l]) => `<tr><td>${esc(l[0].why || '—')}</td><td>${esc(gbOdfShort(l[0].odf))} ${rg(l.map(x => x.port))}</td><td>${esc(gbUnit(l[0].eq)?.n || '')} · ${esc([...new Set(l.map(x => x.ep))].join(', '))}</td><td>${l.length}</td><td>${l.some(x => x.st === 'plan') ? '<span class="gb-chip plan">proyectado</span>' : ''}${gbCanEd() ? ` <button class="btn sec small" data-edel="${esc(k)}" style="color:var(--red)" title="Desconectar estos ${l.length} puertos del equipo">🗑 Quitar</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">Ningún equipo conectado todavía. Se conectan desde el puerto del equipo, en la pestaña Gabinete.</td></tr>'}
       </tbody></table></div>
     <aside class="gb-side"><div class="gb-card"><h2>Cómo se usa</h2><div class="muted sm" style="display:grid;gap:8px">
       <div>🔎 Con los cordones cargados se sigue un pelo de punta a punta: cable, caja de empalme, acometida, ODF, cordón, equipo.</div>
@@ -583,6 +583,15 @@ function gbBind(root){
   q('[data-goeq]')?.addEventListener('click', () => { const e = gbEq(...GB.port); if (!e) return; const r = gbUnit(e.eq); GB.tab = 'gab'; GB.sel = e.eq; GB.eqPort = [e.eq, e.ep]; if (r && r.face !== 'both') GB.face = r.face; gbRender(); });
   q('[data-unic]')?.addEventListener('click', () => { const c = gbCord(...GB.port); if (!c) return; const g = gbCopy(); g.cords = g.cords.filter(x => !(x.a[0] === c.a[0] && x.a[1] === c.a[1] && x.b[0] === c.b[0] && x.b[1] === c.b[1])); gbSave(g, `quitar cordón ${gbOdfShort(c.a[0])} ${c.a[1]} ⇄ ${gbOdfShort(c.b[0])} ${c.b[1]}`); });
   q('#gb-bulk')?.addEventListener('click', gbFormBulk);
+  // quitar un grupo de cordones (ODF ⇄ ODF) o de conexiones a un equipo, en bloque; queda en Cambios
+  qa('[data-cdel]').forEach(b => b.addEventListener('click', () => { const l = GB._cg?.get(b.dataset.cdel); if (!l) return;
+    if (!confirm(`¿Quitar ${l.length} cordón${l.length === 1 ? '' : 'es'} ${gbOdfShort(l[0].a[0])} ⇄ ${gbOdfShort(l[0].b[0])}? Queda registrado en Cambios.`)) return;
+    const g = gbCopy(), del = new Set(l.map(x => x.a.join('|') + '>' + x.b.join('|'))); g.cords = g.cords.filter(x => !del.has(x.a.join('|') + '>' + x.b.join('|')));
+    gbSave(g, `quitó ${l.length} cordones ${gbOdfShort(l[0].a[0])} ⇄ ${gbOdfShort(l[0].b[0])}`); }));
+  qa('[data-edel]').forEach(b => b.addEventListener('click', () => { const l = GB._eg?.get(b.dataset.edel); if (!l) return;
+    if (!confirm(`¿Desconectar ${l.length} puerto${l.length === 1 ? '' : 's'} de ${gbUnit(l[0].eq)?.n || 'el equipo'}? Queda registrado en Cambios.`)) return;
+    const g = gbCopy(), del = new Set(l.map(x => x.odf + '|' + x.port)); g.eq = g.eq.filter(x => !del.has(x.odf + '|' + x.port));
+    gbSave(g, `desconectó ${l.length} puertos de ${gbUnit(l[0].eq)?.n || 'equipo'}`); }));
   q('#gb-ene')?.addEventListener('click', gbFormEne);
 }
 function gbFitsIn(g, u, h){ const keep = GB.g; GB.g = g; const ok = gbFits(u, h, 'both'); GB.g = keep; return ok; }
