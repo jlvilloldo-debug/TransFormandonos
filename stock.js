@@ -177,7 +177,13 @@ async function viewStock(v, sub, id){
   stkSoftRefresh(v, sub, id);
   if (sub === 'a' && id) return stkAsset(v, id);
   let scope = { kind: 'gen' };
-  if (sub === 'p' && id){ if (!STK.base?.projById?.has(id)) throw new Error('No se encontró el proyecto (o no tenés acceso).'); scope = { kind: 'prj', id }; }
+  if (sub === 'p' && id){
+    // la lista de proyectos en memoria puede estar vieja: se recarga y, si hace falta, se busca ese proyecto
+    if (!STK.base?.projById?.has(id)) { try { await stkLoadBase(true); } catch {} }
+    if (!STK.base?.projById?.has(id)) { try { const { data } = await sb.from('projects').select('*').eq('id', id).maybeSingle(); if (data){ STK.base.projects.push(data); STK.base.projById.set(id, data); } } catch {} }
+    if (!STK.base?.projById?.has(id)) throw new Error('No se encontró el proyecto (o no tenés acceso).');
+    scope = { kind: 'prj', id };
+  }
   else if (sub === 'l' && id) scope = { kind: 'place', id };
   else if (sub === 's' && id) scope = { kind: 'site', id };
   else if (sub === 'm' && id){ STK.tab = 'mat'; STK.openItem = id; }

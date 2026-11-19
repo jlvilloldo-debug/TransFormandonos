@@ -354,7 +354,7 @@ function editProject(p){
     <button class="btn sec small" id="pe-add" type="button" style="margin-top:6px">+ Elemento</button>
     <p class="muted sm" style="margin:6px 0 0">Ej.: Access Point (unidades, con serie) · Cámara (unidades, con serie) · Fibra óptica (metros) · Puesto de trabajo (puestos) · UPS, router, switch…</p>
     <label style="margin-top:14px">Pestañas que usa este proyecto</label>
-    <div class="row" style="gap:6px;flex-wrap:wrap">${PJ_SECS.filter(([k]) => k !== 'res').map(([k, t]) => `<label class="pill" style="cursor:pointer;font-weight:400;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" class="pe-mod" value="${k}" style="width:auto;margin:0" ${!p.modules?.length || p.modules.includes(k) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
+    <div class="row" style="gap:6px;flex-wrap:wrap">${PJ_SECS.filter(([k]) => !['res', 'stk'].includes(k)).map(([k, t]) => `<label class="pill" style="cursor:pointer;font-weight:400;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" class="pe-mod" value="${k}" style="width:auto;margin:0" ${!p.modules?.length || p.modules.includes(k) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
     <p class="muted sm" style="margin:4px 0 0">Las que no marques no aparecen dentro del proyecto. Resumen siempre está.</p>
     ${isNew ? '' : `<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:14px"><input type="checkbox" id="pe-a" style="width:auto" ${p.active ? 'checked' : ''}> Proyecto activo (desmarcar para cerrarlo)</label>`}
     <div class="err" id="pe-err"></div>
@@ -395,7 +395,7 @@ function editProject(p){
     const row = { name: $('#pe-n').value.trim(), short_name: $('#pe-sn').value.trim() || null, client: $('#pe-c').value.trim() || null, contract: $('#pe-k').value.trim() || null, kind: $('#pe-t').value,
       start_date: $('#pe-s').value || null, end_date: $('#pe-e').value || null, description: $('#pe-d').value.trim() || null,
       stages: st, done_stage: $('#pe-ds').value || null, elements: els, active: isNew ? true : $('#pe-a').checked,
-      modules: (() => { const m = [...document.querySelectorAll('.pe-mod:checked')].map(x => x.value); return m.length === PJ_SECS.length - 1 ? null : m; })() };
+      modules: (() => { const m = [...document.querySelectorAll('.pe-mod:checked')].map(x => x.value); return m.length === PJ_SECS.length - 2 ? null : m; })() };
     if (row.start_date && row.end_date && row.end_date < row.start_date) return ($('#pe-err').textContent = 'El fin no puede ser antes del inicio.');
     $('#pe-ok').disabled = true;
     const { data, error } = isNew ? await sb.from('projects').insert({ ...row, org_id: me.org_id, created_by: me.id }).select('id').single()
@@ -418,7 +418,7 @@ function editProject(p){
 let PTAB = 'res';
 /* Pestañas del proyecto: todo lo del proyecto en un solo lugar. Cada proyecto elige cuáles usa (Editar proyecto). */
 const PJ_SECS = [['res', 'Resumen'], ['tk', '🎫 Tickets'], ['ta', '📋 Tareas'], ['in', '🔍 Inspecciones'], ['pl', '📄 Planillas'], ['sit', '📍 Sitios y mapa'],
-  ['inv', '📦 Inventario'], ['ba', '🗺 Bases y cuadrillas'], ['gan', '📅 Gantt'], ['es', '📊 Estadísticas'], ['sla', '📑 Contrato y SLA']];
+  ['inv', '📦 Inventario'], ['stk', '🧰 Stock y materiales'], ['ba', '🗺 Bases y cuadrillas'], ['gan', '📅 Gantt'], ['es', '📊 Estadísticas'], ['sla', '📑 Contrato y SLA']];
 async function viewProject(v, id, sec){
   const [projects, psAll, sites, contrs, tasks] = await Promise.all([loadProjects(), loadPS(), loadSitesMap(), loadContractors().catch(() => []), loadAllTasks().catch(() => [])]);
   const p = projects.find(x => x.id === id);
@@ -431,7 +431,7 @@ async function viewProject(v, id, sec){
   const manage = isManager() && canWrite();
   const sm = projSummary(p, ctx.ps);
   const mods = Array.isArray(p.modules) && p.modules.length ? new Set(['res', ...p.modules]) : null;
-  const secs = PJ_SECS.filter(([k]) => !mods || mods.has(k)).filter(([k]) => !(isContractor() && ['es', 'pl', 'sla', 'ba'].includes(k)));
+  const secs = PJ_SECS.filter(([k]) => !mods || mods.has(k) || k === 'stk').filter(([k]) => !(isContractor() && ['es', 'pl', 'sla', 'ba', 'stk'].includes(k)) && (k !== 'stk' || can('stock')));
   const cur = secs.some(([k]) => k === sec) ? sec : 'res';
   const openT = tasks.filter(t => taskOpen(t) && t.project_id === p.id).length;
   const badge = { sit: sm.n || '', inv: equip.length ? equip.length + (equip.some(e => eqFailLate(e) || eqRmaLate(e)) ? ' ⚠' : '') : '', ta: openT || '' };
@@ -441,7 +441,7 @@ async function viewProject(v, id, sec){
     <div class="card"><div class="row between"><div>
         <h1 style="margin:0">${esc(p.name)}</h1><div class="muted sm">${esc([PROJ_KIND[p.kind], p.client, p.contract].filter(Boolean).join(' · '))}${p.start_date || p.end_date ? ` · ${fmtD(p.start_date)} → ${fmtD(p.end_date)}` : ''}</div>
         ${!mods || mods.has('tk') ? `<div class="sm" style="margin-top:4px">${tkr ? `🎫 Ticketera: <b>${esc(tkr.name)}</b>` : `<span style="color:#B45309">🎫 Sin ticketera</span>${manage ? ` · <a href="#/proj/${p.id}/sla">asignarla en Contrato y SLA</a>` : ''}`}</div>` : ''}</div>
-      <div class="row" style="gap:6px;flex-wrap:wrap">${isManager() && canWrite() ? '<button class="btn" id="pj-task" style="margin:0">📋 Asignar tarea</button>' : ''}${can('stock') ? `<a class="btn sec" href="#/stock/p/${p.id}" style="margin:0">📦 Stock</a>` : ''}${isManager() ? `<a class="btn sec" href="#/recursos/p/${p.id}" style="margin:0">🏗 Equipo</a>` : ''}<a class="btn sec" href="#/red/p/${p.id}" style="margin:0">🌐 Red de fibra</a>${!isContractor() ? '<button class="btn sec" id="pj-mem" style="margin:0">👥 Integrantes</button>' : ''}${manage && online() && can('proj', 3) ? '<button class="btn sec" id="pj-edit" style="margin:0">⚙ Editar proyecto</button>' : ''}</div></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${isManager() && canWrite() ? '<button class="btn" id="pj-task" style="margin:0">📋 Asignar tarea</button>' : ''}${isManager() ? `<a class="btn sec" href="#/recursos/p/${p.id}" style="margin:0">🏗 Equipo</a>` : ''}<a class="btn sec" href="#/red/p/${p.id}" style="margin:0">🌐 Red de fibra</a>${!isContractor() ? '<button class="btn sec" id="pj-mem" style="margin:0">👥 Integrantes</button>' : ''}${manage && online() && can('proj', 3) ? '<button class="btn sec" id="pj-edit" style="margin:0">⚙ Editar proyecto</button>' : ''}</div></div>
       <div class="row" style="margin-top:12px;gap:12px"><b style="font-size:22px">${Math.round(sm.pct)}%</b><div class="progress grow" style="height:10px"><i style="width:${Math.round(sm.pct)}%"></i></div></div>
       <div class="seg pj-secs" id="pj-tabs" style="margin-top:12px;flex-wrap:wrap">${secs.map(([k, t]) => `<button type="button" data-pt="${k}" class="${cur === k ? 'on' : ''}" style="flex:0 0 auto;white-space:nowrap">${t}${badge[k] ? ` <span class="muted" style="font-weight:700">${badge[k]}</span>` : ''}</button>`).join('')}</div>
     </div>
@@ -463,6 +463,7 @@ async function viewProject(v, id, sec){
     else if (cur === 'es') await viewStats(body);
     else if (cur === 'ba'){ await needLib('bases'); await viewBases(body, p.id); }
     else if (cur === 'pl') await projPlanillas(body, ctx);
+    else if (cur === 'stk'){ await needLib('stock'); await viewStock(body, 'p', p.id); }
   } catch (e){ body.innerHTML = `<div class="card"><b>${/OFFLINE|NEEDS_ONLINE/.test(e.message) || isNetErr(e) ? 'Sin conexión' : 'No se pudo abrir'}</b><p class="muted">${esc(errText(e))}</p></div>`; }
 }
 
