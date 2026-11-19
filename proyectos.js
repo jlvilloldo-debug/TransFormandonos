@@ -135,6 +135,7 @@ async function viewMap(v, preset){
       <div class="sem-legend" id="mp-legend"></div></div>
     <div class="card" id="mp-list"></div>`;
   $('#mp-proj').value = st.project; $('#mp-per').value = st.per;
+  if (CUR_PROJ) $('#mp-proj').style.display = 'none';   // dentro del proyecto no se elige otro
   const save = () => { if (CUR_PROJ) return; try { localStorage.setItem('ia_map', JSON.stringify(st)); } catch {} };
   let insp = insp0 || [];
   const loadInsp = async () => { insp = await inspQ(st.per); };
@@ -477,7 +478,17 @@ async function viewProject(v, id, sec){
   $$('#pj-tabs [data-pt]').forEach(b => b.onclick = () => { location.hash = `#/proj/${p.id}/${b.dataset.pt}`; });
   const body = $('#pj-body');
   try {
-    if (cur === 'res'){ projResumen(body, ctx); projCheck(body, ctx).catch(() => {}); } else if (cur === 'sit'){ body.innerHTML = '<div id="pj-map"></div><div id="pj-sl"></div>'; projSites($('#pj-sl'), ctx); try { await viewMap($('#pj-map')); } catch (e){ $('#pj-map').innerHTML = ''; } } else if (cur === 'gan') projGantt(body, ctx); else if (cur === 'inv') projInventory(body, ctx);
+    if (cur === 'res'){ projResumen(body, ctx); projCheck(body, ctx).catch(() => {}); } else if (cur === 'sit'){
+      body.innerHTML = `<div class="card"><div class="row between" style="gap:10px"><div><h2 style="margin:0">🗺 Sitios, radioenlaces y tramos del proyecto</h2>
+          <div class="sm muted" id="pj-kmzlast">${ctx.ps.length ? `${ctx.ps.length} sitio${ctx.ps.length === 1 ? '' : 's'} en el proyecto.` : '<b style="color:#B45309">Este proyecto todavía no tiene sitios.</b> Subí su KMZ o agregalos desde la lista.'}</div></div>
+          ${manage && online() ? `<label class="btn" style="margin:0" title="Google Earth: sitios, radioenlaces y tramos. Volvé a subirlo cuando el proyecto crezca: agrega lo nuevo y actualiza lo que cambió, sin duplicar.">📥 Subir / actualizar KMZ<input type="file" accept=".kmz,.kml" id="pj-kmz" class="hidden"></label>` : ''}</div></div>
+        <div id="pj-map"></div><div id="pj-sl"></div>`;
+      $('#pj-kmz')?.addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (!f || !needOnline()) return;
+        try { await needLib('jszip'); } catch {} importKMZ(f, await loadSitesMap().catch(() => []), p.id); });
+      sb.from('kmz_imports').select('file_name,at,by_name,summary').eq('project_id', p.id).order('at', { ascending: false }).limit(5).then(({ data }) => {
+        if (!data?.length || !$('#pj-kmzlast')) return; const k = data[0], sm = k.summary || {};
+        $('#pj-kmzlast').insertAdjacentHTML('beforeend', `<div>Último KMZ: <b>${esc(k.file_name)}</b> · ${fmtDT(k.at)} · ${esc(k.by_name || '')}${sm.vinculos_nuevos != null ? ` · ${sm.sitios_nuevos || 0} sitios y ${sm.vinculos_nuevos || 0} enlaces nuevos, ${(sm.sitios_act || 0) + (sm.vinculos_act || 0)} actualizados` : ''}${data.length > 1 ? ` · ${data.length} subidas` : ''}</div>`); }).catch(() => {});
+      projSites($('#pj-sl'), ctx); try { await viewMap($('#pj-map')); } catch (e){ $('#pj-map').innerHTML = ''; } } else if (cur === 'gan') projGantt(body, ctx); else if (cur === 'inv') projInventory(body, ctx);
     else if (cur === 'sla') await tkProjSla(body, p);
     else if (cur === 'tk') await (isManager() ? viewMesa(body, p.id) : viewTickets(body));
     else if (cur === 'ta') await viewTasks(body);
@@ -617,7 +628,7 @@ function projSites(box, ctx){
         <select id="ps-c" style="width:auto"><option value="">Todos los estados</option>${['red', 'amber', 'blue', 'gray', 'green'].map(c => `<option value="${c}">${SEM[c].n}</option>`).join('')}<option value="prop">Fechas propuestas a validar</option></select>
         ${isContractor() ? '' : `<select id="ps-k" style="width:auto"><option value="">Todas las contratistas</option><option value="__none">Sin asignar</option>${contrs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>`}
         <select id="ps-s" style="width:auto"><option value="">Todas las etapas</option>${(p.stages || []).map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
-      <div class="row">${manage && online() ? `<button class="btn sec small" id="ps-add">+ Sitios</button><label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="ps-xl" class="hidden"></label><button class="btn sec small" id="ps-model">Modelo</button>${can('sites', 2) ? '<label class="btn sec small" style="margin:0" title="Sitios, radioenlaces y tramos desde Google Earth">Importar KMZ<input type="file" accept=".kmz,.kml" id="ps-kmz" class="hidden"></label>' : ''}` : ''}<button class="btn sec small" id="ps-exp">Exportar Excel</button></div></div>
+      <div class="row">${manage && online() ? `<button class="btn sec small" id="ps-add">+ Sitios</button><label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="ps-xl" class="hidden"></label><button class="btn sec small" id="ps-model">Modelo</button>` : ''}<button class="btn sec small" id="ps-exp">Exportar Excel</button></div></div>
       <div id="ps-bulk" class="row hidden" style="margin-top:10px;background:var(--bg);padding:8px;border-radius:8px"><b id="ps-bn"></b><button class="btn small" id="ps-bc">Asignar contratista</button><button class="btn small" id="ps-bd">Programar fechas</button><button class="btn sec small" id="ps-bx">Quitar selección</button></div></div>
     <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr>${manage ? '<th><input type="checkbox" id="ps-all" style="width:auto"></th>' : ''}<th>Sitio</th><th>Estado</th><th class="hide-sm">Avance</th><th>Fechas</th>${isContractor() ? '' : '<th class="hide-sm">Contratista</th>'}<th></th></tr></thead><tbody id="ps-rows"></tbody></table></div>
       <p class="muted sm" id="ps-foot"></p></div>`;
@@ -651,8 +662,6 @@ function projSites(box, ctx){
   $('#ps-add')?.addEventListener('click', () => addSitesModal(ctx));
   $('#ps-model')?.addEventListener('click', () => downloadScopeModel(p));
   $('#ps-xl')?.addEventListener('change', e => importScope(e.target.files[0], ctx));
-  $('#ps-kmz')?.addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (!f || !needOnline()) return;
-    try { await needLib('jszip'); } catch {} const all = await loadSitesMap().catch(() => []); importKMZ(f, all, ctx.p.id); });
   $('#ps-exp').onclick = () => exportProjectSites(ctx);
   render();
 }

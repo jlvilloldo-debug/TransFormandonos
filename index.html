@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-OszUwacYaDpNHFhNproL6gmv7GKNn9xGH001NEml+Xs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-jI/9RRxEMA7OqslTuJm6K6O6yO++Z6JhdmBECUcTESw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -452,7 +452,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.27.0';
+const APP_VERSION = '5.27.1';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -3552,9 +3552,10 @@ async function importKMZ(file, existing, projectId){
       const exist = new Set((existing || []).map(x => x.kind + '|' + x.name.toLowerCase()));
       const nt = tramos.filter(t => !exist.has(t.kind + '|' + t.name.toLowerCase()));
       for (let i = 0; i < nt.length; i += 100){ const { error } = await sb.from('sites').insert(nt.slice(i, i + 100).map(t => ({ ...t, org_id: me.org_id }))); if (error) throw error; }
+      if (projectId) sb.rpc('kmz_log', { p_project: projectId, p_file: String(file.name).slice(0, 200), p_summary: { ...(r || {}), tramos: nt.length } }).then(() => {}, () => {});
       m.close();
       toast(r ? `Sitios: ${r.sitios_nuevos} nuevos, ${r.sitios_act} actualizados · Radioenlaces: ${r.vinculos_nuevos} nuevos, ${r.vinculos_act} actualizados${r.equipos ? ` · ${r.equipos} equipos al inventario` : ''}${r.tramos_corregidos ? ` · ${r.tramos_corregidos} tramos corregidos` : ''}${nt.length ? ` · ${nt.length} tramos de fibra` : ''}` : `${nt.length} tramos de fibra importados`);
-      ['site-links', 'site-links-full', 'sites-map', 'ps', 'equip:' + projectId].forEach(k => IDB.del('kv', CUR_UID + ':' + k).catch(() => {}));
+      await Promise.all(['site-links2', 'site-links-full', 'sites-map', 'sites-min2', 'ps-all', 'equip:' + projectId].map(k => IDB.del('kv', CUR_UID + ':' + k).catch(() => {})));
       route();
     } catch (e){ $('#k-err').textContent = errText(e); $('#k-go').disabled = false; $('#k-go').textContent = 'Reintentar'; }
   };
