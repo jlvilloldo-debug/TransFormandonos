@@ -56,6 +56,20 @@ const PS_COLS = 'id,project_id,site_id,stage,planned,done,start_date,end_date,pr
 const SITE_MAP_COLS = 'id,name,kind,traza,grupo,lat,lng,localidad,provincia,address,aliases';
 const loadProjects = () => cachedQuick('projects', () => sb.from('projects').select('*').order('name'));
 const loadPS = () => cachedQuick('ps-all', () => pageAll(() => sb.from('project_sites').select(PS_COLS).order('id')));
+/* trazas para el mapa: tramos de fibra de Sitios (KMZ) y cables de Red de fibra */
+let TRZ = null;
+const TRZ_COL = ['#F59E0B', '#06B6D4', '#D946EF', '#EF4444', '#22C55E', '#3B82F6', '#F97316', '#A855F7', '#14B8A6', '#E11D48'];
+const trzColor = t => { const n = parseInt(String(t || '').split(',')[0], 10); return isNaN(n) ? '#F59E0B' : TRZ_COL[(n - 1 + TRZ_COL.length) % TRZ_COL.length]; };
+async function trzLoad(){
+  if (isContractor()) { TRZ = { tramos: [], cables: [] }; return; }
+  const [tramos, nets] = await Promise.all([
+    cachedQuick('tramos-geo', () => pageAll(() => sb.from('sites').select('id,name,traza,path').eq('kind', 'tramo_fo').eq('active', true).order('id'))).catch(() => []),
+    cachedQuick('net-nets', () => sb.from('net_networks').select('id,project_id')).catch(() => [])]);
+  let cables = [];
+  if (nets.length){ try { cables = await cachedQuick('net-cables-geo', () => pageAll(() => sb.from('net_cables').select('id,name,network_id,path').order('id'))); } catch {} }
+  const pOf = new Map(nets.map(n => [n.id, n.project_id]));
+  TRZ = { tramos: tramos || [], cables: (cables || []).map(c => ({ ...c, project_id: pOf.get(c.network_id) })) };
+}
 const loadSitesMap = () => cachedQuick('sites-map', () => pageAll(() => sb.from('sites').select(SITE_MAP_COLS).eq('active', true).order('name').order('id')));
 const loadAllTasks = () => cachedQuick('tasks', () => sb.from('tasks').select(TASK_COLS).order('due_date', { ascending: true }).limit(1000));
 let SITE_COORDS = new Map();
@@ -110,7 +124,7 @@ const LAYERS = { prev: '🛠 Preventivos', corr: '⚡ Correctivos', pend: '⚠ P
 let pmap = null;
 async function viewMap(v, preset){
   let saved = {}; try { saved = JSON.parse(localStorage.getItem('ia_map') || '{}'); } catch {}
-  const st = { project: saved.project || '', per: saved.per || '30', layers: saved.layers || { prev: true, corr: true, pend: true, inst: true }, lnk: saved.lnk !== false, kindc: !!saved.kindc };
+  const st = { project: saved.project || '', per: saved.per || '30', layers: saved.layers || { prev: true, corr: true, pend: true, inst: true }, lnk: saved.lnk !== false, kindc: !!saved.kindc, tr: saved.tr !== false };
   if (preset === 'pend') st.layers = { prev: false, corr: false, pend: true, inst: false };
   if (preset === 'inst') st.layers = { prev: false, corr: false, pend: false, inst: true };
   const inspQ = per => cachedQuick('map-insp:' + per, () => pageAll(() => sb.from('inspections').select('id,site_id,site_name,kind,started_at,flagged').eq('status', 'completada').gte('started_at', new Date(Date.now() - Number(per) * 86400000).toISOString()).order('started_at').order('id'), 10000)).catch(() => []);
@@ -129,7 +143,7 @@ async function viewMap(v, preset){
         <input id="mp-q" class="grow" placeholder="Buscar sitio o localidad">
       </div>
       <div class="layerbar" id="mp-layers">${Object.entries(LAYERS).map(([k, t]) => `<button type="button" data-ly="${k}" class="${st.layers[k] ? 'on' : ''}">${t}</button>`).join('')}
-        ${isContractor() ? '' : `<button type="button" id="mp-lnk" class="${st.lnk ? 'on' : ''}" title="Radioenlaces y tramos de fibra cargados en Sitios → Vínculos">🔗 Vínculos</button>`}<button type="button" id="mp-kc" class="${st.kindc ? 'on' : ''}" title="Pintar cada sitio con el color de su tipo, como en Sitios">🎨 Color por tipo</button></div>
+        ${isContractor() ? '' : `<button type="button" id="mp-lnk" class="${st.lnk ? 'on' : ''}" title="Radioenlaces y tramos de fibra cargados en Sitios → Vínculos">🔗 Vínculos</button>`}<button type="button" id="mp-tr" class="${st.tr ? 'on' : ''}" title="Trazas y tramos de fibra (KMZ y Red de fibra) con su color, como en Google Earth">🧵 Trazas</button><button type="button" id="mp-kc" class="${st.kindc ? 'on' : ''}" title="Pintar cada sitio con el color de su tipo, como en Sitios">🎨 Color por tipo</button></div>
     </div>
     <div class="card" style="padding:10px"><div id="pmap"></div>
       <div class="sem-legend" id="mp-legend"></div></div>
@@ -142,6 +156,7 @@ async function viewMap(v, preset){
   if (pmap){ pmap.remove(); pmap = null; }
   if (!window.L){ $('#pmap').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa.</p>'; return; }
   pmap = L.map('pmap', { preferCanvas: true, zoomControl: true }).setView([-34, -63], 5);
+  if (!TRZ) trzLoad().then(() => { try { if (pmap) render(); } catch {} });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(pmap);
   const RND = L.canvas({ padding: 0.5 });   // los puntos se dibujan en un solo lienzo (miles de sitios sin trabar la página)
   setTimeout(() => { try { pmap?.invalidateSize(); } catch {} }, 250);   // el mapa toma el tamaño final de la pantalla
@@ -239,7 +254,7 @@ async function viewMap(v, preset){
           .on('click', () => pmap.fitBounds(L.latLngBounds(list.map(x => [x.s.lat, x.s.lng])), { padding: [40, 40], maxZoom: 16 }));
       }
     }
-    const labels = z >= 12 && draw.length <= 200;
+    const labels = (z >= 12 && draw.length <= 250) || (z >= 8 && draw.length <= 120);   // nombres a la vista, como en Google Earth
     for (const x of draw){
       const ll = [Number(x.s.lat), Number(x.s.lng)];
       const crit = x.cols.pend === 'red';
@@ -254,6 +269,20 @@ async function viewMap(v, preset){
       else m.bindTooltip(esc(x.s.name), { direction: 'top', offset: [0, -6] });
       m.bindPopup(() => popup(x), { maxWidth: 300, offset: crit ? [0, -26] : [0, -4] }).addTo(layer);
     }
+    // trazas / tramos de fibra (como en Google Earth): debajo de los puntos
+    if (st.tr && TRZ){
+      const pid = CUR_PROJ || st.project;
+      let list = TRZ.tramos;
+      if (pid){
+        const pSites = new Set(psAll.filter(x => x.project_id === pid).map(x => x.site_id));
+        const trz = new Set(allSites.filter(x => pSites.has(x.id) && x.traza).flatMap(x => String(x.traza).split(/\s*,\s*/)));
+        list = list.filter(t => pSites.has(t.id) || (t.traza && String(t.traza).split(/\s*,\s*/).some(z => trz.has(z))));
+      }
+      for (const t of list){ const g = (t.path || []).filter(q => Array.isArray(q) && q.length >= 2).map(q => [Number(q[1]), Number(q[0])]); if (g.length < 2) continue;
+        L.polyline(g, { renderer: RND, color: trzColor(t.traza), weight: 4, opacity: .9 }).bindTooltip(`🧵 ${esc(t.name)}${t.traza ? ' · Traza ' + esc(t.traza) : ''}`, { sticky: true }).addTo(layer); }
+      for (const c of TRZ.cables.filter(c => !pid || c.project_id === pid)){ const g = (c.path || []).filter(q => Array.isArray(q) && q.length >= 2).map(q => [Number(q[1]), Number(q[0])]); if (g.length < 2) continue;
+        L.polyline(g, { renderer: RND, color: c.color || '#F59E0B', weight: 3, opacity: .85 }).bindTooltip(`🧵 ${esc(c.name || 'Cable')}`, { sticky: true }).addTo(layer); }
+    }
     // vínculos (radioenlaces y fibra) cargados en Sitios
     if (st.lnk && links.length){
       const ids = new Set(data.map(x => x.s.id));
@@ -265,7 +294,7 @@ async function viewMap(v, preset){
     // leyenda con cantidades
     const cnt = c => data.filter(x => x.color === c).length;
     $('#mp-legend').innerHTML = ['red', 'amber', 'blue', 'gray', 'green'].map(c => `<span>${semDot(c)}${SEM[c].n} <b>${cnt(c)}</b></span>`).join('') +
-      `<span class="muted">· ${data.length - withC.length} sin coordenadas</span>`;
+      `<span class="muted">· ${data.filter(x => !['tramo_fo', 'radioenlace'].includes(x.s.kind)).length - withC.length} sin coordenadas</span>`;
     $('#mp-note').textContent = online() ? '' : 'Sin conexión: datos de la última descarga';
     renderList();
   };
@@ -297,6 +326,7 @@ async function viewMap(v, preset){
     b.classList.toggle('on', st.layers[b.dataset.ly]); save(); render();
   });
   $('#mp-lnk') && ($('#mp-lnk').onclick = () => { st.lnk = !st.lnk; $('#mp-lnk').classList.toggle('on', st.lnk); save(); render(); });
+  $('#mp-tr').onclick = () => { st.tr = !st.tr; $('#mp-tr').classList.toggle('on', st.tr); save(); render(); };
   $('#mp-kc').onclick = () => { st.kindc = !st.kindc; $('#mp-kc').classList.toggle('on', st.kindc); save(); render(); };
   $('#mp-proj').onchange = () => { st.project = $('#mp-proj').value; fitted = false; save(); render(); };
   $('#mp-per').onchange = async () => { st.per = $('#mp-per').value; save(); await loadInsp(); render(); };
