@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-b1RB4HtojzMCSenZngn4g2VyyhcpB6QhAeyA6WkWFv4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-NxH/A0IJKgY82YYF3F6nsbGCk7T9k19Zpqjb+qrArOU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -453,7 +453,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.27.3';
+const APP_VERSION = '5.27.4';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', help: 'help.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -3263,10 +3263,11 @@ function coordReview(sites){
   m.el.querySelectorAll('[data-crfix]').forEach(b => b.onclick = async () => { b.disabled = true; try { await fix(bad.filter(z => z.x.id === b.dataset.crfix)); b.closest('tr').style.opacity = .4; b.textContent = '✔ Corregido'; toast('Coordenada corregida'); } catch (e){ $('#cr-err').textContent = errText(e); b.disabled = false; } });
   m.el.querySelectorAll('[data-cred]').forEach(b => b.onclick = () => { m.close(); editSite(sites.find(z => z.id === b.dataset.cred)); });
 }
-function editSite(s){
+function editSite(s, opt = {}){
   if (!needOnline()) return;
   const isNew = !s; s = s || {kind:'epi', active:true};
-  const m = modal(`<h2>${isNew ? 'Nuevo sitio' : 'Editar sitio'}</h2>
+  const pj = isNew && opt.project ? opt.project : null;
+  const m = modal(`<h2>${isNew ? (pj ? 'Nuevo sitio en este proyecto' : 'Nuevo sitio') : 'Editar sitio'}</h2>${pj ? '<p class="muted sm" style="margin-top:-4px">Se crea en Sitios de la empresa y queda agregado a este proyecto.</p>' : ''}
     <label>Nombre</label><input id="s-name" value="${esc(s.name||'')}">
     <div class="row"><div class="grow"><label>Tipo</label><select id="s-kind">${Object.entries(SITE_KINDS).map(([k,t]) => `<option value="${k}" ${s.kind===k?'selected':''}>${t}</option>`).join('')}</select></div>
       <div class="grow"><label>Traza</label><input id="s-traza" value="${esc(s.traza||'')}"></div>
@@ -3310,12 +3311,18 @@ function editSite(s){
     if (!coordCheck(row.lat, row.lng).ok && !coordOk){ coordForce(); return ($('#s-err').textContent = 'Revisá la coordenada: corregila o tocá "Está bien así".'); }
     row.contractor_id = row.kind === 'contratista' ? ($('#s-contr').value || null) : null;
     const { data: saved, error } = await (isNew ? sb.from('sites').insert({...row, org_id: me.org_id}).select('id').single() : sb.from('sites').update(row).eq('id', s.id).select('id').single());
-    if (error) return ($('#s-err').textContent = /duplicate|unique/i.test(error.message) ? 'Ya existe un sitio con ese nombre y tipo.' : errText(error));
+    if (error) return ($('#s-err').textContent = /duplicate|unique/i.test(error.message) ? (pj ? 'Ese sitio ya existe: agregalo con "+ Sitios existentes".' : 'Ya existe un sitio con ese nombre y tipo.') : errText(error));
     const wantStock = !$('#s-dw').classList.contains('hidden') && $('#s-stock').checked;
     try {
       if (wantStock && !placeOfSite){ const { error: e2 } = await sb.from('stock_places').insert({ org_id: me.org_id, name: row.name, kind: row.kind === 'contratista' ? 'base' : 'deposito', site_id: saved.id, address: [row.address, row.localidad].filter(Boolean).join(', ') || null }); if (e2) throw e2; IDB.del('kv', CUR_UID + ':stk-places').catch(() => {}); }
       else if (wantStock && placeOfSite && !placeOfSite.active){ await sb.from('stock_places').update({ active: true }).eq('id', placeOfSite.id); }
     } catch (e){ toast('El sitio se guardó, pero no se pudo crear el lugar de stock: ' + errText(e)); }
+    if (pj){
+      const { error: e3 } = await sb.from('project_sites').insert({ org_id: me.org_id, project_id: pj, site_id: saved.id, planned: {} });
+      if (e3 && !/duplicate|unique/i.test(e3.message)) toast('El sitio se creó pero no se pudo sumar al proyecto: ' + errText(e3));
+      try { for (const k of ['ps-all', 'sites-map', 'sites-min2']) await IDB.del('kv', CUR_UID + ':' + k); } catch {}
+      m.close(); toast('Sitio creado y agregado al proyecto'); route(); return;
+    }
     m.close(); toast('Sitio guardado'); route();
   };
   $('#s-del')?.addEventListener('click', async () => {

@@ -658,7 +658,7 @@ function projSites(box, ctx){
         <select id="ps-c" style="width:auto"><option value="">Todos los estados</option>${['red', 'amber', 'blue', 'gray', 'green'].map(c => `<option value="${c}">${SEM[c].n}</option>`).join('')}<option value="prop">Fechas propuestas a validar</option></select>
         ${isContractor() ? '' : `<select id="ps-k" style="width:auto"><option value="">Todas las contratistas</option><option value="__none">Sin asignar</option>${contrs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>`}
         <select id="ps-s" style="width:auto"><option value="">Todas las etapas</option>${(p.stages || []).map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
-      <div class="row">${manage && online() ? `<button class="btn sec small" id="ps-add">+ Sitios</button><label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="ps-xl" class="hidden"></label><button class="btn sec small" id="ps-model">Modelo</button>` : ''}<button class="btn sec small" id="ps-exp">Exportar Excel</button></div></div>
+      <div class="row">${manage && online() ? `<button class="btn small" id="ps-new">＋ Sitio nuevo</button><button class="btn sec small" id="ps-add">+ Sitios existentes</button><label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="ps-xl" class="hidden"></label><button class="btn sec small" id="ps-model">Modelo</button>` : ''}<button class="btn sec small" id="ps-exp">Exportar Excel</button></div></div>
       <div id="ps-bulk" class="row hidden" style="margin-top:10px;background:var(--bg);padding:8px;border-radius:8px"><b id="ps-bn"></b><button class="btn small" id="ps-bc">Asignar contratista</button><button class="btn small" id="ps-bd">Programar fechas</button><button class="btn sec small" id="ps-bx">Quitar selección</button></div></div>
     <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr>${manage ? '<th><input type="checkbox" id="ps-all" style="width:auto"></th>' : ''}<th>Sitio</th><th>Estado</th><th class="hide-sm">Avance</th><th>Fechas</th>${isContractor() ? '' : '<th class="hide-sm">Contratista</th>'}<th></th></tr></thead><tbody id="ps-rows"></tbody></table></div>
       <p class="muted sm" id="ps-foot"></p></div>`;
@@ -690,6 +690,7 @@ function projSites(box, ctx){
   $('#ps-bc')?.addEventListener('click', () => bulkContractor(ctx, [...sel]));
   $('#ps-bd')?.addEventListener('click', () => bulkDates(ctx, [...sel]));
   $('#ps-add')?.addEventListener('click', () => addSitesModal(ctx));
+  $('#ps-new')?.addEventListener('click', () => editSite(null, { project: ctx.p.id, planned: ctx.p.elements || [] }));
   $('#ps-model')?.addEventListener('click', () => downloadScopeModel(p));
   $('#ps-xl')?.addEventListener('change', e => importScope(e.target.files[0], ctx));
   $('#ps-exp').onclick = () => exportProjectSites(ctx);
@@ -891,7 +892,7 @@ function addSitesModal(ctx){
     <div class="row" style="margin-top:6px"><button class="link" id="as-all">Seleccionar los visibles</button><span class="muted sm" id="as-n"></span></div>
     <div id="as-list" style="max-height:260px;overflow:auto;margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:4px 8px"></div>
     ${els.length ? `<label>Cantidades previstas por sitio (se pueden cambiar después)</label><div class="row">${els.map(e => `<label class="sm" style="font-weight:400;margin:0">${esc(e.name)} <input type="number" min="0" step="any" data-pq="${esc(e.id)}" style="width:80px"></label>`).join('')}</div>` : ''}
-    <p class="muted sm">¿El sitio no existe todavía? Cargalo en la pestaña Sitios o importá el Excel del proyecto (crea los sitios que falten).</p>
+    <p class="muted sm">¿El sitio no existe todavía? <button class="link" id="as-new">＋ Crear un sitio nuevo en este proyecto</button> · o importá el Excel del proyecto (crea los que falten).</p>
     <div class="err" id="as-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="as-x">Cancelar</button><button class="btn" id="as-ok">Agregar</button></div>`, { wide: true });
   const vis = () => { const q = norm($('#as-q').value), g = $('#as-g')?.value || ''; return avail.filter(s => (!g || s.grupo === g) && (!q || norm([s.name, s.localidad, s.provincia, s.grupo].join(' ')).includes(q))); };
@@ -900,6 +901,7 @@ function addSitesModal(ctx){
   $('#as-q').oninput = draw; $('#as-g') && ($('#as-g').onchange = draw);
   $('#as-all').onclick = () => { vis().slice(0, 400).forEach(s => chosen.add(s.id)); draw(); $('#as-n').textContent = `${chosen.size} elegidos`; };
   $('#as-x').onclick = m.close; draw();
+  $('#as-new').onclick = () => { m.close(); editSite(null, { project: ctx.p.id }); };
   $('#as-ok').onclick = async () => {
     if (!chosen.size) return ($('#as-err').textContent = 'Elegí al menos un sitio.');
     const planned = {}; m.el.querySelectorAll('[data-pq]').forEach(i => { if (Number(i.value) > 0) planned[i.dataset.pq] = Number(i.value); });
