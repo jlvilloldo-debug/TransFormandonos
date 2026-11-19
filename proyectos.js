@@ -120,12 +120,12 @@ async function viewMap(v, preset){
   const scope = scopeSiteSet(allSites, psAll);
   const sites = scope ? allSites.filter(t => scope.has(t.id)) : allSites;
   if (st.project && !projects.some(p => p.id === st.project)) st.project = '';
+  if (CUR_PROJ) st.project = '';   // dentro del proyecto: ya se ven solo sus sitios
   v.innerHTML = `${scopeBanner(sites.length, allSites.length)}
     <div class="card"><div class="row between"><h2 style="margin:0">Mapa</h2><span class="muted sm" id="mp-note"></span></div>
       <div class="row" style="margin-top:10px">
         <select id="mp-proj" style="width:auto"><option value="">Todos los proyectos y sitios</option>${projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
         <select id="mp-per" style="width:auto" title="Período para preventivos y correctivos"><option value="30">Visitas: últimos 30 días</option><option value="60">Últimos 60 días</option><option value="90">Últimos 90 días</option><option value="180">Últimos 6 meses</option></select>
-        ${isContractor() ? '' : `<button type="button" class="scope-pick ${scopeGet() ? 'on' : ''}" data-scope-pick title="Elegí uno o varios proyectos y grupos">🎯 ${scopeGet() ? esc(scopeLabel(scopeGet())) : 'Todos los proyectos y grupos'} <span>▾</span></button>`}
         <input id="mp-q" class="grow" placeholder="Buscar sitio o localidad">
       </div>
       <div class="layerbar" id="mp-layers">${Object.entries(LAYERS).map(([k, t]) => `<button type="button" data-ly="${k}" class="${st.layers[k] ? 'on' : ''}">${t}</button>`).join('')}
@@ -135,7 +135,7 @@ async function viewMap(v, preset){
       <div class="sem-legend" id="mp-legend"></div></div>
     <div class="card" id="mp-list"></div>`;
   $('#mp-proj').value = st.project; $('#mp-per').value = st.per;
-  const save = () => { try { localStorage.setItem('ia_map', JSON.stringify(st)); } catch {} };
+  const save = () => { if (CUR_PROJ) return; try { localStorage.setItem('ia_map', JSON.stringify(st)); } catch {} };
   let insp = insp0 || [];
   const loadInsp = async () => { insp = await inspQ(st.per); };
   if (pmap){ pmap.remove(); pmap = null; }
@@ -353,6 +353,9 @@ function editProject(p){
     <div id="pe-el"></div>
     <button class="btn sec small" id="pe-add" type="button" style="margin-top:6px">+ Elemento</button>
     <p class="muted sm" style="margin:6px 0 0">Ej.: Access Point (unidades, con serie) · Cámara (unidades, con serie) · Fibra óptica (metros) · Puesto de trabajo (puestos) · UPS, router, switch…</p>
+    <label style="margin-top:14px">Pestañas que usa este proyecto</label>
+    <div class="row" style="gap:6px;flex-wrap:wrap">${PJ_SECS.filter(([k]) => k !== 'res').map(([k, t]) => `<label class="pill" style="cursor:pointer;font-weight:400;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" class="pe-mod" value="${k}" style="width:auto;margin:0" ${!p.modules?.length || p.modules.includes(k) ? 'checked' : ''}> ${t}</label>`).join('')}</div>
+    <p class="muted sm" style="margin:4px 0 0">Las que no marques no aparecen dentro del proyecto. Resumen siempre está.</p>
     ${isNew ? '' : `<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:14px"><input type="checkbox" id="pe-a" style="width:auto" ${p.active ? 'checked' : ''}> Proyecto activo (desmarcar para cerrarlo)</label>`}
     <div class="err" id="pe-err"></div>
     <div class="row between" style="margin-top:10px">${!isNew && isAdmin() ? '<button class="btn danger small" id="pe-del">Eliminar proyecto</button>' : '<span></span>'}
@@ -391,7 +394,8 @@ function editProject(p){
     });
     const row = { name: $('#pe-n').value.trim(), short_name: $('#pe-sn').value.trim() || null, client: $('#pe-c').value.trim() || null, contract: $('#pe-k').value.trim() || null, kind: $('#pe-t').value,
       start_date: $('#pe-s').value || null, end_date: $('#pe-e').value || null, description: $('#pe-d').value.trim() || null,
-      stages: st, done_stage: $('#pe-ds').value || null, elements: els, active: isNew ? true : $('#pe-a').checked };
+      stages: st, done_stage: $('#pe-ds').value || null, elements: els, active: isNew ? true : $('#pe-a').checked,
+      modules: (() => { const m = [...document.querySelectorAll('.pe-mod:checked')].map(x => x.value); return m.length === PJ_SECS.length - 1 ? null : m; })() };
     if (row.start_date && row.end_date && row.end_date < row.start_date) return ($('#pe-err').textContent = 'El fin no puede ser antes del inicio.');
     $('#pe-ok').disabled = true;
     const { data, error } = isNew ? await sb.from('projects').insert({ ...row, org_id: me.org_id, created_by: me.id }).select('id').single()
@@ -412,7 +416,10 @@ function editProject(p){
 }
 
 let PTAB = 'res';
-async function viewProject(v, id){
+/* Pestañas del proyecto: todo lo del proyecto en un solo lugar. Cada proyecto elige cuáles usa (Editar proyecto). */
+const PJ_SECS = [['res', 'Resumen'], ['tk', '🎫 Tickets'], ['ta', '📋 Tareas'], ['in', '🔍 Inspecciones'], ['pl', '📄 Planillas'], ['sit', '📍 Sitios y mapa'],
+  ['inv', '📦 Inventario'], ['ba', '🗺 Bases y cuadrillas'], ['gan', '📅 Gantt'], ['es', '📊 Estadísticas'], ['sla', '📑 Contrato y SLA']];
+async function viewProject(v, id, sec){
   const [projects, psAll, sites, contrs, tasks] = await Promise.all([loadProjects(), loadPS(), loadSitesMap(), loadContractors().catch(() => []), loadAllTasks().catch(() => [])]);
   const p = projects.find(x => x.id === id);
   if (!p) throw new Error('No se encontró el proyecto (o no tenés acceso).');
@@ -420,30 +427,64 @@ async function viewProject(v, id){
   try { acts = await cached('acts:' + id, () => sb.from('project_activities').select('*').eq('project_id', id).order('sort')); } catch {}
   try { equip = await cached('equip:' + id, () => pageAll(() => sb.from('equipment').select('*').eq('project_id', id).order('site_id').order('id'))); } catch {}
   const ctx = { p, ps: psAll.filter(x => x.project_id === id), sites, siteById: new Map(sites.map(s => [s.id, s])), contrs, tasks, acts, equip };
-  if (['mantenimiento', 'mixto'].includes(p.kind) && typeof tkLoadBase === 'function') { try { await tkLoadBase(); } catch {} }
-  try { PTAB = localStorage.getItem('ia_ptab') || PTAB; } catch {}
+  if (typeof tkLoadBase === 'function') { try { await tkLoadBase(); } catch {} }
   const manage = isManager() && canWrite();
   const sm = projSummary(p, ctx.ps);
+  const mods = Array.isArray(p.modules) && p.modules.length ? new Set(['res', ...p.modules]) : null;
+  const secs = PJ_SECS.filter(([k]) => !mods || mods.has(k)).filter(([k]) => !(isContractor() && ['es', 'pl', 'sla', 'ba'].includes(k)));
+  const cur = secs.some(([k]) => k === sec) ? sec : 'res';
+  const openT = tasks.filter(t => taskOpen(t) && t.project_id === p.id).length;
+  const badge = { sit: sm.n || '', inv: equip.length ? equip.length + (equip.some(e => eqFailLate(e) || eqRmaLate(e)) ? ' ⚠' : '') : '', ta: openT || '' };
+  const tkr = typeof tkTkr === 'function' && p.ticketera_id ? tkTkr(p.ticketera_id) : null;
+  const orphans = norm(p.name) === 'infraestructura' && manage ? tasks.filter(t => !t.project_id).length : 0;
   v.innerHTML = `
-    <div class="card"><div class="row between"><div class="row"><button class="btn sec small" data-go="#/proj">← Proyectos</button>
-        <div><h1 style="margin:0">${esc(p.name)}</h1><div class="muted sm">${esc([PROJ_KIND[p.kind], p.client, p.contract].filter(Boolean).join(' · '))}${p.start_date || p.end_date ? ` · ${fmtD(p.start_date)} → ${fmtD(p.end_date)}` : ''}</div>${['mantenimiento', 'mixto'].includes(p.kind) ? `<div class="sm" style="margin-top:4px">${(() => { const k = typeof tkTkr === 'function' && p.ticketera_id ? tkTkr(p.ticketera_id) : null; return k ? `🎫 Ticketera: <b>${esc(k.name)}</b>` : `<span style="color:#B45309">🎫 Sin ticketera asignada</span> · <a href="#" data-sla="1">asignarla en Contrato y SLA</a>`; })()}</div>` : ''}</div></div>
-      <div class="row" style="gap:6px;flex-wrap:wrap">${can('stock') ? `<a class="btn" href="#/stock/p/${p.id}" style="margin:0;background:#7C3AED;border-color:#7C3AED">📦 Stock</a>` : ''}${isManager() ? `<a class="btn" href="#/recursos/p/${p.id}" style="margin:0">🏗 Equipo del proyecto</a>` : ''}<a class="btn sec" href="#/red/p/${p.id}" style="margin:0">🌐 Red de fibra</a><a class="btn sec" href="#/bases/${p.id}" style="margin:0">🗺 Mapa de bases</a>${isManager() && canWrite() ? '<button class="btn" id="pj-task" style="margin:0">📋 Asignar tarea</button>' : ''}${['mantenimiento', 'mixto'].includes(p.kind) ? `<a class="btn" href="#/mesa/${p.id}" style="margin:0;background:#C2410C;border-color:#C2410C">🎫 Tickets</a>` : ''}${!isContractor() ? '<button class="btn sec" id="pj-mem" style="margin:0">👥 Integrantes</button>' : ''}${manage && online() && can('proj', 3) ? '<button class="btn sec" id="pj-edit" style="margin:0">Editar proyecto</button>' : ''}</div></div>
+    <div class="card"><div class="row between"><div>
+        <h1 style="margin:0">${esc(p.name)}</h1><div class="muted sm">${esc([PROJ_KIND[p.kind], p.client, p.contract].filter(Boolean).join(' · '))}${p.start_date || p.end_date ? ` · ${fmtD(p.start_date)} → ${fmtD(p.end_date)}` : ''}</div>
+        ${!mods || mods.has('tk') ? `<div class="sm" style="margin-top:4px">${tkr ? `🎫 Ticketera: <b>${esc(tkr.name)}</b>` : `<span style="color:#B45309">🎫 Sin ticketera</span>${manage ? ` · <a href="#/proj/${p.id}/sla">asignarla en Contrato y SLA</a>` : ''}`}</div>` : ''}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${isManager() && canWrite() ? '<button class="btn" id="pj-task" style="margin:0">📋 Asignar tarea</button>' : ''}${can('stock') ? `<a class="btn sec" href="#/stock/p/${p.id}" style="margin:0">📦 Stock</a>` : ''}${isManager() ? `<a class="btn sec" href="#/recursos/p/${p.id}" style="margin:0">🏗 Equipo</a>` : ''}<a class="btn sec" href="#/red/p/${p.id}" style="margin:0">🌐 Red de fibra</a>${!isContractor() ? '<button class="btn sec" id="pj-mem" style="margin:0">👥 Integrantes</button>' : ''}${manage && online() && can('proj', 3) ? '<button class="btn sec" id="pj-edit" style="margin:0">⚙ Editar proyecto</button>' : ''}</div></div>
       <div class="row" style="margin-top:12px;gap:12px"><b style="font-size:22px">${Math.round(sm.pct)}%</b><div class="progress grow" style="height:10px"><i style="width:${Math.round(sm.pct)}%"></i></div></div>
-      <div class="seg" id="pj-tabs" style="margin-top:12px">${[['res', 'Resumen'], ['sit', `Sitios (${sm.n})`], ['gan', 'Gantt'], ['inv', `Inventario${equip.length ? ' (' + equip.length + ')' : ''}${equip.some(e => eqFailLate(e) || eqRmaLate(e)) ? ' ⚠' : ''}`], ...(['mantenimiento', 'mixto'].includes(p.kind) && typeof tkProjSla === 'function' ? [['sla', 'Contrato y SLA']] : [])].map(([k, t]) => `<button type="button" data-pt="${k}" class="${PTAB === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="seg pj-secs" id="pj-tabs" style="margin-top:12px;flex-wrap:wrap">${secs.map(([k, t]) => `<button type="button" data-pt="${k}" class="${cur === k ? 'on' : ''}" style="flex:0 0 auto;white-space:nowrap">${t}${badge[k] ? ` <span class="muted" style="font-weight:700">${badge[k]}</span>` : ''}</button>`).join('')}</div>
     </div>
-    <div id="pj-body"></div>`;
+    ${orphans ? `<div class="banner warn" style="margin-bottom:12px"><span class="dot"></span><div style="flex:1"><b>Hay ${orphans} tarea${orphans === 1 ? '' : 's'} sin proyecto</b><div class="sm">Pasalas a Infraestructura para que cada tarea quede en un proyecto.</div></div><button class="btn small" id="pj-adopt">Pasarlas acá</button></div>` : ''}
+    <div id="pj-body"><div class="card muted">Cargando…</div></div>`;
   $('#pj-edit')?.addEventListener('click', () => editProject(p));
   $('#pj-mem')?.addEventListener('click', async () => { try { await needLib('stock'); stkCss(); await stkMembers(p); } catch (e){ toast(errText(e)); } });
-  v.querySelector('[data-sla]')?.addEventListener('click', e => { e.preventDefault(); show('sla'); });
   $('#pj-task')?.addEventListener('click', () => editTask(null, contrs, { project_id: p.id, contract: p.contract || null }));
-  const show = k => {
-    PTAB = k; try { localStorage.setItem('ia_ptab', k); } catch {}
-    $$('#pj-tabs [data-pt]').forEach(b => b.classList.toggle('on', b.dataset.pt === k));
-    const body = $('#pj-body');
-    if (k === 'res') projResumen(body, ctx); else if (k === 'sit') projSites(body, ctx); else if (k === 'gan') projGantt(body, ctx); else if (k === 'sla') tkProjSla(body, p).catch(e => { body.innerHTML = `<div class="card">${esc(errText(e))}</div>`; }); else projInventory(body, ctx);
+  $('#pj-adopt')?.addEventListener('click', async () => { if (!needOnline()) return; const { data, error } = await sb.rpc('proj_adopt_tasks', { p_project: p.id }); if (error) return toast(errText(error));
+    toast(`${data} tarea${data === 1 ? '' : 's'} pasada${data === 1 ? '' : 's'} a Infraestructura`); await IDB.del('kv', CUR_UID + ':tasks').catch(() => {}); route(); });
+  $$('#pj-tabs [data-pt]').forEach(b => b.onclick = () => { location.hash = `#/proj/${p.id}/${b.dataset.pt}`; });
+  const body = $('#pj-body');
+  try {
+    if (cur === 'res') projResumen(body, ctx); else if (cur === 'sit'){ body.innerHTML = '<div id="pj-map"></div><div id="pj-sl"></div>'; projSites($('#pj-sl'), ctx); try { await viewMap($('#pj-map')); } catch (e){ $('#pj-map').innerHTML = ''; } } else if (cur === 'gan') projGantt(body, ctx); else if (cur === 'inv') projInventory(body, ctx);
+    else if (cur === 'sla') await tkProjSla(body, p);
+    else if (cur === 'tk') await (isManager() ? viewMesa(body, p.id) : viewTickets(body));
+    else if (cur === 'ta') await viewTasks(body);
+    else if (cur === 'in') await viewInspections(body);
+    else if (cur === 'es') await viewStats(body);
+    else if (cur === 'ba'){ await needLib('bases'); await viewBases(body, p.id); }
+    else if (cur === 'pl') await projPlanillas(body, ctx);
+  } catch (e){ body.innerHTML = `<div class="card"><b>${/OFFLINE|NEEDS_ONLINE/.test(e.message) || isNetErr(e) ? 'Sin conexión' : 'No se pudo abrir'}</b><p class="muted">${esc(errText(e))}</p></div>`; }
+}
+
+/* ---------- Planillas del proyecto: las plantillas que usa ---------- */
+async function projPlanillas(box, ctx){
+  const { p } = ctx;
+  const all = await cached('tpl-all-min', () => sb.from('templates').select('id,name,kind,published').order('name')).catch(() => []);
+  let sel = new Set(p.templates || []);
+  const edit = isManager() && canWrite() && online();
+  const draw = () => {
+    const mine = all.filter(t => sel.has(t.id)), rest = all.filter(t => !sel.has(t.id));
+    box.innerHTML = `<div class="card"><div class="row between"><div><h2 style="margin:0">📄 Planillas del proyecto</h2><div class="muted sm">Al iniciar una inspección dentro del proyecto se ofrecen solo estas.${mine.length ? '' : ' Si no elegís ninguna, se ofrecen todas.'}</div></div>
+        <div class="row" style="gap:6px">${edit ? '<a class="btn" href="#/tpl">+ Cargar una nueva</a>' : ''}<a class="btn sec" href="#/tpl">Biblioteca de plantillas</a></div></div>
+      <div style="margin-top:12px">${mine.map(t => `<div class="row between" style="padding:8px 0;border-bottom:1px solid var(--line)"><div><b>${esc(t.name)}</b> <span class="muted sm">${esc(KIND_TXT?.[t.kind] || t.kind || '')}${t.published ? '' : ' · borrador'}</span></div>
+        <div class="row" style="gap:6px"><a class="btn sec small" href="#/tpl/${t.id}">Abrir</a>${edit ? `<button class="btn sec small" data-rm="${t.id}">Quitar</button>` : ''}</div></div>`).join('') || '<p class="muted">Todavía no elegiste planillas para este proyecto.</p>'}</div>
+      ${edit && rest.length ? `<div class="row" style="margin-top:12px;gap:6px"><select id="pl-add" style="width:auto;max-width:420px"><option value="">Agregar desde la biblioteca…</option>${rest.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select><button class="btn sec" id="pl-ok">Agregar</button></div>` : ''}</div>`;
+    const save = async () => { const { error } = await sb.from('projects').update({ templates: [...sel] }).eq('id', p.id); if (error){ toast(errText(error)); return false; }
+      p.templates = [...sel]; await IDB.del('kv', CUR_UID + ':projects').catch(() => {}); return true; };
+    box.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { sel.delete(b.dataset.rm); if (await save()) draw(); });
+    $('#pl-ok')?.addEventListener('click', async () => { const v = $('#pl-add').value; if (!v) return; sel.add(v); if (await save()) { toast('Planilla agregada'); draw(); } });
   };
-  $$('#pj-tabs [data-pt]').forEach(b => b.onclick = () => show(b.dataset.pt));
-  show(['res', 'sit', 'gan', 'inv'].includes(PTAB) || (PTAB === 'sla' && ['mantenimiento', 'mixto'].includes(p.kind)) ? PTAB : 'res');
+  draw();
 }
 
 /* ---------- Resumen ---------- */
@@ -1623,8 +1664,22 @@ async function homeBoard(box){
         <span style="font-size:28px">⚠</span><div class="grow"><b>${crit.length ? `${crit.length} pendiente${crit.length === 1 ? '' : 's'} crítico${crit.length === 1 ? '' : 's'}` : `${pend.length} pendiente${pend.length === 1 ? '' : 's'} abierto${pend.length === 1 ? '' : 's'}`}</b>
         <div class="sm">${late.length ? `<b>${late.length} atrasado${late.length === 1 ? '' : 's'}</b> · ` : ''}${pend.length} abiertos en total · ver en el mapa</div></div><span>›</span></a>` : ''}
       ${props && isValidator() ? `<a class="card alertcard" href="#/proj"><span style="font-size:24px">📅</span><div class="grow"><b>${props} fecha${props === 1 ? '' : 's'} propuesta${props === 1 ? '' : 's'} por contratistas</b><div class="sm">Esperan tu validación</div></div><span>›</span></a>` : ''}
-      ${act.length ? `<div class="row between" style="margin:4px 0 8px"><h2 style="margin:0">Proyectos</h2><a href="#/proj" class="sm">Ver todos</a></div><div class="pj-grid" style="margin-bottom:14px">${act.slice(0, 6).map(p => projCard(p, psAll, tasks)).join('')}</div>` : ''}`;
+      ${act.length || (isManager() && can('proj', 3)) ? `<div class="row between" style="margin:4px 0 8px"><h2 style="margin:0">Mis proyectos</h2><div class="row" style="gap:8px"><a href="#/proj" class="sm">Ver todos y terminados</a>${isManager() && canWrite() && can('proj', 3) ? '<button class="btn small" id="hb-new">+ Nuevo proyecto</button>' : ''}</div></div><div class="pj-grid" style="margin-bottom:14px">${act.map(p => projCard(p, psAll, tasks)).join('')}</div>` : ''}`;
     box.querySelectorAll('[data-open]').forEach(b => b.onclick = () => location.hash = '#/proj/' + b.dataset.open);
+    box.querySelector('#hb-new')?.addEventListener('click', () => editProject(null));
+    // comparación entre proyectos (coordinación)
+    if (isManager() && act.length > 1){
+      const tD = todayStr();
+      const rows = act.map(p => { const ps = psAll.filter(x => x.project_id === p.id), sm = projSummary(p, ps), tk = tasks.filter(t => t.project_id === p.id && taskOpen(t));
+        return { p, sm, open: tk.length, late: tk.filter(t => t.due_date && t.due_date < tD).length, pend: tk.filter(t => t.is_pending).length }; });
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `<div class="card"><div class="row between"><h2 style="margin:0">📊 Comparación entre proyectos</h2><a href="#/stats" class="sm">Estadísticas generales</a></div>
+        <div class="tblwrap" style="margin-top:8px"><table class="tbl"><thead><tr><th>Proyecto</th><th>Avance</th><th>Sitios</th><th>Tareas abiertas</th><th>Vencidas</th><th>Pendientes</th></tr></thead><tbody>
+        ${rows.map(r => `<tr data-open="${r.p.id}" style="cursor:pointer"><td><b>${esc(r.p.short_name || r.p.name)}</b></td><td><div class="row" style="gap:6px;flex-wrap:nowrap"><div class="progress" style="width:90px;height:8px"><i style="width:${Math.round(r.sm.pct)}%"></i></div>${Math.round(r.sm.pct)}%</div></td>
+          <td>${r.sm.n}</td><td>${r.open}</td><td style="color:${r.late ? 'var(--red)' : 'inherit'};font-weight:${r.late ? 700 : 400}">${r.late}</td><td>${r.pend}</td></tr>`).join('')}</tbody></table></div></div>`;
+      box.appendChild(wrap.firstElementChild);
+      box.querySelectorAll('tr[data-open]').forEach(b => b.onclick = () => location.hash = '#/proj/' + b.dataset.open);
+    }
   } catch { box.innerHTML = ''; }
 }
 

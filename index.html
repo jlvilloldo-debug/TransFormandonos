@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+AYtVeALw0Ya2DX29mM+dQPOhDb/AtJnQL1C2sMp1iU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-2W+kaTdsxZQ7LTrqzvUep0QHc4NszT3AinWse+hweXA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -401,6 +401,7 @@ tr.sor-bad td{background:var(--red-bg)}
   <header class="top">
     <button id="b-back" title="Volver" aria-label="Volver" style="font-size:17px;padding:3px 10px;margin-right:4px" class="hidden">←</button>
     <div class="brand"><span id="logo-top"></span><div>InspectApp<small id="org-name">—</small></div></div>
+    <select id="pj-pick" class="hidden" aria-label="Proyecto" title="Cambiar de proyecto" style="width:auto;max-width:260px;margin:0 0 0 10px;padding:6px 10px;border-radius:10px;background:#1C3D63;color:#fff;border:1px solid #2E5583;font-weight:700"></select>
     <div class="sp"></div>
     <button id="b-scope" class="hidden" title="Elegí con qué proyectos o grupos trabajás">🎯</button>
     <button id="b-sos" title="Emergencia: llamar, ubicación, accidente" aria-label="Emergencia" style="font-size:15px;padding:5px 10px;background:#DC2626;color:#fff;border-color:#DC2626;font-weight:700">🆘</button>
@@ -451,7 +452,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.25.0';
+const APP_VERSION = '5.26.0';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -682,9 +683,10 @@ function linkLine(layer, l, map){
 
 /* ---------- 🎯 Trabajo con…: proyectos y grupos elegidos (se guarda en este teléfono) ---------- */
 const SCOPE_K = () => 'ia_scope:' + CUR_UID;
+let CUR_PROJ = null;   // proyecto abierto: tareas, inspecciones, estadísticas y mesa muestran solo lo suyo
 function scopeGet(){
   if (!me || isContractor()) return null;
-  try { const x = JSON.parse(localStorage.getItem(SCOPE_K()) || 'null'); if (x && ((x.p || []).length || (x.g || []).length)) return { p: (x.p || []).map(String), g: (x.g || []).map(String), loose: x.loose !== false, names: x.names || {} }; } catch {}
+  if (CUR_PROJ) return { p: [CUR_PROJ], g: [], loose: false, names: {}, proj: true };
   return null;
 }
 function scopeLabel(x){
@@ -693,7 +695,7 @@ function scopeLabel(x){
 }
 function scopeBtn(){
   const b = $('#b-scope'); if (!b) return;
-  b.classList.toggle('hidden', !me || isContractor());
+  b.classList.add('hidden'); return;   // reemplazado por el selector de proyecto
   const x = scopeGet();
   b.innerHTML = `🎯 <span class="scope-lbl">${x ? esc(scopeLabel(x)) : 'Todos'}</span>`;
   b.classList.toggle('scope-on', !!x);
@@ -715,7 +717,7 @@ function scopeTaskOk(t, set){
   return x.loose && !t.project_id && !ids.length;
 }
 function scopeBanner(shown, total, what = 'sitios'){
-  const x = scopeGet(); if (!x) return '';
+  const x = scopeGet(); if (!x || x.proj) return '';
   return `<div class="banner scope-ban"><span class="dot"></span><div style="flex:1"><b>🎯 Trabajando con: ${esc(scopeLabel(x))}</b><div class="sm">Se muestran ${shown} de ${total} ${what}.</div></div>
     <div class="row" style="gap:6px"><button class="btn small sec" data-scope-pick>Cambiar</button><button class="btn small sec" data-scope-all>Ver todo</button></div></div>`;
 }
@@ -749,6 +751,23 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-scope-pick]')) scopeModal();
   else if (e.target.closest('[data-scope-all]')){ try { localStorage.removeItem(SCOPE_K()); } catch {} scopeBtn(); route(); }
 });
+
+/* ---------- selector de proyecto (encabezado) ---------- */
+let PJ_PICK = [];
+async function pjPickFill(){
+  const sel = $('#pj-pick'); if (!sel || !me || isContractor()) return;
+  try { PJ_PICK = (await loadProjects()).filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name, 'es')); } catch { PJ_PICK = []; }
+  sel.innerHTML = `<option value="">🏠 Mis proyectos</option>` + PJ_PICK.map(p => `<option value="${esc(p.id)}">${esc(p.short_name || p.name)}</option>`).join('');
+  sel.classList.toggle('hidden', !PJ_PICK.length);
+  sel.onchange = () => { location.hash = sel.value ? '#/proj/' + sel.value : '#/home'; };
+  pjPickSync();
+  // técnico con un solo proyecto: la app abre directo en su proyecto (una vez por sesión)
+  const k = 'ia_autoproj:' + CUR_UID;
+  if (!isManager() && PJ_PICK.length === 1 && !sessionStorage.getItem(k) && ['', '#', '#/', '#/home'].includes(location.hash)){
+    sessionStorage.setItem(k, '1'); location.hash = '#/proj/' + PJ_PICK[0].id;
+  }
+}
+function pjPickSync(){ const sel = $('#pj-pick'); if (sel && sel.options.length) sel.value = CUR_PROJ && PJ_PICK.some(p => p.id === CUR_PROJ) ? CUR_PROJ : ''; }
 
 function storedUid(){ try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || 'null')?.user?.id || null; } catch { return null; } }
 
@@ -1322,6 +1341,8 @@ async function boot(){
   ['stats','sites','tpl','org'].forEach(t => $(`#tabs [data-tab="${t}"]`).classList.toggle('hidden', contr));
   $('#tab-mesa').classList.toggle('hidden', !isManager());
   permApplyTabs(); scopeBtn();
+  if (!contr) ['mesa', 'proj', 'insp', 'tasks', 'stats', 'sites'].forEach(t => $(`#tabs [data-tab="${t}"]`)?.classList.add('hidden'));
+  pjPickFill();
   $('#tab-instr').classList.toggle('hidden', contr || (typeof can === 'function' && !can('stock')));
   // horas para todos: vincula al usuario con su Recurso (por email o nombre; si no hay, lo crea). Una vez por sesión.
   if (online() && me.hh_enabled !== false && typeof can === 'function' && can('horas', 2)){
@@ -1421,11 +1442,15 @@ function navBuild(){
   const nav = $('#bnav'); if (!nav || !me) return;
   const c = (m, l) => typeof can !== 'function' || can(m, l);
   const it = [['home', '🏠', 'Inicio', '#/home']];
+  let lastP = null; try { lastP = localStorage.getItem('ia_lastproj:' + CUR_UID); } catch {}
+  if (!isContractor()) it.push(['proj', '📁', 'Proyecto', lastP ? '#/proj/' + lastP : '#/proj']);
   if (isManager()){
-    it[0] = ['mesa', '🧭', 'Mesa', '#/mesa'];
-    if (c('horas')) it.push(['hhb', '📥', 'Bandeja', '#/tools/hh/bandeja']);
     if (c('tasks')) it.push(['agenda', '📅', 'Agenda', '#/agenda']);
-    if (c('tasks')) it.push(['tasks', '📋', 'Tareas', '#/tasks']);
+    if (c('horas')) it.push(['hhb', '📥', 'Bandeja', '#/tools/hh/bandeja']);
+    else it.push(['map', '🗺', 'Mapa', '#/map']);
+  } else if (!isContractor()){
+    if (c('horas', 2) && me.hh_enabled !== false) it.push(['hh', '⏱️', 'Horas', '#/tools/hh/hoy']);
+    if (c('veh', 2)) it.push(['veh', '🚗', 'Vehículo', '#/tools/veh']);
   } else {
     if (c('tasks')) it.push(['tickets', '🎫', 'Tickets', '#/tickets']);
     if (c('horas', 2) && me.hh_enabled !== false) it.push(['hh', '⏱️', 'Horas', '#/tools/hh/hoy']);
@@ -1437,7 +1462,7 @@ function navBuild(){
 }
 function navMark(){
   const h = location.hash || '#/home', nav = $('#bnav'); if (!nav) return;
-  const k = h.startsWith('#/tools/hh/bandeja') ? 'hhb' : h.startsWith('#/tools/hh') ? 'hh' : h.startsWith('#/tools/veh') ? 'veh' : h.startsWith('#/tasks') ? 'tasks' : h.startsWith('#/tickets') ? 'tickets' : h.startsWith('#/mesa') ? 'mesa' : h.startsWith('#/agenda') ? 'agenda' : h.startsWith('#/map') ? 'map' : h.startsWith('#/home') || h === '#/' ? 'home' : 'more';
+  const k = h.startsWith('#/proj') ? 'proj' : h.startsWith('#/map') ? 'map' : h.startsWith('#/agenda') ? 'agenda' : h.startsWith('#/tools/hh/bandeja') ? 'hhb' : h.startsWith('#/tools/hh') ? 'hh' : h.startsWith('#/tools/veh') ? 'veh' : h.startsWith('#/tasks') ? 'tasks' : h.startsWith('#/tickets') ? 'tickets' : h.startsWith('#/mesa') ? 'mesa' : h.startsWith('#/agenda') ? 'agenda' : h.startsWith('#/map') ? 'map' : h.startsWith('#/home') || h === '#/' ? 'home' : 'more';
   nav.querySelectorAll('[data-bn]').forEach(a => a.classList.toggle('on', a.dataset.bn === k));
 }
 window.addEventListener('hashchange', navMark);
@@ -1448,8 +1473,11 @@ async function route(){
   if (leaveGuard){ await leaveGuard(); leaveGuard = null; }
   geoStop();
   const [, tab='home', id, id2] = (location.hash || '#/home').split('/');
+  CUR_PROJ = tab === 'proj' && id && /^[0-9a-f-]{36}$/.test(id) ? id : null;
+  if (CUR_PROJ) { try { localStorage.setItem('ia_lastproj:' + CUR_UID, CUR_PROJ); } catch {} }
+  pjPickSync();
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'informe' ? 'insp' : tab)));
-  document.body.classList.toggle('wide-main', tab === 'agenda' || tab === 'recursos' || tab === 'red' || tab === 'bases' || tab === 'instr');
+  document.body.classList.toggle('wide-main', tab === 'agenda' || tab === 'recursos' || tab === 'red' || tab === 'bases' || tab === 'instr' || (tab === 'proj' && id2 === 'ba'));
   if (tab !== 'map' && typeof pmap !== 'undefined' && pmap){ pmap.remove(); pmap = null; }
   if (typeof fmap !== 'undefined' && fmap){ fmap.remove(); fmap = null; }
   $('#modal-root').innerHTML = ''; hideTip();
@@ -1464,7 +1492,7 @@ async function route(){
     else if (tab === 'insp') await viewInspections(v);
     else if (tab === 'informe') await viewReport(v, id);
     else if (tab === 'map') await viewMap(v, id);
-    else if (tab === 'proj' && id) await viewProject(v, id);
+    else if (tab === 'proj' && id) await viewProject(v, id, id2);
     else if (tab === 'proj') await viewProjects(v);
     else if (tab === 'tools' && id === 'dc'){ await needLib('dc'); await viewDC(v); }
     else if (tab === 'tools' && id === 'hh') await viewHH(v);
@@ -1609,22 +1637,22 @@ async function viewHome(v){
     <div id="instr-home"></div>
     <div id="hh-quick"></div>
     <div id="push-ask"></div>
+    <div id="home-board"></div>
     <div class="card row between" id="home-hello">
       <div><h1>Hola${me.full_name ? ', ' + esc(me.full_name.split(' ')[0]) : ''}</h1>
       <p class="muted" style="margin:0">${esc(org?.name || '')} · ${org?.is_trial && st!=='vencida' ? 'Prueba gratis' : STATE_TXT[st]} hasta el ${fmtDate(org?.license_expires_at)}</p></div>
       ${canWrite() ? '<button class="btn" id="b-new">+ Nueva inspección</button>' : ''}
     </div>
     ${showInstall ? `<div class="card row between" style="background:#0F2A4A;color:#fff;border:0"><div class="row" style="flex-wrap:nowrap">${LOGO(44)}<div><b>Instalá InspectApp en tu ${isIOS() ? 'iPhone' : 'celular o PC'}</b><div class="sm" style="opacity:.8">Abre como aplicación y funciona sin señal en el campo.</div></div></div><button class="btn" id="b-inst2">Instalar</button></div>` : ''}
-    <div id="home-board"></div>
     ${isManager() ? `<div class="stats" style="margin-bottom:14px">
-      <div class="stat"><span>Completadas este mes</span><b>${kpi.cMonth}</b></div>
+      <div class="stat"><span>Inspecciones completadas este mes</span><b>${kpi.cMonth}</b></div>
       <div class="stat"><span>Borradores abiertos</span><b>${kpi.cDraft}</b></div>
       <div class="stat"><span>Ítems señalados este mes</span><b>${kpi.flagged}</b></div>
-    </div>` : ''}
-    <div class="card"><div class="row between"><h2 style="margin:0">Últimas inspecciones</h2><a href="#/insp" class="sm">Ver todas</a></div>${inspTable(rows)}</div>`;
+    </div>` : ''}`;
   $('#b-new')?.addEventListener('click', newInspection);
   $('#b-inst2')?.addEventListener('click', doInstall);
-  bindInspRows(v, rows);
+  void rows;
+  if (isManager()){ const hb = $('#home-board'), hq = $('#hh-quick'); if (hb && hq) hq.before(hb); }   // coordinación: los proyectos primero
   tkHomeCard($('#tk-home')).catch(() => {});
   hhHomeQuick($('#hh-quick'));
   empPushBanner($('#push-ask'));
@@ -1708,6 +1736,13 @@ async function newInspection(){
       cached('sites-min2', () => pageAll(() => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name').order('id'))).catch(() => []),
     ]);
   } catch (e){ return toast(errText(e)); }
+  if (CUR_PROJ){
+    try {
+      const [pj, psAll] = await Promise.all([loadProjects().then(l => l.find(p => p.id === CUR_PROJ)), loadPS()]);
+      if (pj?.templates?.length){ const T = new Set(pj.templates); const f = tpls.filter(t => T.has(t.id)); if (f.length) tpls = f; }
+      const S = new Set(psAll.filter(x => x.project_id === CUR_PROJ).map(x => x.site_id)); const fs = sites.filter(s => S.has(s.id)); if (fs.length) sites = fs;
+    } catch {}
+  }
   if (!tpls?.length){
     return modal(`<h2>Primero cargá una plantilla</h2><p class="muted">Para iniciar una inspección necesitás al menos una plantilla publicada.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" data-go="#/tpl">Ir a Plantillas</button></div>`);
@@ -2478,13 +2513,14 @@ async function viewStats(v){
     const taskContract = new Map(allTasksC.map(t => [t.id, t.contract]));
     const inCt = r => !f.ct || (r.task_id && taskContract.get(r.task_id) === f.ct) || contractOf(r) === f.ct;
     rows = rows.filter(r => inTraza(r) && inCt(r) && (!f.kind || r.kind === f.kind));
+    if (CUR_PROJ){ const scSet = scopeSiteSet(await loadSitesMap().catch(() => []), await loadPS().catch(() => [])); rows = rows.filter(r => r.site_id && scSet && scSet.has(r.site_id)); }
     $('#st-note').textContent = online() ? '' : 'Sin conexión: datos de la última descarga';
     let perf = [];
     try {
       const [tasks, contrs] = await Promise.all([
-        cached('stats-tasks2:' + f.per, () => sb.from('tasks').select('id,contractor_id,contract,status,due_date,completed_at,quality,rejections').gte('due_date', from.toISOString().slice(0, 10)).limit(5000)),
+        cached('stats-tasks3:' + f.per, () => sb.from('tasks').select('id,contractor_id,contract,status,due_date,completed_at,quality,rejections,project_id').gte('due_date', from.toISOString().slice(0, 10)).limit(5000)),
         loadContractors()]);
-      const tsel = tasks.filter(t => !f.ct || t.contract === f.ct);
+      const tsel = tasks.filter(t => (!f.ct || t.contract === f.ct) && (!CUR_PROJ || t.project_id === CUR_PROJ));
       perf = contractorPerformance(tsel, contrs, rows);
       perf.byContract = contractSummary(tasks, contrs, rows);
       perf.ct = f.ct;
@@ -2699,7 +2735,7 @@ async function viewTasks(v){
   };
   $('#tf-st').onchange = render; $('#tf-q').oninput = render; $('#tf-c') && ($('#tf-c').onchange = render); $('#tf-k') && ($('#tf-k').onchange = render);
   render();
-  $('#b-newtask')?.addEventListener('click', () => editTask(null, contrs));
+  $('#b-newtask')?.addEventListener('click', () => editTask(null, contrs, CUR_PROJ ? { project_id: CUR_PROJ } : undefined));
 }
 
 async function contractorLoad(){
@@ -2725,6 +2761,7 @@ async function editTask(t, contrs, preset){
   const staffOpts = (typeof HHS !== 'undefined' && HHS.staff || []).filter(s => s.active && s.kind !== 'contratista');
   const isNew = !t;
   t = t || { task_type: 'inspeccion', priority: 'normal', due_date: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10), sites: [], ...(preset || {}) };
+  if (isNew && !t.project_id) t.project_id = (projOpts.find(p => norm(p.name) === 'infraestructura') || {}).id || null;   // sin proyecto → Infraestructura
   let chosen = (t.sites || []).map(s => ({...s}));
   const defaultTpl = type => (type === 'inspeccion' ? tpls.find(x => x.kind === 'preventivo') : tpls.find(x => /cierre de tarea/i.test(x.name))) || tpls[0];
   const m = modal(`<h2>${isNew ? (t.is_pending ? 'Nuevo pendiente' : 'Nueva tarea') : 'Editar tarea'}</h2>${t.is_pending && isNew ? '<p class="muted sm" style="margin-top:-6px">Aparece en el mapa con su semáforo. Plazo: crítico 24 h · alto 72 h · normal 5 días.</p>' : ''}
@@ -3699,6 +3736,8 @@ async function viewOrg(v){
   const active = (members || []).filter(m => m.active).length;
   const adm = isAdmin();
   v.innerHTML = `
+    ${isManager() ? `<div class="card"><h2 style="margin:0 0 4px">🏢 Vistas de toda la empresa</h2><div class="muted sm">Lo de todos los proyectos junto. Para trabajar, entrá a cada proyecto desde Inicio o el selector de arriba.</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:10px"><a class="btn sec small" href="#/mesa">🎫 Mesa (todos los tickets)</a><a class="btn sec small" href="#/tasks">📋 Todas las tareas</a><a class="btn sec small" href="#/insp">🔍 Todas las inspecciones</a><a class="btn sec small" href="#/sites">📍 Sitios (alta y edición)</a><a class="btn sec small" href="#/stats">📊 Estadísticas generales</a><a class="btn sec small" href="#/proj">📁 Todos los proyectos</a>${typeof can !== 'function' || can('stock') ? '<a class="btn sec small" href="#/stock">📦 Stock</a>' : ''}</div></div>` : ''}
     ${isManager() ? `<a class="card row between" href="#/recursos" style="text-decoration:none;color:inherit;border-left:5px solid var(--s1)"><div><h2 style="margin:0">👥 Recursos</h2><div class="muted sm">Organigrama, personal propio y contratistas, en qué proyectos está cada uno. Alta de personas y carga por Excel.</div></div><span class="btn" style="margin:0">Abrir</span></a>` : ''}
     ${permCanManage() ? `<div class="card row between"><div><h2 style="margin:0">🔐 Permisos por módulo</h2><div class="muted sm">Qué ve y qué puede cargar cada perfil o persona${adm ? ', y qué coordinador te ayuda a manejarlos' : ''}.</div></div><a class="btn sec" href="#/perms">Abrir</a></div>` : ''}
     ${isManager() ? '<div id="org-ext"></div>' : ''}

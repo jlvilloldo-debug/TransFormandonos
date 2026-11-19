@@ -93,7 +93,7 @@ function tkCss(){
 /* ---------- carga de datos ---------- */
 async function tkLoadBase(){
   const [pr, tk] = await Promise.all([
-    cached('tk-proj', () => sb.from('projects').select('id,name,client,contract,kind,active,ticketera_id,corr_template_id,node_priority,end_date,short_name').in('kind', ['mantenimiento', 'mixto']).order('name')),
+    cached('tk-proj', () => sb.from('projects').select('id,name,client,contract,kind,active,ticketera_id,corr_template_id,node_priority,end_date,short_name').order('name')),
     cached('tk-tkr', () => sb.from('ticketeras').select('*').order('name')).catch(() => []),
   ]);
   TK.projects = (pr || []).filter(p => p.active !== false); TK.tkr = (tk || []).filter(x => x.active !== false);
