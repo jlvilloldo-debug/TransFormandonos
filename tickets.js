@@ -132,11 +132,14 @@ function tkWho(t){
    ===================================================================== */
 async function viewMesa(v, id){
   if (id) TK.filter = id;
+  const inPj = typeof CUR_PROJ !== 'undefined' && CUR_PROJ ? CUR_PROJ : null;   // abierta dentro de un proyecto
+  if (inPj){ TK.filter = inPj; TK._pj = true; } else if (TK._pj){ TK.filter = id || ''; TK._pj = false; }   // al salir del proyecto, la Mesa general vuelve a mostrar todo
   tkCss();
   if (!isManager()){ location.hash = '#/tickets'; return; }
   if (!needOnline()){ v.innerHTML = '<div class="card">La mesa necesita señal.</div>'; return; }
   await Promise.all([tkLoadBase(), (async () => { try { await hhLoadBase(); } catch {} })(), loadContractors().then(c => { TK.contrs = c; }).catch(() => {})]);
-  const [list, shifts] = await Promise.all([tkLoadList(), sb.from('mesa_shifts').select('*').is('ended_at', null).then(r => r.data || [])]);
+  const [list, shifts0, pjTeam] = await Promise.all([tkLoadList(), sb.from('mesa_shifts').select('*').is('ended_at', null).then(r => r.data || []), tkProjTeam(inPj)]);
+  const shifts = inPj ? shifts0.filter(s => !s.project_ids?.length || s.project_ids.includes(inPj)) : shifts0;
   const mine = shifts.find(s => s.user_id === me.id);
   const projTxt = s => !s.project_ids?.length ? 'todos los proyectos' : s.project_ids.map(id => tkProj(id)?.name || '').filter(Boolean).join(' · ');
   const f = TK.filter;
@@ -155,7 +158,7 @@ async function viewMesa(v, id){
     <div class="row between" style="margin-bottom:10px;gap:10px">
       <div><h1 style="margin:0">Mesa de tickets</h1><div class="muted sm">${shifts.length ? 'De turno: ' + shifts.map(s => `<b>${esc(s.user_name || '')}</b> (${esc(projTxt(s))})`).join(' · ') : 'Nadie tomó el turno: los informes listos les llegan a toda la oficina.'}</div></div>
       <div class="row" style="gap:6px">
-        <select id="tk-f" style="width:auto"><option value="">Todos los proyectos</option>${TK.projects.map(p => `<option value="${esc(p.id)}" ${p.id === f ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+        <select id="tk-f" style="width:auto${inPj ? ';display:none' : ''}"><option value="">Todos los proyectos</option>${TK.projects.map(p => `<option value="${esc(p.id)}" ${p.id === f ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
         <button class="btn ${mine ? 'sec' : ''}" id="tk-shift">${mine ? 'Dejar el turno' : 'Tomar el turno'}</button>
         <button class="btn sec" id="tk-cfg" title="Ticketeras">⚙ Ticketeras</button></div></div>
     <div id="tk-inbox"></div>
@@ -182,10 +185,22 @@ async function viewMesa(v, id){
   clearInterval(TK.timer);
   TK.timer = setInterval(() => { if (!document.body.contains(v.querySelector('.tk-board'))){ clearInterval(TK.timer); return; }
     v.querySelectorAll('[data-left]').forEach(el => { const t = list.find(x => x.id === el.dataset.left); if (t) el.textContent = tkLeftTxt(t); }); }, 60000);
-  tkPeople($('#tk-people'), list).catch(() => { $('#tk-people').textContent = 'Sin datos de la gente.'; });
-  tkMap(list.filter(t => t.status !== 'cerrado')).catch(() => {});
+  tkPeople($('#tk-people'), inPj ? vis : list, pjTeam).catch(() => { $('#tk-people').textContent = 'Sin datos de la gente.'; });
+  tkMap((inPj ? vis : list).filter(t => t.status !== 'cerrado'), pjTeam).catch(() => {});
 }
 
+/* equipo del proyecto: personal asignado (Equipo del proyecto), integrantes y contratistas de sus sitios. null = sin filtro */
+async function tkProjTeam(pid){
+  if (!pid) return null;
+  const [ps, mem, sites] = await Promise.all([
+    sb.from('project_staff').select('staff_id,status').eq('project_id', pid).then(r => r.data || []).catch(() => []),
+    sb.from('project_members').select('user_id').eq('project_id', pid).then(r => r.data || []).catch(() => []),
+    sb.from('project_sites').select('contractor_id').eq('project_id', pid).not('contractor_id', 'is', null).then(r => r.data || []).catch(() => [])]);
+  const users = new Set(mem.map(m => m.user_id));
+  const staff = new Set(ps.filter(x => x.status !== 'finalizada').map(x => x.staff_id));
+  (HHS.staff || []).forEach(s => { if (s.user_id && users.has(s.user_id)) staff.add(s.id); });
+  return { staff, contrs: new Set(sites.map(x => x.contractor_id)) };
+}
 /* gente de hoy: jornada abierta, guardia y tickets abiertos */
 async function tkPeopleData(){
   const today = todayStr();
@@ -195,20 +210,20 @@ async function tkPeopleData(){
   ]);
   return { days, guard: guard.filter(g => /^g/i.test(g.code || '')) };
 }
-async function tkPeople(box, list){
+async function tkPeople(box, list, team){
   if (!box) return;
   const { days, guard } = await tkPeopleData();
   const open = id => list.filter(t => !['cerrado', 'cancelado', 'informe'].includes(t.status) && (t.staff_ids || []).includes(id)).length;
-  const staff = (HHS.staff || []).filter(s => s.active && s.kind !== 'contratista');
+  const staff = (HHS.staff || []).filter(s => s.active && s.kind !== 'contratista' && (!team || team.staff.has(s.id) || open(s.id)));
   const rows = staff.map(s => ({ s, day: days.find(d => d.staff_id === s.id), g: guard.some(g => g.staff_id === s.id), n: open(s.id) }))
     .filter(x => x.day || x.g || x.n).sort((a, b) => (b.day ? 1 : 0) - (a.day ? 1 : 0) || a.n - b.n);
-  const ctr = (TK.contrs || []).filter(c => c.active).map(c => ({ c, n: list.filter(t => t.contractor_id === c.id && !['cerrado', 'cancelado', 'informe'].includes(t.status)).length }));
+  const ctr = (TK.contrs || []).filter(c => c.active && (!team || team.contrs.has(c.id) || list.some(t => t.contractor_id === c.id))).map(c => ({ c, n: list.filter(t => t.contractor_id === c.id && !['cerrado', 'cancelado', 'informe'].includes(t.status)).length }));
   box.innerHTML = (rows.map(x => `<div class="row between" style="padding:5px 0;border-bottom:1px solid var(--line);color:var(--ink,#0F2A4A)"><span>${esc(x.s.name)}</span><span class="sm" style="color:${x.n ? 'var(--muted)' : 'var(--green-d,#15803D)'};font-weight:${x.n ? 400 : 700}">${x.day ? 'jornada abierta' : ''}${x.g ? (x.day ? ' · ' : '') + 'de guardia' : ''}${' · ' + (x.n ? x.n + ' abierto(s)' : 'libre')}</span></div>`).join('')
     + ctr.map(x => `<div class="row between" style="padding:5px 0;border-bottom:1px solid var(--line);color:var(--ink,#0F2A4A)"><span>Contratista ${esc(x.c.name)}</span><span class="sm muted">${x.n} abierto(s)</span></div>`).join(''))
-    || 'Hoy nadie abrió jornada. Igual podés asignar a cualquiera.';
+    || (team ? 'Nadie del equipo de este proyecto tiene jornada, guardia ni tickets hoy. Sumá gente en 🏗 Equipo.' : 'Hoy nadie abrió jornada. Igual podés asignar a cualquiera.');
 }
 let tkMapObj = null;
-async function tkMap(list){
+async function tkMap(list, team){
   if (typeof L === 'undefined' || !$('#tk-map')) return;
   if (tkMapObj){ tkMapObj.remove(); tkMapObj = null; }
   try { if (!SITE_COORDS.size) rememberCoords(await loadSitesMap()); } catch {}
@@ -217,7 +232,7 @@ async function tkMap(list){
   for (const t of list){ const c = t.site_id && SITE_COORDS.get(t.site_id); if (!c) continue; pts.push(c);
     L.circleMarker(c, { radius: 8, color: '#fff', weight: 2, fillColor: TK_MOOD[tkMood(t)][1], fillOpacity: 1 }).bindTooltip(`<b>${esc(t.site_name)}</b><br>#${esc(t.ext_no)} · ${esc(tkLeftTxt(t))}`).addTo(tkMapObj); }
   try { const { days } = await tkPeopleData();
-    for (const d of days){ if (d.start_lat == null) continue; const c = [Number(d.start_lat), Number(d.start_lng)]; pts.push(c);
+    for (const d of days){ if (d.start_lat == null || (team && !team.staff.has(d.staff_id))) continue; const c = [Number(d.start_lat), Number(d.start_lng)]; pts.push(c);
       L.marker(c, { icon: L.divIcon({ className: '', html: '<div style="width:14px;height:14px;border-radius:4px;background:#0F2A4A;border:2px solid #fff"></div>', iconSize: [14, 14] }) }).bindTooltip(esc(tkStaffName(d.staff_id)) + ' (inicio de jornada)').addTo(tkMapObj); } } catch {}
   if (pts.length) tkMapObj.fitBounds(pts, { padding: [24, 24], maxZoom: 11 }); else tkMapObj.setView([-31.6, -60.7], 7);
 }
