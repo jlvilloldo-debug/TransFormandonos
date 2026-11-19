@@ -142,6 +142,8 @@ async function viewMap(v, preset){
   if (!window.L){ $('#pmap').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa.</p>'; return; }
   pmap = L.map('pmap', { preferCanvas: true, zoomControl: true }).setView([-34, -63], 5);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(pmap);
+  const RND = L.canvas({ padding: 0.5 });   // los puntos se dibujan en un solo lienzo (miles de sitios sin trabar la página)
+  setTimeout(() => { try { pmap?.invalidateSize(); } catch {} }, 250);   // el mapa toma el tamaño final de la pantalla
   let layer = null, data = [], fitted = false;
   const siteByName = new Map(sites.map(s => [s.name.toLowerCase(), s]));
   const taskSites = t => (t.sites || []).map(x => x.site_id || siteByName.get(String(x.site_name || '').toLowerCase())?.id).filter(Boolean);
@@ -222,20 +224,40 @@ async function viewMap(v, preset){
         .bindTooltip(`<b>${esc(name)}</b><br>${cnt.map(([c, n]) => `${semDot(c)}${n}`).join(' &nbsp; ')}`, { direction: 'top', offset: [0, -14] })
         .on('click', () => pmap.fitBounds(L.latLngBounds(list.map(x => [x.s.lat, x.s.lng])), { padding: [40, 40], maxZoom: 13 }));
     }
-    for (const x of singles){
+    // solo lo que está en pantalla; si son muchos, se agrupan por zona hasta acercarse
+    const vb = pmap.getBounds().pad(0.3);
+    const vis = singles.filter(x => vb.contains([Number(x.s.lat), Number(x.s.lng)]));
+    let draw = vis;
+    if (vis.length > 350 && z < 16){
+      const cell = 60, grid = new Map(); draw = [];
+      for (const x of vis){ const pt = pmap.latLngToContainerPoint([Number(x.s.lat), Number(x.s.lng)]); const k = Math.floor(pt.x / cell) + ':' + Math.floor(pt.y / cell); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(x); }
+      for (const list of grid.values()){
+        if (list.length === 1){ draw.push(list[0]); continue; }
+        const col = worstColor(list.map(x => x.color)), lat = list.reduce((a, x) => a + Number(x.s.lat), 0) / list.length, lng = list.reduce((a, x) => a + Number(x.s.lng), 0) / list.length;
+        L.marker([lat, lng], { icon: L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], iconAnchor: [0, 0], html: `<div class="clu c-${col}"><i>${list.length}</i></div>` }), keyboard: false }).addTo(layer)
+          .on('click', () => pmap.fitBounds(L.latLngBounds(list.map(x => [x.s.lat, x.s.lng])), { padding: [40, 40], maxZoom: 16 }));
+      }
+    }
+    const labels = z >= 12 && draw.length <= 200;
+    for (const x of draw){
       const ll = [Number(x.s.lat), Number(x.s.lng)];
       const crit = x.cols.pend === 'red';
-      const html = crit ? `<div class="mk-pin${x.late ? ' pulse' : ''}"><b>!</b></div>`
-        : st.kindc ? `<div class="mk${x.late ? ' pulse' : ''}" style="background:${SITE_COLORS[x.s.kind] || '#475569'}"></div>`
-        : `<div class="mk mk-${x.color}${x.late ? ' pulse' : ''}"></div>`;
-      const m = L.marker(ll, { icon: L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], iconAnchor: [0, 0], html }), keyboard: false, riseOnHover: true, zIndexOffset: SEM[x.color].o * 100 });
-      if (z >= 10) m.bindTooltip(esc(x.s.name), { permanent: true, direction: 'right', offset: crit ? [10, -16] : [9, 0], className: 'mk-lbl' });
+      let m;
+      if (crit || x.late){
+        const html = crit ? `<div class="mk-pin${x.late ? ' pulse' : ''}"><b>!</b></div>` : `<div class="mk mk-${x.color} pulse"></div>`;
+        m = L.marker(ll, { icon: L.divIcon({ className: 'mk-wrap', iconSize: [0, 0], iconAnchor: [0, 0], html }), keyboard: false, riseOnHover: true, zIndexOffset: SEM[x.color].o * 100 });
+      } else {
+        m = L.circleMarker(ll, { renderer: RND, radius: 6, color: '#FFFFFF', weight: 2, fillColor: st.kindc ? (SITE_COLORS[x.s.kind] || '#475569') : (SEM[x.color] || SEM.gray).c, fillOpacity: 1 });
+      }
+      if (labels) m.bindTooltip(esc(x.s.name), { permanent: true, direction: 'right', offset: crit ? [10, -16] : [8, 0], className: 'mk-lbl' });
+      else m.bindTooltip(esc(x.s.name), { direction: 'top', offset: [0, -6] });
       m.bindPopup(() => popup(x), { maxWidth: 300, offset: crit ? [0, -26] : [0, -4] }).addTo(layer);
     }
     // vínculos (radioenlaces y fibra) cargados en Sitios
     if (st.lnk && links.length){
       const ids = new Set(data.map(x => x.s.id));
-      for (const l of links){ if (!ids.has(l.site_a) && !ids.has(l.site_b)) continue;
+      const pjF = CUR_PROJ || st.project;
+      for (const l of links){ if (!ids.has(l.site_a) && !ids.has(l.site_b) && !(pjF && l.project_id === pjF) && !(!pjF && l.project_id)) continue;
         linkLine(layer, l, pmap); }
     }
     if (!fitted && withC.length){ fitted = true; pmap.fitBounds(L.latLngBounds(withC.map(x => [Number(x.s.lat), Number(x.s.lng)])), { padding: [30, 30], maxZoom: 12 }); }
@@ -262,7 +284,7 @@ async function viewMap(v, preset){
     $('#mp-list').querySelectorAll('[data-goproj]').forEach(tr => tr.onclick = () => location.hash = '#/proj/' + tr.dataset.goproj);
     if (!$('#mp-list').innerHTML.trim()) $('#mp-list').classList.add('hidden'); else $('#mp-list').classList.remove('hidden');
   };
-  pmap.on('zoomend', render);
+  let mvT = null; pmap.on('moveend', () => { clearTimeout(mvT); mvT = setTimeout(() => { if (!document.querySelector('#pmap .leaflet-popup')) render(); }, 120); });   // al mover o acercar se redibuja solo lo visible
   pmap.on('popupopen', e => {
     const el = e.popup.getElement(); if (!el) return;
     el.querySelectorAll('[data-newpend]').forEach(b => b.onclick = () => { const s = sites.find(x => x.id === b.dataset.newpend); newPending(s, contrs); });
@@ -455,7 +477,7 @@ async function viewProject(v, id, sec){
   $$('#pj-tabs [data-pt]').forEach(b => b.onclick = () => { location.hash = `#/proj/${p.id}/${b.dataset.pt}`; });
   const body = $('#pj-body');
   try {
-    if (cur === 'res') projResumen(body, ctx); else if (cur === 'sit'){ body.innerHTML = '<div id="pj-map"></div><div id="pj-sl"></div>'; projSites($('#pj-sl'), ctx); try { await viewMap($('#pj-map')); } catch (e){ $('#pj-map').innerHTML = ''; } } else if (cur === 'gan') projGantt(body, ctx); else if (cur === 'inv') projInventory(body, ctx);
+    if (cur === 'res'){ projResumen(body, ctx); projCheck(body, ctx).catch(() => {}); } else if (cur === 'sit'){ body.innerHTML = '<div id="pj-map"></div><div id="pj-sl"></div>'; projSites($('#pj-sl'), ctx); try { await viewMap($('#pj-map')); } catch (e){ $('#pj-map').innerHTML = ''; } } else if (cur === 'gan') projGantt(body, ctx); else if (cur === 'inv') projInventory(body, ctx);
     else if (cur === 'sla') await tkProjSla(body, p);
     else if (cur === 'tk') await (isManager() ? viewMesa(body, p.id) : viewTickets(body));
     else if (cur === 'ta') await viewTasks(body);
@@ -465,6 +487,37 @@ async function viewProject(v, id, sec){
     else if (cur === 'pl') await projPlanillas(body, ctx);
     else if (cur === 'stk'){ await needLib('stock'); await viewStock(body, 'p', p.id); }
   } catch (e){ body.innerHTML = `<div class="card"><b>${/OFFLINE|NEEDS_ONLINE/.test(e.message) || isNetErr(e) ? 'Sin conexión' : 'No se pudo abrir'}</b><p class="muted">${esc(errText(e))}</p></div>`; }
+}
+
+/* ---------- 🩺 Chequeo del proyecto: lo que falta o no cierra, con su arreglo ---------- */
+async function projCheck(box, ctx){
+  const { p, ps, siteById, equip, tasks } = ctx;
+  const mods = Array.isArray(p.modules) && p.modules.length ? new Set(p.modules) : null, has = k => !mods || mods.has(k);
+  const pSites = new Set(ps.map(x => x.site_id));
+  const [links, team, mem] = await Promise.all([loadSiteLinks().catch(() => []),
+    sb.from('project_staff').select('staff_id', { count: 'exact', head: true }).eq('project_id', p.id).neq('status', 'finalizada').then(r => r.count || 0).catch(() => 0),
+    sb.from('project_members').select('user_id', { count: 'exact', head: true }).eq('project_id', p.id).then(r => r.count || 0).catch(() => 0)]);
+  const go = k => `#/proj/${p.id}/${k}`;
+  const items = [];
+  const noC = ps.filter(x => { const s = siteById.get(x.site_id); return !s || s.lat == null || s.lng == null; }).length;
+  if (noC) items.push(['📍', `${noC} sitio${noC === 1 ? '' : 's'} sin coordenadas: no aparecen en el mapa.`, go('sit'), 'Ver sitios']);
+  const pl = links.filter(l => l.project_id === p.id);
+  const badL = pl.filter(l => !l.site_a || !l.site_b || !pSites.has(l.site_a) || !pSites.has(l.site_b)).length;
+  if (badL) items.push(['📡', `${badL} radioenlace${badL === 1 ? '' : 's'} con un extremo que no es sitio del proyecto.`, go('sit'), 'Ver en el mapa']);
+  const eqOut = equip.filter(e => !pSites.has(e.site_id)).length;
+  if (eqOut && has('inv')) items.push(['📦', `${eqOut} equipo${eqOut === 1 ? '' : 's'} del inventario en sitios que no son del proyecto.`, go('inv'), 'Ver inventario']);
+  const tOut = tasks.filter(t => t.project_id === p.id && taskOpen(t) && (t.sites || []).some(x => x.site_id && !pSites.has(x.site_id))).length;
+  if (tOut && has('ta')) items.push(['📋', `${tOut} tarea${tOut === 1 ? '' : 's'} abierta${tOut === 1 ? '' : 's'} con sitios que no son del proyecto.`, go('ta'), 'Ver tareas']);
+  if (has('tk') && !p.ticketera_id) items.push(['🎫', 'No tiene ticketera asignada.', go('sla'), 'Asignar']);
+  if (has('in') && !(p.templates || []).length) items.push(['📄', 'No tiene planillas elegidas: al inspeccionar se ofrecen todas.', go('pl'), 'Elegir']);
+  if (!team && !mem) items.push(['👥', 'No tiene gente asignada (Equipo ni Integrantes).', `#/recursos/p/${p.id}`, 'Asignar']);
+  if (!ps.length) items.push(['🗺', 'No tiene sitios.', go('sit'), 'Agregar']);
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<div class="row between"><h2 style="margin:0">🩺 Chequeo del proyecto</h2><span class="sm ${items.length ? '' : 'muted'}">${items.length ? `${items.length} punto${items.length === 1 ? '' : 's'} para revisar` : '✅ Todo cargado y en orden'}</span></div>
+    ${items.map(([ic, t, h, b]) => `<div class="row between" style="padding:8px 0;border-top:1px solid var(--line);gap:8px"><span>${ic} ${esc(t)}</span><a class="btn sec small" href="${h}">${esc(b)}</a></div>`).join('')}
+    ${pl.length ? `<div class="sm muted" style="margin-top:6px">📡 ${pl.length} radioenlace${pl.length === 1 ? '' : 's'} cargado${pl.length === 1 ? '' : 's'} en este proyecto.</div>` : ''}`;
+  box.prepend(card);
 }
 
 /* ---------- Planillas del proyecto: las plantillas que usa ---------- */
@@ -564,7 +617,7 @@ function projSites(box, ctx){
         <select id="ps-c" style="width:auto"><option value="">Todos los estados</option>${['red', 'amber', 'blue', 'gray', 'green'].map(c => `<option value="${c}">${SEM[c].n}</option>`).join('')}<option value="prop">Fechas propuestas a validar</option></select>
         ${isContractor() ? '' : `<select id="ps-k" style="width:auto"><option value="">Todas las contratistas</option><option value="__none">Sin asignar</option>${contrs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>`}
         <select id="ps-s" style="width:auto"><option value="">Todas las etapas</option>${(p.stages || []).map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
-      <div class="row">${manage && online() ? `<button class="btn sec small" id="ps-add">+ Sitios</button><label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="ps-xl" class="hidden"></label><button class="btn sec small" id="ps-model">Modelo</button>` : ''}<button class="btn sec small" id="ps-exp">Exportar Excel</button></div></div>
+      <div class="row">${manage && online() ? `<button class="btn sec small" id="ps-add">+ Sitios</button><label class="btn sec small" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="ps-xl" class="hidden"></label><button class="btn sec small" id="ps-model">Modelo</button>${can('sites', 2) ? '<label class="btn sec small" style="margin:0" title="Sitios, radioenlaces y tramos desde Google Earth">Importar KMZ<input type="file" accept=".kmz,.kml" id="ps-kmz" class="hidden"></label>' : ''}` : ''}<button class="btn sec small" id="ps-exp">Exportar Excel</button></div></div>
       <div id="ps-bulk" class="row hidden" style="margin-top:10px;background:var(--bg);padding:8px;border-radius:8px"><b id="ps-bn"></b><button class="btn small" id="ps-bc">Asignar contratista</button><button class="btn small" id="ps-bd">Programar fechas</button><button class="btn sec small" id="ps-bx">Quitar selección</button></div></div>
     <div class="card"><div class="tblwrap"><table class="tbl"><thead><tr>${manage ? '<th><input type="checkbox" id="ps-all" style="width:auto"></th>' : ''}<th>Sitio</th><th>Estado</th><th class="hide-sm">Avance</th><th>Fechas</th>${isContractor() ? '' : '<th class="hide-sm">Contratista</th>'}<th></th></tr></thead><tbody id="ps-rows"></tbody></table></div>
       <p class="muted sm" id="ps-foot"></p></div>`;
@@ -598,6 +651,8 @@ function projSites(box, ctx){
   $('#ps-add')?.addEventListener('click', () => addSitesModal(ctx));
   $('#ps-model')?.addEventListener('click', () => downloadScopeModel(p));
   $('#ps-xl')?.addEventListener('change', e => importScope(e.target.files[0], ctx));
+  $('#ps-kmz')?.addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (!f || !needOnline()) return;
+    try { await needLib('jszip'); } catch {} const all = await loadSitesMap().catch(() => []); importKMZ(f, all, ctx.p.id); });
   $('#ps-exp').onclick = () => exportProjectSites(ctx);
   render();
 }

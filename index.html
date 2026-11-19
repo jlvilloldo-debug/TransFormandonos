@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-GhkwuQWSlCW14QV3L5EgUATlVXb0YB+QGh0yW04VCVI='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-OszUwacYaDpNHFhNproL6gmv7GKNn9xGH001NEml+Xs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -452,7 +452,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.26.4';
+const APP_VERSION = '5.27.0';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -644,7 +644,7 @@ async function cachedQuick(key, fetcher){
   return v;
 }
 const loadSitesAll = () => cachedQuick('sites-all', () => pageAll(() => sb.from('sites').select('*').order('name').order('id')));
-const loadSiteLinks = () => isContractor() ? Promise.resolve([]) : cachedQuick('site-links', () => pageAll(() => sb.from('site_links').select('id,name,kind,status,site_a,site_b,a_lat,a_lng,b_lat,b_lng,geom').order('name').order('id'))).catch(() => []);
+const loadSiteLinks = () => isContractor() ? Promise.resolve([]) : cachedQuick('site-links2', () => pageAll(() => sb.from('site_links').select('id,name,kind,status,site_a,site_b,a_lat,a_lng,b_lat,b_lng,geom,project_id,band,capacity,info').order('name').order('id'))).catch(() => []);
 
 /* ---------- vínculos en cualquier mapa: se tocan fácil, se resaltan y ofrecen modificar / corregir / borrar ---------- */
 const LINK_COL = { fo: '#F2A93B', mw: '#7C3AED', radio: '#0E7490', otro: '#0E7490' };
@@ -673,8 +673,8 @@ function linkLine(layer, l, map){
   const km = len >= 1000 ? (len / 1000).toFixed(2).replace('.', ',') + ' km' : Math.round(len) + ' m';
   hit.bindTooltip(`${esc(l.name)} · ${km}`, { sticky: true });
   hit.on('mouseover', () => vis.setStyle({ weight: w + 3, opacity: 1 })).on('mouseout', () => vis.setStyle({ weight: w, opacity: .9 }));
-  hit.bindPopup(() => `<div class="pp"><b style="font-size:15px">${esc(l.name)}</b><div class="muted sm">${LINK_TXT[l.kind] || LINK_TXT.otro} · ${km}${l.topology === 'ptmp' ? ' · ✳ multipunto' : ''}</div>
-    <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">${manage ? `<button class="btn small" data-lka="edit">✏️ Modificar / mover</button>${l.kind === 'fo' ? '<button class="btn small sec" data-lka="fix">✍ Corregir recorrido</button>' : ''}<button class="btn small sec" data-lka="del" style="color:var(--red)">🗑 Borrar</button>` : '<button class="btn small sec" data-lka="edit">Ver ficha</button>'}</div></div>`, { maxWidth: 300 });
+  hit.bindPopup(() => `<div class="pp"><b style="font-size:15px">${esc(l.name)}</b><div class="muted sm">${LINK_TXT[l.kind] || LINK_TXT.otro} · ${km}${l.band ? ' · ' + esc(l.band) : ''}${l.capacity ? ' · ' + esc(l.capacity) : ''}${l.topology === 'ptmp' ? ' · ✳ multipunto' : ''}</div>${kmzInfoHtml(l.info)}
+    <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">${manage ? `<button class="btn small" data-lka="edit">✏️ Modificar / mover</button>${l.kind === 'fo' ? '<button class="btn small sec" data-lka="fix">✍ Corregir recorrido</button>' : ''}<button class="btn small sec" data-lka="del" style="color:var(--red)">🗑 Borrar</button>` : '<button class="btn small sec" data-lka="edit">Ver ficha</button>'}</div></div>`, { maxWidth: l.info?.rows?.length ? Math.min(560, window.innerWidth - 40) : 300 });
   hit.on('popupopen', e => { vis.setStyle({ weight: w + 3, opacity: 1 }); e.popup.getElement()?.querySelectorAll('[data-lka]').forEach(b => b.onclick = () => { (map || hit._map)?.closePopup(); linkAct(l.id, b.dataset.lka); }); });
   hit.on('popupclose', () => vis.setStyle({ weight: w, opacity: .9 }));
   try { vis.bringToBack(); hit.bringToBack(); } catch {}   // los sitios quedan por encima: se siguen pudiendo tocar
@@ -3169,7 +3169,7 @@ ${manage ? '<p class="muted sm" style="margin:10px 0 0">Para cargar un listado d
   $('#b-smodel')?.addEventListener('click', downloadSitesModel);
   $('#sxl')?.addEventListener('change', e => { importSitesExcel(e.target.files[0], allSites); e.target.value = ''; });
   $('#b-coord')?.addEventListener('click', () => coordReview(sites));
-  $('#kmz')?.addEventListener('change', e => { importKMZ(e.target.files[0], allSites); e.target.value = ''; });
+  $('#kmz')?.addEventListener('change', e => { importKMZ(e.target.files[0], allSites, CUR_PROJ); e.target.value = ''; });
 }
 /* ---------- invitaciones: link de un solo uso con rol y proyectos ya asignados ---------- */
 const inviteLink = t => `${location.origin}${location.pathname}#/invitacion/${t}`;
@@ -3419,7 +3419,8 @@ function parseKML(text){
       else if (c.localName === 'Placemark'){
         const name = nameOf(c); const coordsEl = c.getElementsByTagNameNS('*', 'coordinates')[0]; if (!coordsEl) continue;
         const pts = coordsEl.textContent.trim().split(/\s+/).map(p => p.split(',').map(Number)).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
-        out.push({ name, path, isPoint: c.getElementsByTagNameNS('*', 'Point').length > 0, pts });
+        const dEl = [...c.children].find(x => x.localName === 'description'), sEl = [...c.children].find(x => x.localName === 'styleUrl');
+        out.push({ name, path, isPoint: c.getElementsByTagNameNS('*', 'Point').length > 0, pts, desc: dEl ? dEl.textContent.slice(0, 60000) : '', style: sEl ? sEl.textContent.trim().slice(0, 80) : '' });
       }
     }
   };
@@ -3456,30 +3457,115 @@ function kmlToSites(pms){
   }
   return [...sites.values()];
 }
-async function importKMZ(file, existing){
+/* La ficha del KMZ (HTML de la descripción) se convierte en DATOS: líneas de texto y filas de tabla.
+   DOMParser solo lee el HTML: no ejecuta scripts ni carga nada. Se guarda texto, nunca HTML. */
+function kmzInfo(html){
+  if (!html || !html.trim()) return null;
+  const d = new DOMParser().parseFromString(html, 'text/html');
+  const lines = []; let cur = '';
+  for (const n of d.body.childNodes){ if (n.nodeName === 'TABLE') break; if (n.nodeName === 'BR'){ if (cur.trim()) lines.push(cur.trim()); cur = ''; } else cur += n.textContent; }
+  if (cur.trim()) lines.push(cur.trim());
+  const rows = []; let cols = [];
+  const tbl = d.querySelector('table');
+  if (tbl) for (const tr of tbl.querySelectorAll('tr')){
+    const cells = [...tr.children].map(c => c.textContent.replace(/\s+/g, ' ').trim());
+    if (!cells.some(Boolean)) continue;
+    if ([...tr.children].every(c => c.tagName === 'TH')){ if (cells.length === 3) cols = cells; rows.push(['§', ...cells.slice(0, 3)]); continue; }
+    rows.push(cells.slice(0, 4));
+  }
+  return { cols, rows: rows.slice(0, 120), lines: lines.slice(0, 10) };
+}
+const kmzRow = (info, re) => (info?.rows || []).find(r => r[0] !== '§' && re.test(norm(r[0])));
+function kmzPrepare(pms){
+  const fkey = pm => pm.path.join(' / ') || '(sin carpeta)';
+  const items = pms.map(pm => {
+    const info = kmzInfo(pm.desc);
+    const radioish = /ghz|banda|capacidad|modulacion|azimut/.test(norm((info?.rows || []).map(r => r[0]).join(' '))) || /enlace|radio|microonda|mw\b/i.test(fkey(pm) + ' ' + pm.name);
+    return { pm, info, folder: fkey(pm), radioish };
+  });
+  const folders = new Map();
+  for (const it of items){ const f = folders.get(it.folder) || { name: it.folder, points: 0, lines: 0, radio: 0 }; it.pm.isPoint ? f.points++ : f.lines++; if (it.radioish) f.radio++; folders.set(it.folder, f); }
+  const anyRadio = items.some(it => !it.pm.isPoint && it.radioish);
+  for (const f of folders.values()){
+    f.ptType = f.points ? (anyRadio ? 'repetidora' : (/acueducto/i.test(f.name) ? 'acueducto' : 'epi')) : '';
+    f.lnType = f.lines ? (f.radio >= f.lines / 2 ? 'mw' : 'tramo_fo') : '';
+  }
+  return { items, folders: [...folders.values()] };
+}
+function kmzLink(it){
+  const pm = it.pm, info = it.info, g = pm.pts.map(p => [Math.round(p[1] * 1e6) / 1e6, Math.round(p[0] * 1e6) / 1e6]);
+  let a = info?.cols?.[1] || '', b = info?.cols?.[2] || '';
+  if (!a || !b){ const m = /[–-]\s*(.+?)\s*(?:↔|<->|-|–)\s*(.+)$/.exec(pm.name) || /^(.+?)\s*(?:↔|<->)\s*(.+)$/.exec(pm.name); if (m){ a = a || m[1].trim(); b = b || m[2].trim(); } }
+  const v = re => kmzRow(info, re);
+  const val1 = re => { const r = v(re); return r ? (r[1] || '') : ''; };
+  const ser = v(/^(nro\.? ?)?serie|^n[º°o]\.? ?serie|^serial/), ip = v(/^ip$/), eq = v(/^equipo$/), mo = v(/^modelo$/), fw = v(/^firmware/);
+  const equip = ['a', 'b'].map((end, k) => ({ end, serial: ser?.[k + 1] || '', ip: ip?.[k + 1] || '', vendor: eq?.[k + 1] || '', model: mo?.[k + 1] || '', firmware: fw?.[k + 1] || '', to: k ? a : b })).filter(e => e.serial);
+  return { name: pm.name.slice(0, 200), kind: 'mw', a_name: a, b_name: b, a_lat: g[0][0], a_lng: g[0][1], b_lat: g[g.length - 1][0], b_lng: g[g.length - 1][1],
+    geom: g.length > 2 ? g : [], band: val1(/^banda$/).slice(0, 40), capacity: val1(/^capacidad$/).slice(0, 60), info, equip };
+}
+function kmzSite(it, kind){
+  const pm = it.pm, lines = it.info?.lines || [];
+  const address = lines.find(x => norm(x) !== norm(pm.name) && !/^-?\d+[.,]\d+\s*,\s*-?\d+[.,]\d+$/.test(x)) || null;
+  return { name: (pm.name || 'Sin nombre').slice(0, 200), kind, lat: pm.pts[0][1], lng: pm.pts[0][0], address: address ? address.slice(0, 300) : null, info: it.info };
+}
+async function importKMZ(file, existing, projectId){
   if (!file) return;
-  let rows;
-  try { rows = kmlToSites(parseKML(await readKML(file))); } catch (e){ return toast('No se pudo leer el archivo: ' + errText(e)); }
-  if (!rows.length) return toast('El archivo no tiene puntos ni recorridos.');
-  const exist = new Set(existing.map(s => s.kind + '|' + s.name.toLowerCase()));
-  const nuevos = rows.filter(r => !exist.has(r.kind + '|' + r.name.toLowerCase()));
-  const cnt = k => nuevos.filter(r => r.kind === k).length;
+  let prep;
+  try { prep = kmzPrepare(parseKML(await readKML(file))); } catch (e){ return toast('No se pudo leer el archivo: ' + errText(e)); }
+  if (!prep.items.length) return toast('El archivo no tiene puntos ni recorridos.');
+  const pj = projectId ? (await loadProjects().catch(() => [])).find(p => p.id === projectId) : null;
+  const PT = [['repetidora', '📡 Sitio de radio / repetidora'], ['epi', 'EPI / Nodo'], ['edificio', 'Edificio'], ['escuela', 'Escuela'], ['sala', 'Sala técnica'], ['acueducto', 'Acueducto'], ['otro', 'Otro sitio'], ['', 'No importar']];
+  const LT = [['mw', '📡 Radioenlace entre dos sitios'], ['tramo_fo', '🧵 Tramo de fibra (recorrido)'], ['', 'No importar']];
+  const lnNames = new Set(prep.items.filter(it => !it.pm.isPoint).map(it => norm(it.pm.name)));
+  const wrongTramos = (existing || []).filter(s => s.kind === 'tramo_fo' && s.active !== false && lnNames.has(norm(s.name))).length;
   const m = modal(`<h2>Importar ${esc(file.name)}</h2>
-    <p>Se encontraron <b>${rows.length}</b> elementos; <b>${nuevos.length}</b> son nuevos (los que ya existen con el mismo nombre y tipo no se tocan).</p>
-    <div class="stats">${['epi','acueducto','tramo_fo','radioenlace'].map(k => `<div class="stat"><span>${SITE_KINDS[k]}</span><b>${cnt(k)}</b></div>`).join('')}</div>
-    <p class="muted sm">Los puntos se cargan como EPI / Nodo (o Acueducto si están en una carpeta de acueductos) y los recorridos como tramos. Después podés corregir el tipo de cada sitio desde Editar.</p>
+    <p class="sm" style="margin-top:-4px">${pj ? `Al proyecto <b>${esc(pj.name)}</b>. ` : ''}Elegí qué es cada carpeta. La app sugiere el tipo; vos confirmás.</p>
+    <div class="tblwrap"><table class="tbl"><thead><tr><th>Carpeta</th><th>Elementos</th><th>Se carga como</th></tr></thead><tbody>
+    ${prep.folders.map((f, i) => `${f.points ? `<tr><td>${esc(f.name)}</td><td>${f.points} punto${f.points === 1 ? '' : 's'}</td><td><select data-fp="${i}" style="width:auto">${PT.map(([k, t]) => `<option value="${k}" ${k === f.ptType ? 'selected' : ''}>${t}</option>`).join('')}</select></td></tr>` : ''}
+      ${f.lines ? `<tr><td>${esc(f.name)}</td><td>${f.lines} línea${f.lines === 1 ? '' : 's'}${f.radio ? ` · <span class="muted">${f.radio} con ficha de radio</span>` : ''}</td><td><select data-fl="${i}" style="width:auto">${LT.map(([k, t]) => `<option value="${k}" ${k === f.lnType ? 'selected' : ''}>${t}</option>`).join('')}</select></td></tr>` : ''}`).join('')}
+    </tbody></table></div>
+    <p class="sm muted">Se guarda la <b>ficha completa</b> de cada elemento (lo que muestra Google Earth al tocarlo). Los sitios y enlaces que ya existen con el mismo nombre se actualizan, no se duplican.</p>
+    ${pj ? '<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="k-eq" style="width:auto" checked> Cargar los equipos de cada extremo (serie, IP, modelo) en el Inventario del proyecto</label>' : ''}
+    ${wrongTramos ? `<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="k-fix" style="width:auto" checked> Desactivar ${wrongTramos} "tramo${wrongTramos === 1 ? '' : 's'} de fibra" que una importación anterior creó por error con estos nombres</label>` : ''}
     <div class="err" id="k-err"></div>
-    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="k-cancel">Cancelar</button><button class="btn" id="k-go" ${nuevos.length ? '' : 'disabled'}>Importar ${nuevos.length}</button></div>`);
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="k-cancel">Cancelar</button><button class="btn" id="k-go">Importar</button></div>`, { wide: true });
   $('#k-cancel').onclick = m.close;
   $('#k-go').onclick = async () => {
-    $('#k-go').disabled = true;
-    for (let i = 0; i < nuevos.length; i += 100){
-      $('#k-go').textContent = `Importando ${Math.min(i + 100, nuevos.length)} de ${nuevos.length}…`;
-      const { error } = await sb.from('sites').insert(nuevos.slice(i, i + 100).map(r => ({...r, org_id: me.org_id})));
-      if (error){ $('#k-err').textContent = errText(error); $('#k-go').disabled = false; $('#k-go').textContent = 'Reintentar'; return; }
-    }
-    m.close(); toast(`${nuevos.length} sitios importados`); route();
+    const fp = {}, fl = {}; m.el.querySelectorAll('[data-fp]').forEach(x => fp[prep.folders[x.dataset.fp].name] = x.value); m.el.querySelectorAll('[data-fl]').forEach(x => fl[prep.folders[x.dataset.fl].name] = x.value);
+    const sites = prep.items.filter(it => it.pm.isPoint && fp[it.folder]).map(it => kmzSite(it, fp[it.folder]));
+    const links = prep.items.filter(it => !it.pm.isPoint && fl[it.folder] === 'mw' && it.pm.pts.length >= 2).map(kmzLink);
+    const tramos = kmlToSites(prep.items.filter(it => !it.pm.isPoint && fl[it.folder] === 'tramo_fo').map(it => it.pm));
+    // extremos de cada enlace: mismo nombre, nombre sin el número de equipo ("BEAZLEY 1" → BEAZLEY) o el sitio a menos de 300 m del extremo
+    const sN = [...sites, ...(existing || []).filter(x => x.lat != null && !['tramo_fo', 'radioenlace'].includes(x.kind))].map(x => ({ n: x.name, k: norm(x.name), lat: Number(x.lat), lng: Number(x.lng) }));
+    const resolve = (nm, lat, lng) => { const k = norm(nm); let h = sN.find(x => x.k === k) || sN.find(x => x.k === k.replace(/\s+\d+$/, ''));
+      if (!h){ let bd = 1e9; for (const x of sN){ const d = Math.hypot((x.lat - lat) * 111000, (x.lng - lng) * 92000); if (d < bd){ bd = d; h = x; } } if (bd > 300) h = null; }
+      return h ? h.n : nm; };
+    links.forEach(l => { l.a_name = resolve(l.a_name, l.a_lat, l.a_lng); l.b_name = resolve(l.b_name, l.b_lat, l.b_lng); });
+    if (!sites.length && !links.length && !tramos.length) return ($('#k-err').textContent = 'No elegiste nada para importar.');
+    $('#k-go').disabled = true; $('#k-go').textContent = 'Importando…';
+    try {
+      let r = null;
+      if (sites.length || links.length){
+        const { data, error } = await sb.rpc('kmz_import', { p_project: projectId || null, p: { sites, links, equip: !!$('#k-eq')?.checked, fix_tramos: !!$('#k-fix')?.checked } });
+        if (error) throw error; r = data;
+      }
+      const exist = new Set((existing || []).map(x => x.kind + '|' + x.name.toLowerCase()));
+      const nt = tramos.filter(t => !exist.has(t.kind + '|' + t.name.toLowerCase()));
+      for (let i = 0; i < nt.length; i += 100){ const { error } = await sb.from('sites').insert(nt.slice(i, i + 100).map(t => ({ ...t, org_id: me.org_id }))); if (error) throw error; }
+      m.close();
+      toast(r ? `Sitios: ${r.sitios_nuevos} nuevos, ${r.sitios_act} actualizados · Radioenlaces: ${r.vinculos_nuevos} nuevos, ${r.vinculos_act} actualizados${r.equipos ? ` · ${r.equipos} equipos al inventario` : ''}${r.tramos_corregidos ? ` · ${r.tramos_corregidos} tramos corregidos` : ''}${nt.length ? ` · ${nt.length} tramos de fibra` : ''}` : `${nt.length} tramos de fibra importados`);
+      ['site-links', 'site-links-full', 'sites-map', 'ps', 'equip:' + projectId].forEach(k => IDB.del('kv', CUR_UID + ':' + k).catch(() => {}));
+      route();
+    } catch (e){ $('#k-err').textContent = errText(e); $('#k-go').disabled = false; $('#k-go').textContent = 'Reintentar'; }
   };
+}
+/* ficha del KMZ como tabla (texto escapado) */
+function kmzInfoHtml(info){
+  if (!info || !(info.rows?.length || info.lines?.length)) return '';
+  return `${(info.lines || []).slice(1).map(x => `<div class="sm muted">${esc(x)}</div>`).join('')}
+    ${info.rows?.length ? `<div style="max-height:320px;overflow:auto;margin-top:6px"><table class="tbl" style="font-size:12px">${info.rows.map(r => r[0] === '§'
+      ? `<tr>${r.slice(1).map(c => `<th style="padding:4px 6px">${esc(c)}</th>`).join('')}</tr>`
+      : `<tr><td style="padding:3px 6px;font-weight:600">${esc(r[0])}</td>${r.length === 2 ? `<td colspan="2" style="padding:3px 6px">${esc(r[1])}</td>` : r.slice(1).map(c => `<td style="padding:3px 6px">${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>` : ''}`;
 }
 
 /* =========================================================
