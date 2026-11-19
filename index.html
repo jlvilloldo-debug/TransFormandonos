@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-NxH/A0IJKgY82YYF3F6nsbGCk7T9k19Zpqjb+qrArOU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-MhiKmnBDOYkB1HKPdVx5VMpa7rSOO1lc+r2wEgPOl0A='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -84,6 +84,17 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-co
 .seg{display:flex;background:var(--bg);border-radius:10px;padding:4px;margin:12px 0 4px}
 .seg button{flex:1;border:0;background:none;padding:8px;border-radius:8px;cursor:pointer;color:var(--muted)}
 .seg button.on{background:#fff;color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.seg.pj-secs{background:none;padding:2px 0 6px;gap:10px}
+.seg.pj-secs button{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:12px;color:var(--navy);font-weight:600;font-size:14px;
+  background:linear-gradient(180deg,#FFFFFF 0%,#E9EEF5 100%);border:1px solid #C9D3E0;
+  box-shadow:0 4px 0 #B4C0D0,0 6px 10px rgba(15,42,74,.18),inset 0 1px 0 #fff;transform:translateY(0);transition:transform .08s,box-shadow .08s,background .15s}
+.seg.pj-secs button:hover{background:linear-gradient(180deg,#FFFFFF 0%,#DDE6F1 100%);transform:translateY(-1px);box-shadow:0 5px 0 #B4C0D0,0 8px 14px rgba(15,42,74,.22),inset 0 1px 0 #fff}
+.seg.pj-secs button:active{transform:translateY(4px);box-shadow:0 0 0 #B4C0D0,0 2px 4px rgba(15,42,74,.2),inset 0 2px 4px rgba(0,0,0,.1)}
+.seg.pj-secs button.on{color:#fff;background:linear-gradient(180deg,var(--navy-2) 0%,var(--navy) 100%);border-color:#0A1E36;
+  box-shadow:0 4px 0 #081A2F,0 6px 12px rgba(15,42,74,.35),inset 0 1px 0 rgba(255,255,255,.18)}
+.seg.pj-secs button:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+.seg.pj-secs button .pjb{background:var(--green);color:#fff;border-radius:999px;padding:0 7px;font-size:12px;line-height:18px;font-weight:700}
+@media (max-width:600px){.seg.pj-secs{gap:8px}.seg.pj-secs button{padding:8px 11px;font-size:13px}}
 .link{background:none;border:0;color:var(--navy-2);cursor:pointer;padding:0;text-decoration:underline;font-size:13px}
 
 .banner{border-radius:var(--r);padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:flex-start;border:1px solid}
@@ -453,7 +464,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.27.4';
+const APP_VERSION = '5.27.5';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', help: 'help.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
