@@ -100,9 +100,36 @@ function stkInval(){ for (const k of ['stk-assets', 'stk-places', 'stk-items', '
 // deactivated_on, owner) se traen on-demand al abrir la ficha del activo.
 const STK_LIST_COLS = 'id,org_id,project_id,cat,code,ext_id,type,name,vendor,model,status,place_id,site_id,holder_staff_id,service_due,notes,extra,archived';
 
-/* ---------- carga paralela de tablas largas (assets, moves): tandas de 3 páginas en paralelo ---------- */
+/* ---------- reintento automático (cortes de red o servidor ocupado) ---------- */
+async function stkRetry(mk, n = 3){
+  let r;
+  for (let i = 0; i < n; i++){
+    try { r = await mk(); } catch (e){ r = { data: null, error: e }; }
+    if (!r?.error) return r;
+    if (i < n - 1) await new Promise(ok => setTimeout(ok, 700 * (i + 1) * (i + 1)));
+  }
+  return r;
+}
+/* ---------- después de cambiar activos: se actualizan SOLO esos (no se recarga todo el stock) ---------- */
+async function stkAssetsPatch(ids){
+  ids = [...new Set((ids || []).filter(Boolean))];
+  if (!STK.base || !ids.length){ stkInval(); return; }
+  try {
+    const rows = [];
+    for (let i = 0; i < ids.length; i += 100){ const r = await stkRetry(() => sb.from('assets').select(STK_LIST_COLS).in('id', ids.slice(i, i + 100))); if (r.error) throw r.error; rows.push(...(r.data || [])); }
+    const got = new Map(rows.map(r => [r.id, r])), want = new Set(ids), A = STK.base.assets;
+    for (let i = A.length - 1; i >= 0; i--) if (want.has(A[i].id)){ const n = got.get(A[i].id); if (n){ A[i] = n; got.delete(n.id); } else A.splice(i, 1); }
+    for (const r of got.values()) A.push(r);
+    try { A.sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'es', { numeric: true })); } catch {}
+    IDB.put('kv', A, CUR_UID + ':stk-assets').catch(() => {});
+    for (const id of ids) IDB.del('kv', CUR_UID + ':stk-ev:' + id).catch(() => {});
+    STK._assetsErr = null; STK_LOAD_AT = Date.now();
+  } catch { stkInval(); }
+}
+
+/* ---------- carga paralela de tablas largas (assets, moves): tandas de 3 páginas en paralelo, con reintento ---------- */
 async function stkPageParallel(mk){
-  const first = await mk().range(0, 999);
+  const first = await stkRetry(() => mk().range(0, 999));
   if (first.error) return { data: null, error: first.error };
   const out = [...(first.data || [])];
   if (out.length < 1000) return { data: out, error: null };
@@ -110,7 +137,7 @@ async function stkPageParallel(mk){
   let from = 1000;
   for (let step = 0; step < 100; step++){
     const batch = [];
-    for (let i = 0; i < C; i++){ const s0 = from + i * 1000; batch.push(mk().range(s0, s0 + 999)); }
+    for (let i = 0; i < C; i++){ const s0 = from + i * 1000; batch.push(stkRetry(() => mk().range(s0, s0 + 999))); }
     const results = await Promise.all(batch);
     let stop = false;
     for (const r of results){
@@ -130,7 +157,7 @@ let STK_LOAD_AT = 0, STK_SOFT = 0;
 async function stkSoftRefresh(v, sub, id){
   if (!online() || Date.now() - STK_LOAD_AT < 60000 || STK_SOFT) return;
   STK_SOFT = Date.now();
-  try { stkInval(); await stkLoadBase(); } catch {}
+  try { await stkLoadBase(true); } catch {}
   STK_SOFT = 0;
   // solo re-render si seguimos en la misma pantalla y no hay modal abierto
   if (location.hash.startsWith('#/stock') && !document.querySelector('#modal-root .modal')){
@@ -140,14 +167,18 @@ async function stkSoftRefresh(v, sub, id){
 
 async function stkLoadBase(force){
   if (STK.base && !force) return STK.base;
-  STK._assetsErr = null;
+  STK._assetsErr = null; STK._assetsOld = false;
+  const prevAssets = STK.base?.assets;
   const [places, projects, sites, items, moves, assets, cfgRow, catalog] = await Promise.all([
     cached('stk-places', () => sb.from('stock_places').select('*').order('name')).catch(() => []),
     loadProjects().catch(() => []),
     loadSitesMap().catch(() => []),
     cached('stk-items', () => sb.from('stock_items').select('*').order('name')).catch(() => []),
     cached('stk-moves', () => stkPageParallel(() => sb.from('stock_moves').select('*').order('at').order('id'))).catch(() => []),
-    cached('stk-assets', () => stkPageParallel(() => sb.from('assets').select(STK_LIST_COLS).order('id'))).catch(e => { console.warn('stk-assets', e); STK._assetsErr = errText(e); return []; }),
+    cached('stk-assets', () => stkPageParallel(() => sb.from('assets').select(STK_LIST_COLS).order('id'))).catch(async e => { console.warn('stk-assets', e); STK._assetsErr = errText(e);
+      // si falla, se muestran los últimos activos guardados en el teléfono en vez de dejar la lista vacía
+      const old = prevAssets?.length ? prevAssets : await IDB.get('kv', CUR_UID + ':stk-assets').catch(() => undefined);
+      if (Array.isArray(old) && old.length){ STK._assetsOld = true; return old; } return []; }),
     cached('stk-cfg', () => sb.from('org_settings').select('stock_cfg').eq('org_id', me.org_id).maybeSingle()).catch(() => null),
     cached('stk-cat', () => sb.from('stock_catalog').select('*').order('name')).catch(() => []),
     (async () => { try { if (typeof hhLoadBase === 'function' && !(HHS.staff || []).length) await hhLoadBase(); } catch {} })()]);
@@ -218,7 +249,7 @@ function stkList(v, sc){
   const byPlace = new Map(); eq.concat(tl).forEach(a => { const l = stkLoc(a); byPlace.set(l.name, (byPlace.get(l.name) || 0) + 1); });
   const tabs = [['eq', `📡 Equipos (${eq.length})`], ['tl', `🧰 Herramientas (${tl.length})`], ['mat', `🧵 Materiales`], ...(['gen', 'prj'].includes(sc.kind) ? [['pl', '🏬 Lugares']] : [])];
   if (!tabs.some(t => t[0] === STK.tab)) STK.tab = 'eq';
-  v.innerHTML = `${STK._assetsErr ? `<div class="banner warn" style="margin:0 0 12px" id="stk-ebox"><span class="dot"></span><div><b>No se pudieron cargar los activos: ${esc(STK._assetsErr)}</b><div class="sm">Revisá la conexión y tocá Reintentar.</div><button class="btn small" id="stk-retry" style="margin-top:6px">↻ Reintentar</button></div></div>` : ''}${stkScopeHead(sc)}
+  v.innerHTML = `${STK._assetsErr ? `<div class="banner warn" style="margin:0 0 12px" id="stk-ebox"><span class="dot"></span><div><b>${STK._assetsOld ? 'No se pudieron actualizar los activos: se muestran los últimos guardados.' : 'No se pudieron cargar los activos: ' + esc(STK._assetsErr)}</b><div class="sm">Revisá la conexión y tocá Reintentar.</div><button class="btn small" id="stk-retry" style="margin-top:6px">↻ Reintentar</button></div></div>` : ''}${stkScopeHead(sc)}
     <div class="stk-kpis">
       <div class="stk-kpi"><span>📡 Equipos</span><b>${eq.length}</b><small>${eq.filter(a => /instal|activ/i.test(a.status)).length} instalados / activos</small></div>
       <div class="stk-kpi" style="border-left-color:#1E40AF"><span>📦 En stock</span><b>${eq.filter(a => /stock/i.test(a.status)).length}</b><small>listos para usar</small></div>
@@ -409,7 +440,7 @@ function stkEdit(a, preset = {}){
     try {
       const r = isNew ? await sb.from('assets').insert({ ...row, org_id: me.org_id }).select('id').single() : await sb.from('assets').update(row).eq('id', cur.id).select('id').single();
       if (r.error) throw r.error;
-      m.close(); stkInval(); toast(isNew ? 'Activo creado' : 'Cambios guardados');
+      m.close(); await stkAssetsPatch([r.data?.id || cur.id]); toast(isNew ? 'Activo creado' : 'Cambios guardados');
       if (isNew) location.hash = '#/stock/a/' + r.data.id; else route();
     } catch (e){ err.textContent = /assets_code|duplicate/.test(e.message || '') ? 'Ya existe un activo con ese ID único.' : errText(e); $('#se-ok').disabled = false; }
   };
@@ -440,7 +471,7 @@ function stkBulkModal(k, ids, sc){
     $('#bk-ok').disabled = true;
     try {
       for (let i = 0; i < ids.length; i += 100){ const { error } = await sb.from('assets').update(patch).in('id', ids.slice(i, i + 100)); if (error) throw error; }
-      m.close(); STK.sel.clear(); stkInval(); toast('Listo: ' + ids.length + ' actualizado' + (ids.length === 1 ? '' : 's')); route();
+      m.close(); STK.sel.clear(); await stkAssetsPatch(ids); toast('Listo: ' + ids.length + ' actualizado' + (ids.length === 1 ? '' : 's')); route();
     } catch (e){ $('#bk-err').textContent = errText(e); $('#bk-ok').disabled = false; }
   };
 }
@@ -478,12 +509,12 @@ async function stkAsset(v, id){
     </div>
     <div id="sa-body" style="margin-top:14px"></div>`;
   hydrate($('#sa-av'));
-  $('#sa-st')?.addEventListener('change', async e => { const { error } = await sb.from('assets').update({ status: e.target.value }).eq('id', id); if (error) return toast(errText(error)); stkInval(); toast('Estado actualizado'); route(); });
+  $('#sa-st')?.addEventListener('change', async e => { const { error } = await sb.from('assets').update({ status: e.target.value }).eq('id', id); if (error) return toast(errText(error)); await stkAssetsPatch([id]); toast('Estado actualizado'); route(); });
   $('#sa-edit')?.addEventListener('click', () => stkEdit(a));
   $('#sa-move')?.addEventListener('click', () => stkBulkModal('mv', [a.id], {}));
   $('#sa-qr').onclick = () => stkLabels([a]);
   $('#sa-arch')?.addEventListener('click', async () => { if (!a.archived && !confirm('¿Archivar este activo? Sale de las listas pero se conserva con todo su historial.')) return;
-    const { error } = await sb.from('assets').update({ archived: !a.archived }).eq('id', id); if (error) return toast(errText(error)); stkInval(); route(); });
+    const { error } = await sb.from('assets').update({ archived: !a.archived }).eq('id', id); if (error) return toast(errText(error)); await stkAssetsPatch([id]); route(); });
   const show = k => { try { localStorage.setItem('ia_satab', k); } catch {} $$('#sa-tabs [data-at]').forEach(b => b.classList.toggle('on', b.dataset.at === k));
     const body = $('#sa-body'); body.innerHTML = '<div class="card muted">Cargando…</div>';
     ({ res: stkARes, act: stkAAct, det: stkADet, doc: stkADoc, img: stkAImg, mant: stkAMant, uso: stkAUso }[k])(body, ctx).catch?.(e => { body.innerHTML = `<div class="card">${esc(errText(e))}</div>`; }); };
@@ -585,14 +616,14 @@ async function stkADoc(box, { a, w }){
       <td class="num"><button class="btn sec small" data-dopen="${i}">Abrir</button>${stkCan(3) ? ` <button class="btn sec small" data-ddel="${i}" style="color:var(--red)">🗑</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Todavía no hay documentos.</div>'}</div>`;
   $('#sa-docf')?.addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return;
     try { toast('Subiendo…'); const path = await stkUpload(a, f, 'doc'); const name = String(f.name || 'Documento').replace(/[\u0000-\u001f<>]/g, '').slice(0, 120);
-      const { error } = await sb.from('assets').update({ docs: [...docs, { path, name, at: new Date().toISOString() }] }).eq('id', a.id); if (error) throw error; stkInval(); toast('Documento agregado'); route(); }
+      const { error } = await sb.from('assets').update({ docs: [...docs, { path, name, at: new Date().toISOString() }] }).eq('id', a.id); if (error) throw error; await stkAssetsPatch([a.id]); toast('Documento agregado'); route(); }
     catch (err){ toast('No se pudo subir: ' + errText(err)); } });
   box.querySelectorAll('[data-dopen]').forEach(b => b.onclick = async () => { const d = docs[Number(b.dataset.dopen)]; if (!needOnline()) return;
     const { data } = await sb.storage.from('fotos').createSignedUrl(d.path, 600); if (!data?.signedUrl) return toast('No se pudo abrir');
     if (/\.pdf$/i.test(d.path)) window.open(data.signedUrl, '_blank', 'noopener'); else photoViewer(data.signedUrl, { name: d.name }); });
   box.querySelectorAll('[data-ddel]').forEach(b => b.onclick = async () => { if (!confirm('¿Quitar este documento?')) return; const i = Number(b.dataset.ddel), d = docs[i];
     const { error } = await sb.from('assets').update({ docs: docs.filter((_, k) => k !== i) }).eq('id', a.id); if (error) return toast(errText(error));
-    sb.storage.from('fotos').remove([d.path]).catch(() => {}); stkInval(); route(); });
+    sb.storage.from('fotos').remove([d.path]).catch(() => {}); await stkAssetsPatch([a.id]); route(); });
 }
 async function stkAImg(box, { a, w }){
   const ph = a.photos || [];
@@ -601,12 +632,12 @@ async function stkAImg(box, { a, w }){
     ${ph.length ? `<div class="stk-imgs">${ph.map((p, i) => `<div class="th"><img data-path="${esc(p)}" data-iv="${i}" alt="Imagen ${i + 1}"></div>`).join('')}</div>` : '<div class="empty">Todavía no hay imágenes.</div>'}</div>`;
   hydrate(box);
   const add = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-    try { toast('Guardando…'); const path = await stkUpload(a, f, 'img'); const { error } = await sb.from('assets').update({ photos: [...ph, path] }).eq('id', a.id); if (error) throw error; stkInval(); toast('Imagen agregada'); route(); }
+    try { toast('Guardando…'); const path = await stkUpload(a, f, 'img'); const { error } = await sb.from('assets').update({ photos: [...ph, path] }).eq('id', a.id); if (error) throw error; await stkAssetsPatch([a.id]); toast('Imagen agregada'); route(); }
     catch (err){ toast('No se pudo guardar: ' + errText(err)); } };
   $('#sa-imgc')?.addEventListener('change', add); $('#sa-imgg')?.addEventListener('change', add);
   box.querySelectorAll('[data-iv]').forEach(im => im.onclick = () => { const i = Number(im.dataset.iv); if (!im.src) return;
     photoViewer(im.src, { name: 'activo-' + a.code.replace(/[^\w-]/g, ''), onDel: stkCan(3) ? async () => { if (!confirm('¿Borrar esta imagen?')) return;
-      const { error } = await sb.from('assets').update({ photos: ph.filter((_, k) => k !== i) }).eq('id', a.id); if (error) return toast(errText(error)); sb.storage.from('fotos').remove([ph[i]]).catch(() => {}); stkInval(); route(); } : null }); });
+      const { error } = await sb.from('assets').update({ photos: ph.filter((_, k) => k !== i) }).eq('id', a.id); if (error) return toast(errText(error)); sb.storage.from('fotos').remove([ph[i]]).catch(() => {}); await stkAssetsPatch([a.id]); route(); } : null }); });
 }
 async function stkAMant(box, ctx){
   const { a, evs } = ctx;
@@ -646,7 +677,7 @@ function stkMatTab(box, sc){
   const items = B.items.filter(i => i.active).map(i => { const bs = bal.filter(b => b.item === i.id && b.qty > 1e-9); return { i, bs, tot: bs.reduce((s, b) => s + b.qty, 0) }; });
   const used = items.filter(x => x.tot > 0 || sc.kind === 'gen');
   box.innerHTML = `<div class="row between" style="gap:8px;flex-wrap:wrap"><p class="muted sm" style="margin:0">Cable, conectores, cajas… por cantidad. El saldo sale de los movimientos: nadie lo cambia a mano.</p>
-      <div class="row" style="gap:6px">${w && ['gen', 'prj', 'place'].includes(sc.kind) ? `<button class="btn" id="sm-mv" style="margin:0">🔁 Registrar movimiento</button><button class="btn sec" id="sm-new" style="margin:0">+ Material</button>` : ''}<button class="btn sec" id="sm-exp" style="margin:0">⬇ Exportar</button></div></div>
+      <div class="row" style="gap:6px">${w && ['gen', 'prj', 'place'].includes(sc.kind) ? `<button class="btn" id="sm-mv" style="margin:0">🔁 Registrar movimiento</button><button class="btn sec" id="sm-new" style="margin:0">+ Material</button>` : ''}${w && ['gen', 'prj'].includes(sc.kind) ? `<label class="btn sec" style="margin:0" title="Planilla con Descripción, Código, Unidad, Categoría, Stock y Ubicación">⬆ Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="sm-xl" class="hidden"></label>` : ''}<button class="btn sec" id="sm-exp" style="margin:0">⬇ Exportar</button></div></div>
     ${used.length ? `<div class="tblwrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>Material</th><th class="num">Saldo</th><th>Dónde</th></tr></thead><tbody>${used.map(({ i, bs, tot }) => {
       const lowQ = i.min_qty != null && tot < Number(i.min_qty);
       return `<tr class="click" data-mi="${i.id}"><td><b>${esc(i.name)}</b>${i.code ? `<div class="muted sm">${esc(i.code)}</div>` : ''}${lowQ ? `<div class="sm" style="color:var(--red)">⚠ Bajo el mínimo (${stkFmtQty(i.min_qty)} ${esc(i.unit)})</div>` : ''}</td>
@@ -655,6 +686,7 @@ function stkMatTab(box, sc){
       : `<div class="empty">${B.items.length ? 'No hay saldo de materiales en este stock.' : 'Todavía no hay materiales.'}${w ? ' Empezá con <b>+ Material</b> y después <b>Registrar movimiento → Ingreso</b>.' : ''}</div>`}`;
   $('#sm-new')?.addEventListener('click', () => stkItemEdit(null));
   $('#sm-mv')?.addEventListener('click', () => stkMoveModal(sc));
+  $('#sm-xl')?.addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) stkMatImport(f, sc); });
   $('#sm-exp').onclick = () => xlSave(`Materiales ${sc.kind === 'prj' ? stkProjName(sc.id) : 'stock general'} ${todayStr()}`, [['Saldos', [['Material', 'Código', 'Unidad', 'Lugar', 'Stock', 'Cantidad', 'Mínimo'],
     ...used.flatMap(({ i, bs }) => bs.map(b => [i.name, i.code || '', i.unit, B.placeById.get(b.place)?.name || '', b.project ? stkProjName(b.project) : 'Stock general', Math.round(b.qty * 100) / 100, i.min_qty ?? '']))], [28, 12, 8, 28, 24, 10, 8]],
     ['Movimientos', [['Fecha', 'Material', 'Movimiento', 'Cantidad', 'Desde', 'Hacia', 'Sitio', 'Nota', 'Quién'], ...B.moves.filter(x => sc.kind === 'gen' ? (!x.from_project && x.from_place) || (!x.to_project && x.to_place) : sc.kind === 'prj' ? x.from_project === sc.id || x.to_project === sc.id : x.from_place === sc.id || x.to_place === sc.id)
@@ -1102,4 +1134,85 @@ async function stkCatalog(tab){
   m.el.querySelectorAll('[data-cdel]').forEach(b => b.onclick = async () => { const c = CAT.find(x => x.id === b.dataset.cdel);
     if (!confirm(`¿Quitar "${c.name}" del catálogo? Los activos que ya lo usan no cambian.${tab === 'marca' ? ' También se quitan sus modelos.' : ''}`)) return;
     const { error } = await sb.from('stock_catalog').delete().eq('id', c.id); if (error) return err(errText(error)); again(); });
+}
+
+/* ---------- importar materiales con su saldo (Descripción, Código, Unidad, Categoría, Ingresos, Egresos, Stock, Ubicación, Obs) ----------
+   Crea los materiales que faltan y deja el saldo de cada lugar IGUAL al de la planilla con un movimiento (ingreso o ajuste).
+   Se puede volver a importar: solo se registra la diferencia. */
+const STK_MCOLS = { name: ['descripcion', 'material', 'nombre', 'articulo', 'item descripcion'], code: ['codigo', 'codigo trans', 'cod', 'codigo interno'], unit: ['unidad', 'unidad de medida', 'um'],
+  cat: ['categoria', 'rubro'], inq: ['ingresos', 'ingreso'], outq: ['egresos', 'egreso'], qty: ['stock', 'saldo', 'cantidad', 'existencia', 'stock actual'], loc: ['ubicacion', 'lugar', 'deposito'], obs: ['obs', 'observaciones', 'notas'] };
+const stkUnit = u => { const n = stkNorm(u); return ({ unidad: 'u', unidades: 'u', un: 'u', metros: 'm', metro: 'm', mts: 'm', kilos: 'kg', kilo: 'kg' })[n] || String(u || 'u').trim().toLowerCase().slice(0, 20) || 'u'; };
+async function stkMatImport(file, sc){
+  if (!needOnline()) return;
+  let wb; try { wb = await readWorkbook(file); } catch (e){ return toast('No se pudo leer el Excel: ' + errText(e)); }
+  const B = STK.base, pid = stkScopeProj(sc);
+  let rows = null, C = null, sheet = '';
+  for (const sn of wb.SheetNames){
+    const R = sheetRows(wb.Sheets[sn]);
+    const hi = R.slice(0, 15).findIndex(r => { const h = r.map(stkNorm); return h.some(x => STK_MCOLS.name.includes(x)) && h.some(x => STK_MCOLS.qty.includes(x)); });
+    if (hi < 0) continue;
+    const H = R[hi].map(stkNorm); C = {}; for (const [k, al] of Object.entries(STK_MCOLS)) C[k] = H.findIndex(h => al.includes(h));
+    rows = R.slice(hi + 1); sheet = sn; break;
+  }
+  if (!rows) return toast('No encontré una hoja con las columnas Descripción y Stock.');
+  const g = (r, k) => C[k] < 0 ? '' : xlStr(r[C[k]]);
+  const num = v => { const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : NaN; };
+  const itemByName = new Map(B.items.map(i => [stkNorm(i.name), i])), placeByName = new Map(B.places.filter(p => p.active).map(p => [stkNorm(p.name), p]));
+  const list = [], errs = [], seen = new Set(), newPlaces = new Map();
+  rows.forEach((r, k) => {
+    const name = g(r, 'name').replace(/\s+/g, ' ').slice(0, 160); if (!name) return;
+    const q = num(g(r, 'qty'));
+    if (isNaN(q)){ errs.push(`Fila ${k + 2}: "${name}" no tiene un stock numérico`); return; }
+    if (q < 0){ errs.push(`Fila ${k + 2}: "${name}" tiene stock negativo (${q})`); return; }
+    const loc = g(r, 'loc').slice(0, 120), key = stkNorm(name) + '|' + stkNorm(loc);
+    if (seen.has(key)){ errs.push(`Fila ${k + 2}: "${name}" está repetido en el mismo lugar`); return; } seen.add(key);
+    if (loc && !placeByName.has(stkNorm(loc))) newPlaces.set(stkNorm(loc), loc);
+    const cat = g(r, 'cat').slice(0, 80), obs = g(r, 'obs').slice(0, 200);
+    list.push({ name, code: g(r, 'code').slice(0, 60) || null, unit: stkUnit(g(r, 'unit')), loc, q, inq: num(g(r, 'inq')), outq: num(g(r, 'outq')),
+      notes: [cat && 'Categoría: ' + cat, obs].filter(Boolean).join(' · ').slice(0, 500) || null, ex: itemByName.get(stkNorm(name)) });
+  });
+  if (!list.length) return toast('La planilla no tiene materiales para importar.');
+  const nNew = new Set(list.filter(x => !x.ex).map(x => stkNorm(x.name))).size;
+  const places = B.places.filter(p => p.active);
+  const m = modal(`<h2>⬆ Importar materiales</h2>
+    <p class="muted sm" style="margin-top:-6px">Hoja <b>${esc(sheet)}</b> → ${pid ? '📁 stock del proyecto <b>' + esc(stkProjName(pid)) + '</b>' : '🏢 stock general'}</p>
+    <div class="stk-kpis"><div class="stk-kpi" style="border-left-color:#166534"><span>✨ Materiales nuevos</span><b>${nNew}</b></div><div class="stk-kpi" style="border-left-color:#1E40AF"><span>🔄 Ya existían</span><b>${list.length - list.filter(x => !x.ex).length}</b><small>se usa el mismo</small></div>
+      <div class="stk-kpi" style="border-left-color:#991B1B"><span>⚠ Con error</span><b>${errs.length}</b><small>no se cargan</small></div></div>
+    <p class="sm">El saldo de cada material en cada lugar queda <b>igual al de la planilla</b>: se registra un <b>ingreso</b> (si no había nada) o un <b>ajuste</b> por la diferencia, con la nota "Saldo desde Excel". Si la volvés a importar, solo se registra lo que cambió.</p>
+    ${newPlaces.size ? `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400"><input type="checkbox" id="mx-np" checked style="width:auto;margin-top:3px"><span>Crear como <b>depósitos</b> los lugares que no existen: ${[...newPlaces.values()].map(n => `<span class="pill" style="margin:2px">${esc(n)}</span>`).join('')}</span></label>` : ''}
+    ${list.some(x => !x.loc) || !newPlaces.size && !places.length ? `<label>Lugar para las filas sin ubicación</label><select id="mx-pl">${places.map(p => `<option value="${p.id}">${(STK_PLACE_KIND[p.kind] || STK_PLACE_KIND.otro)[0]} ${esc(p.name)}</option>`).join('')}</select>` : ''}
+    ${errs.length ? `<details><summary class="sm" style="cursor:pointer;color:var(--red)">Ver errores (${errs.length})</summary><div class="sm" style="max-height:160px;overflow:auto">${errs.slice(0, 200).map(e => `<div>${esc(e)}</div>`).join('')}</div></details>` : ''}
+    <div class="progress hidden" id="mx-pg" style="height:10px;margin-top:10px"><i style="width:0"></i></div><div class="err" id="mx-err"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn sec" id="mx-x">Cancelar</button><button class="btn" id="mx-ok">Importar ${list.length}</button></div>`, { wide: true });
+  $('#mx-x').onclick = m.close;
+  $('#mx-ok').onclick = async () => {
+    const err = $('#mx-err'), bar = $('#mx-pg i'); err.textContent = ''; $('#mx-ok').disabled = true; $('#mx-pg').classList.remove('hidden');
+    try {
+      if (newPlaces.size && $('#mx-np')?.checked){
+        const { data, error } = await sb.from('stock_places').insert([...newPlaces.values()].map(n => ({ org_id: me.org_id, name: n, kind: 'deposito' }))).select('*'); if (error) throw error;
+        (data || []).forEach(p => placeByName.set(stkNorm(p.name), p));
+      }
+      const defPl = $('#mx-pl')?.value || null;
+      const todo = list.map(x => ({ ...x, place: x.loc ? placeByName.get(stkNorm(x.loc))?.id : defPl })).filter(x => { if (!x.place){ errs.push(`"${x.name}": sin lugar`); return false; } return true; });
+      // materiales nuevos (uno por nombre)
+      const mk = [...new Map(todo.filter(x => !x.ex).map(x => [stkNorm(x.name), { org_id: me.org_id, name: x.name, unit: x.unit, code: x.code, notes: x.notes }])).values()];
+      for (let i = 0; i < mk.length; i += 200){
+        const { data, error } = await sb.from('stock_items').insert(mk.slice(i, i + 200)).select('*'); if (error) throw error;
+        (data || []).forEach(it => itemByName.set(stkNorm(it.name), it)); bar.style.width = Math.round((i + 200) * 40 / Math.max(mk.length, 1)) + '%';
+      }
+      // saldo igual al Excel: diferencia contra lo que hay hoy en ese lugar y ese stock
+      const bal = stkBalances(), have = (item, place) => bal.filter(b => b.item === item && b.place === place && (b.project || null) === (pid || null)).reduce((s, b) => s + b.qty, 0);
+      const mv = [];
+      for (const x of todo){
+        const it = itemByName.get(stkNorm(x.name)); if (!it){ errs.push(`"${x.name}": no se pudo crear`); continue; }
+        const cur = have(it.id, x.place), d = Math.round((x.q - cur) * 1000) / 1000; if (Math.abs(d) < 1e-9) continue;
+        const note = `Saldo desde Excel${isFinite(x.inq) && isFinite(x.outq) ? ` (ingresos ${stkFmtQty(x.inq)}, egresos ${stkFmtQty(x.outq)})` : ''}`.slice(0, 300);
+        mv.push(d > 0 ? { org_id: me.org_id, item_id: it.id, kind: cur > 1e-9 ? 'ajuste_mas' : 'ingreso', qty: d, to_place: x.place, to_project: pid, note }
+                      : { org_id: me.org_id, item_id: it.id, kind: 'ajuste_menos', qty: -d, from_place: x.place, from_project: pid, note });
+      }
+      for (let i = 0; i < mv.length; i += 200){ const { error } = await sb.from('stock_moves').insert(mv.slice(i, i + 200)); if (error) throw error; bar.style.width = (40 + Math.round((i + 200) * 60 / Math.max(mv.length, 1))) + '%'; }
+      stkInval(); m.close();
+      toast(`Listo: ${mk.length} materiales nuevos y ${mv.length} saldos registrados${errs.length ? ` · ${errs.length} filas con error` : ''}.`); route();
+    } catch (e){ err.textContent = errText(e); $('#mx-ok').disabled = false; }
+  };
 }
