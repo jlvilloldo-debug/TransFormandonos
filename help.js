@@ -25,6 +25,7 @@ const HELP = [
     ['Hacer una inspección', 'Proyecto → Inspecciones → "+ Nueva": se ofrecen solo las planillas y los sitios del proyecto.'],
     ['Elegir las planillas de un proyecto', 'Proyecto → Planillas → "Agregar desde la biblioteca". "Quitar" la saca del proyecto (no la borra).'],
     ['Crear una planilla nueva', 'Arriba → Plantillas (biblioteca de todas) → nueva. Después agregala al proyecto desde Planillas.'],
+    ['Importar una planilla en PDF', 'Plantillas → "📄 Importar PDF". Lee plantillas exportadas de SafetyCulture, informes de InspectApp y otros PDF con texto. Revisás y corregís en la vista previa y tocás Crear. El PDF original queda guardado (botón "📄 PDF original" en la plantilla). Las preguntas condicionales quedan visibles con la aclaración «completar si…».'],
     ['Terminar un borrador', 'Inspecciones → los que dicen "Borrador" → abrir y completar.']] },
   { id: 'mapa', ic: '🗺', t: 'Sitios, mapa y KMZ', hash: ['#/map', '#/sites', '/sit'], d: 'El mapa general muestra todo; cada proyecto tiene su mapa con sus sitios, trazas y radioenlaces.', q: [
     ['Subir o actualizar el KMZ del proyecto', 'Proyecto → Sitios y mapa → "📥 Subir / actualizar KMZ". Elegí qué es cada carpeta (sitio de radio, EPI, radioenlace, tramo de fibra o no importar). Volver a subirlo agrega lo nuevo y actualiza lo existente, sin duplicar.'],

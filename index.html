@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-MhiKmnBDOYkB1HKPdVx5VMpa7rSOO1lc+r2wEgPOl0A='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-mzpql2wljHHut6YeD5Vmz9lBK9fCQTspb0Dav3LoYU0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -464,11 +464,11 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.27.5';
+const APP_VERSION = '5.28.0';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
-const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', help: 'help.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
-const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', bases: () => typeof viewBases === 'function', instr: () => typeof viewInstr === 'function', help: () => typeof viewHelp === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
+const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', help: 'help.js', tplpdf: 'tplpdf.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
+const LIB_OK = { xlsx: () => typeof XLSX !== 'undefined', jszip: () => typeof JSZip !== 'undefined', jsqr: () => typeof jsQR === 'function', qr: () => typeof qrcode === 'function', donde: () => typeof viewDonde === 'function', control: () => typeof viewControl === 'function', stock: () => typeof viewStock === 'function', sitios: () => typeof viewSite === 'function', hys: () => typeof viewHys === 'function' && typeof HYS_JOBS !== 'undefined', agenda: () => typeof viewAgenda === 'function', recursos: () => typeof viewRecursos === 'function', red: () => typeof viewRed === 'function', gab: () => typeof gabOpen === 'function', fix: () => typeof fixDecorate === 'function', bases: () => typeof viewBases === 'function', instr: () => typeof viewInstr === 'function', help: () => typeof viewHelp === 'function', tplpdf: () => typeof importTemplatePdf === 'function', pdfjs: () => typeof pdfjsLib !== 'undefined', dc: () => typeof viewDC === 'function' };
 const _libP = {};
 function needLib(k){
   if (!LIBS[k]) return Promise.reject(new Error('Módulo desconocido'));
@@ -3714,6 +3714,7 @@ async function viewTemplates(v){
     <div class="card"><div class="row between"><h2 style="margin:0">Plantillas</h2>
       ${manage ? `<div class="row"><button class="btn sec" id="b-lib">Biblioteca</button>
         <label class="btn sec" style="margin:0">Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="xl" class="hidden"></label>
+        <label class="btn sec" style="margin:0" title="Plantilla de SafetyCulture, informe de InspectApp u otro PDF con texto">📄 Importar PDF<input type="file" accept="application/pdf,.pdf" id="tpdf" class="hidden"></label>
         <button class="btn" id="b-newtpl">+ Plantilla en blanco</button></div>` : ''}</div>
       ${manage ? `<p class="muted sm" style="margin:10px 0 0">Para cargar un checklist largo rápido: <button class="link" id="b-model">descargá el modelo de Excel</button>, completalo con una fila por pregunta y subilo con <b>Importar Excel</b>.</p>` : ''}</div>
     <div class="card">${tpls.length ? `<div class="tblwrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Tipo</th><th class="hide-sm">Preguntas</th><th class="hide-sm">Actualizada</th><th>Estado</th><th></th></tr></thead><tbody>
@@ -3724,6 +3725,7 @@ async function viewTemplates(v){
       </tbody></table></div>` : `<p class="muted">No hay plantillas todavía.${manage ? ' Agregá una desde la biblioteca, importá un Excel o creala en blanco.' : ' Pedile a un administrador que cargue una.'}</p>`}</div>`;
   $('#b-model')?.addEventListener('click', downloadModel);
   $('#xl')?.addEventListener('change', e => importTemplateExcel(e.target.files[0]));
+  $('#tpdf')?.addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; try { await needLib('tplpdf'); await importTemplatePdf(f); } catch (err){ toast(errText(err)); } });
   $('#b-lib')?.addEventListener('click', () => {
     const m = modal(`<h2>Biblioteca de plantillas</h2>
       ${LIBRARY.map(l => `<div class="card" style="margin-bottom:10px"><div class="row between"><div class="grow"><b>${esc(l.name)}</b> <span class="pill p-info">${KIND_TXT[l.kind]}</span><div class="muted sm">${esc(l.description)}</div></div>
@@ -3764,7 +3766,7 @@ async function viewTemplateEditor(v, id){
   const render = () => {
     v.innerHTML = `
       <div class="card"><div class="row between"><button class="btn sec small" data-go="#/tpl">← Plantillas</button>
-        <div class="row"><button class="btn sec small" id="t-xl">Descargar Excel</button><button class="btn danger small" id="t-del">Eliminar</button><button class="btn" id="t-save">Guardar</button></div></div>
+        <div class="row">${def.source?.path ? `<button class="btn sec small" id="t-src" title="${esc(def.source.file || '')}">📄 PDF original</button>` : ''}<button class="btn sec small" id="t-xl">Descargar Excel</button><button class="btn danger small" id="t-del">Eliminar</button><button class="btn" id="t-save">Guardar</button></div></div>
         ${used ? `<div class="banner warn" style="margin:12px 0 0"><span class="dot"></span><div class="sm">Esta plantilla ya se usó en ${used} inspección${used===1?'':'es'}. Los cambios aplican solo a las inspecciones nuevas; las ya cargadas conservan su versión.</div></div>` : ''}
         <div class="row" style="margin-top:6px"><div class="grow"><label>Nombre</label><input id="t-name" value="${esc(t.name)}"></div>
           <div style="width:170px"><label>Tipo</label><select id="t-kind">${Object.entries(KIND_TXT).map(([k,x]) => `<option value="${k}" ${t.kind===k?'selected':''}>${x}</option>`).join('')}</select></div>
@@ -3816,6 +3818,7 @@ async function viewTemplateEditor(v, id){
     v.querySelectorAll('[data-smove]').forEach(b => b.onclick = () => { const i = Number(b.dataset.smove), j = i + Number(b.dataset.dir); if (j < 0 || j >= def.sections.length) return; [def.sections[i], def.sections[j]] = [def.sections[j], def.sections[i]]; render(); });
     $('#s-add').onclick = () => { def.sections.push({ id: newId('s'), title: 'Sección nueva', items: [] }); render(); };
     $('#t-xl').onclick = () => exportTemplate({ name: $('#t-name').value, definition: def });
+    $('#t-src')?.addEventListener('click', async () => { await needLib('tplpdf'); tplOpenSourcePdf(def.source.path); });
     $('#t-save').onclick = async () => {
       if (def.sections.some(s => s.items.some(i => !i.label.trim()))) return toast('Hay preguntas sin texto.');
       const { error } = await sb.from('templates').update({ name: $('#t-name').value.trim() || 'Sin nombre', kind: $('#t-kind').value,
