@@ -24,7 +24,7 @@ const AG_AV = { G: ['guard', 'De guardia'], F: ['off', 'Franco'], VAC: ['leave',
 const AG_PRIO = { critica: ['c', 'CRÍTICA'], alta: ['a', 'ALTA'], normal: ['n', ''] };
 const AG_LOCK = ['en_curso', 'completada', 'aprobada', 'rechazada'];
 const AG_COLS = ['#2563EB', '#059669', '#7C3AED', '#DB2777', '#EA580C', '#0E7490', '#B45309', '#4F46E5', '#BE123C', '#15803D'];
-const AG = { wk: null, view: 'week', day: 0, q: '', base: '', kind: '', sk: new Set(), picked: null, hint: null, sel: null, data: null };
+const AG = { wk: null, view: 'week', day: 0, q: '', base: '', kind: '', sk: new Set(), who: (() => { try { return new Set(JSON.parse(localStorage.getItem('ag-who') || '[]').slice(0, 200)); } catch { return new Set(); } })(), picked: null, hint: null, sel: null, data: null };
 
 function agCss(){
   if (document.getElementById('ag-css')) return;
@@ -206,10 +206,12 @@ function agFilters(){
   return `<div class="ag-filters"><input id="ag-q" type="search" placeholder="Buscar persona, sitio o tarea" value="${esc(AG.q)}">
     <select id="ag-base"><option value="">Todas las bases</option>${bases.map(b => `<option ${AG.base === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>
     <select id="ag-kind"><option value="">Propios y contratistas</option><option value="p" ${AG.kind === 'p' ? 'selected' : ''}>Solo personal propio</option><option value="c" ${AG.kind === 'c' ? 'selected' : ''}>Solo contratistas</option></select>
+    <button type="button" class="ag-chip ${AG.who.size ? 'on' : ''}" id="ag-who" title="Elegí uno o varios técnicos para ver solo sus tareas">👥 ${AG.who.size ? `${AG.who.size} técnico${AG.who.size > 1 ? 's' : ''}` : 'Técnicos'}</button>
     <span class="muted sm">Habilidad:</span>${AG_SKILLS.map(s => `<button type="button" class="ag-chip ${AG.sk.has(s) ? 'on' : ''}" data-agsk="${esc(s)}">${esc(s)}</button>`).join('')}</div>`;
 }
 function agRowOk(r){
   const D = AG.data, q = agNorm(AG.q);
+  if (AG.who.size && !AG.who.has(r.key)) return false;
   return (!AG.base || r.base === AG.base) && (!AG.kind || (AG.kind === 'c') === r.ct) && (!AG.sk.size || r.skills.some(s => AG.sk.has(s))) &&
     (!q || agNorm(r.name + ' ' + r.base + ' ' + r.co).includes(q) || D.week.some(t => D.rowsOf(t).includes(r.key) && agNorm(t.title + ' ' + agSite(t)).includes(q)));
 }
@@ -272,6 +274,7 @@ function agBind(v){
   $('#ag-q') && ($('#ag-q').oninput = e => { AG.q = e.target.value; agBody(); });
   $('#ag-base') && ($('#ag-base').onchange = e => { AG.base = e.target.value; agBody(); });
   $('#ag-kind') && ($('#ag-kind').onchange = e => { AG.kind = e.target.value; agBody(); });
+  $('#ag-who') && ($('#ag-who').onclick = agWhoSheet);
   v.querySelectorAll('[data-agsk]').forEach(b => b.onclick = () => { const s = b.dataset.agsk; AG.sk.has(s) ? AG.sk.delete(s) : AG.sk.add(s); b.classList.toggle('on', AG.sk.has(s)); agBody(); });
   $('#ag-new') && ($('#ag-new').onclick = () => agTaskSheet(null));
   $('#ag-copy') && ($('#ag-copy').onclick = agCopyPrev);
@@ -592,4 +595,32 @@ async function agXlImport(file){
     for (let i = 0; i < rows.length; i += 100){ const { error } = await sb.from('tasks').insert(rows.slice(i, i + 100)); if (error){ $('#agx-err').textContent = errText(error) + (ok ? ` (se cargaron ${ok})` : ''); $('#agx-ok').disabled = false; return; } ok += Math.min(100, rows.length - i); }
     m.close(); AG.picked = null; AG.hint = null; const d1 = nuevas.find(x => x.day); if (d1) AG.wk = agMon(d1.day); toast(`Se cargaron ${ok} tareas.`); route();
   };
+}
+
+/* ---------- filtro por técnicos: elegir uno o varios y ver solo sus tareas ---------- */
+function agWhoSave(){ try { localStorage.setItem('ag-who', JSON.stringify([...AG.who])); } catch {} }
+function agWhoSheet(){
+  const D = AG.data; if (!D) return;
+  const cnt = k => D.week.filter(t => D.rowsOf(t).includes(k)).length;
+  const rows = [...D.rows].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  const pick = new Set([...AG.who].filter(k => rows.some(r => r.key === k)));
+  const m = modal(`<h2>👥 Ver tareas de…</h2><p class="muted sm" style="margin-top:-4px">Marcá uno o varios técnicos o cuadrillas. La agenda muestra solo sus filas y tareas de la semana.</p>
+    <input id="aw-q" type="search" placeholder="Buscar por nombre o base">
+    <div class="row" style="gap:8px;margin:8px 0"><button class="link" id="aw-all">Marcar los visibles</button><button class="link" id="aw-none">Ninguno</button><span class="muted sm grow" id="aw-n" style="text-align:right"></span></div>
+    <div id="aw-list" style="max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 10px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="aw-x">Cancelar</button><button class="btn" id="aw-ok">Ver</button></div>`);
+  const draw = () => {
+    const q = agNorm($('#aw-q').value);
+    const vis = rows.filter(r => !q || agNorm(r.name + ' ' + (r.base || '') + ' ' + (r.co || '')).includes(q));
+    $('#aw-list').innerHTML = vis.map(r => { const n = cnt(r.key); return `<label style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-weight:400;margin:0;cursor:pointer">
+      <input type="checkbox" data-awk="${esc(r.key)}" ${pick.has(r.key) ? 'checked' : ''} style="width:auto"><span class="grow"><b>${esc(r.name)}</b> <span class="muted sm">${esc([r.base, r.ct ? 'Contratista' : 'Propio'].filter(Boolean).join(' · '))}</span></span>
+      <span class="sm ${n ? '' : 'muted'}">${n} tarea${n === 1 ? '' : 's'}</span></label>`; }).join('') || '<p class="muted sm">Nadie con ese nombre.</p>';
+    $('#aw-list').querySelectorAll('[data-awk]').forEach(i => i.onchange = () => { i.checked ? pick.add(i.dataset.awk) : pick.delete(i.dataset.awk); $('#aw-n').textContent = pick.size ? `${pick.size} elegido${pick.size > 1 ? 's' : ''}` : ''; });
+    $('#aw-n').textContent = pick.size ? `${pick.size} elegido${pick.size > 1 ? 's' : ''}` : '';
+    $('#aw-all').onclick = () => { vis.forEach(r => pick.add(r.key)); draw(); };
+  };
+  $('#aw-q').oninput = draw; $('#aw-none').onclick = () => { pick.clear(); draw(); };
+  $('#aw-x').onclick = m.close;
+  $('#aw-ok').onclick = () => { AG.who = new Set(pick); agWhoSave(); m.close(); agRender(); };
+  draw(); setTimeout(() => $('#aw-q')?.focus(), 50);
 }

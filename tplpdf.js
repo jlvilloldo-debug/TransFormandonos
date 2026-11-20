@@ -60,7 +60,7 @@ function tpParseSC(L){
       const act = c.slice(1).join(' ');
       if (!par){ lastIf = null; return; }
       lastIf = { par, val };
-      if (/require evidence/i.test(act)){ par.photos = true; (par.ev_if ||= []).push(val); }
+      if (/require evidence/i.test(act)) (par.ev_if ||= []).push(['yesno', 'okfail', 'brm'].includes(par.type) ? (COND_EQ[norm(val)] || val) : val);
       const ids = /answer question\(s\)\s*(.+)$/i.exec(act); if (ids) ids[1].split(/[,\s]+/).filter(Boolean).forEach(id => pend.set(id.replace(/\.$/, ''), { par, val }));
       return;
     }
@@ -80,96 +80,29 @@ function tpParseSC(L){
     if (last && last.type !== 'heading' && /^[a-záéíóúñ(]/.test(t) && !(last._opts || []).length){ last.label = last._lbl = tpCut(last.label + ' ' + t); return; }
     if (l.h > qH + 0.8 || !sec) newSec(t); else add({ type: 'heading', label: tpCut(t, 200) });
   });
-  // múltiple opción → subtítulo + una pregunta Sí/No por opción (sin puntaje); select sin opciones → texto
+  // opción múltiple real; preguntas condicionales con su lógica; "sitio" se completa solo con el sitio de la inspección
   const sections = secs.map(s => { const items = [];
     for (const it of s.items){
-      if (it.type === 'multi'){ nMulti++; items.push({ type: 'heading', label: it.label + ' (marcar los que correspondan)', multi: true, _cond: it._cond });
-        const opts = it._opts || []; it._kids = {};
-        opts.forEach(o => { const k = { type: 'yesno', label: o, good: 'none', _grp: it }; it._kids[norm(o)] = k; items.push(k); }); if (!opts.length) items.push({ type: 'text', label: it.label }); continue; }
-      if (it.type === 'select'){ it.options = (it._opts || []).filter(Boolean); if (!it.options.length) it.type = 'text'; }
+      if (it.type === 'multi' || it.type === 'select'){ it.options = [...new Set((it._opts || []).map(o => o.replace(/\|/g, '/').trim()).filter(Boolean))]; if (!it.options.length) it.type = 'text'; else if (it.type === 'multi') nMulti++; }
+      if (it._cond){ const { par, val } = it._cond; it._show = [{ _p: par, eq: ['yesno', 'okfail', 'brm'].includes(par.type) ? (COND_EQ[norm(val)] || val) : val.replace(/\|/g, '/').trim() }]; }
+      if (it.type === 'text' && /\bsitio\b/i.test(it.label) && !/serie|nro|n[uú]mero|c[oó]digo/i.test(it.label)) it.default = '[sitio]';
       items.push(it);
-      if (it._dt) items.push({ type: 'time', label: 'Hora', required: it.required });
+      if (it._dt) items.push({ type: 'time', label: 'Hora', required: it.required, _show: it._show });
     } return { title: s.title, items }; });
-  // condiciones: la pregunta queda visible, opcional y con la aclaración (la lógica se guarda para la próxima versión)
-  for (const s of sections) for (const it of s.items){
-    if (!it._cond) continue; const { par, val } = it._cond;
-    const pl = par._lbl || par.label, plabel = par._kids ? `${pl}: ${val}` : `${pl} = ${val}`;
-    it.label = tpCut(`${it.label} — completar si «${plabel}»`, 400); it.cond = { label: tpCut(pl, 200), eq: tpCut(val, 120) };
-    if (it.required){ delete it.required; it.req_if = true; }
-  }
-  for (const s of sections) for (const it of s.items) if (it.ev_if?.length && !it._kids) it.label = tpCut(`${it.label} (foto obligatoria si: ${[...new Set(it.ev_if)].join(', ')})`, 400);
-  return { name, sections, notes: [nCond && `${nCond} preguntas condicionales quedaron visibles y opcionales, con la aclaración «completar si…».`, nMulti && `${nMulti} preguntas de varias opciones quedaron como una lista de Sí/No (una por opción).`].filter(Boolean) };
+  return { name, sections, notes: [nCond && `${nCond} preguntas aparecen solo cuando corresponde según la respuesta (lógica condicional).`, nMulti && `${nMulti} preguntas de opción múltiple (se marcan varias).`].filter(Boolean) };
 }
-
-/* ---------- Informe de InspectApp ya completado ---------- */
-function tpAnsType(a){
-  const n = norm(a);
-  if (/^(si|no|n\/a)$/.test(n)) return { type: 'yesno' };
-  if (/^(ok|falla)$/.test(n)) return { type: 'okfail' };
-  if (/^(bueno|regular|malo)$/.test(n)) return { type: 'brm' };
-  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(n)) return { type: 'date' };
-  if (/^\d{1,2}:\d{2}\s*(a\.?\s*m\.?|p\.?\s*m\.?)?$/.test(n)) return { type: 'time' };
-  const m = /^(-?\d+(?:[.,]\d+)?)\s*([a-zA-Z%°ºΩµ/·.²³]{1,12})?$/.exec(String(a).trim()); if (m) return { type: 'number', unit: m[2] || undefined };
-  return { type: 'text' };
-}
-function tpParseIA(L){
-  const name = tpCut((L.find(l => l.p === 1 && l.c.length === 1 && /^[^a-z]{6,}$/.test(l.t) && !/inspectapp|transform/i.test(l.t)) || {}).t, 120);
-  const secs = []; let sec = null, last = null, started = false, nextNum = 1;
-  for (const l of L){
-    const t = l.t, c = l.c;
-    if (/^https?:\/\//i.test(t) || /^\d{1,2}\/\d{1,2}\/\d{2},\s*\d{1,2}:\d{2}/.test(t) || /generado con inspectapp/i.test(t)) continue;
-    if (started && /^resumen de archivos multimedia/i.test(t)) break;
-    let m = /^(\d{1,2})\.\s+(.+)$/.exec(c[0]);
-    const score = /\d+\s*\/\s*\d+\s*\(\s*[\d.,]+\s*%\s*\)\s*$/.exec(t);
-    if (m && score) m[2] = m[2].replace(/\s*\d+\s*\/\s*\d+\s*\(.*$/, '');
-    const isSec = m && (score || c.length === 1 && +m[1] === nextNum);
-    if (isSec){ nextNum = +m[1] + 1; sec = { title: tpCut(m[2], 150), items: [] }; secs.push(sec); started = true; last = null; continue; }
-    if (!started) continue;
-    if (/^(foto|video)\s+\d+/i.test(c[0])){ if (last && last.type !== 'heading'){ if (/^video/i.test(c[0])) last.video = true; else last.photos = true; } continue; }
-    if (/^firma$/i.test(t)){ sec.items.push(last = { type: 'signature', label: 'Firma' }); continue; }
-    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}(\s+\d{1,2}:\d{2}.*)?$/.test(t)) continue;
-    if (/^▶$/.test(t) || /^\d+:\d{2}(\s|$)/.test(t) || /^-?[\d.,]+$/.test(t)) continue;
-    if ((m = /^de\s+(-?[\d.,]+)\s+a\s+(-?[\d.,]+)$/i.exec(t))){ if (last?.type === 'number'){ last.min = tpNum(m[1]); last.max = tpNum(m[2]); } continue; }
-    if (c.length >= 2){
-      const lab = c.slice(0, -1).join(' '), at = tpAnsType(c[c.length - 1]);
-      if (score){ sec.items.push(last = { type: 'heading', label: tpCut(lab, 200) }); continue; }
-      if (at.type === 'yesno' && /^n\/a$/i.test(c[c.length - 1].trim()) && /^(nombre|n[uú]mero|observaci|consignar|distancia|cantidad|estado|serial|detall|tel[eé]fono|comentario)/i.test(lab)) at.type = 'text';
-      last = { type: at.type, label: tpCut(lab) }; if (at.unit) last.unit = at.unit; sec.items.push(last); continue;
-    }
-    if (last && last.type !== 'heading' && /^[a-záéíóúñ(]/.test(t)){ last.label = tpCut(last.label + ' ' + t); continue; }
-    sec.items.push(last = { type: 'heading', label: tpCut(t, 200) });
-  }
-  return { name, sections: secs, notes: ['Se tomaron las preguntas del informe; las respuestas, fotos y datos del sitio no se copian.', 'El tipo de cada pregunta se dedujo de la respuesta: revisá los textos que hayan quedado como Sí/No.'] };
-}
-
-/* ---------- Cualquier otro PDF ---------- */
-function tpParseGeneric(L){
-  const sizes = L.map(l => l.h).sort((a, b) => a - b), base = sizes[Math.floor(sizes.length / 2)] || 10;
-  const secs = []; let sec = null, last = null;
-  for (const l of L){
-    const t = l.t; if (/^\d+\s*\/\s*\d+$/.test(t) || /^p[aá]g(ina)?\.?\s*\d+/i.test(t) || t.length < 2) continue;
-    const big = l.h > base + 1, caps = t.length > 3 && t === t.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(t);
-    if (big || (caps && t.length < 80) || !sec){ sec = { title: tpCut(t.replace(/:$/, ''), 150), items: [] }; secs.push(sec); last = null; continue; }
-    if (last && /^[a-záéíóúñ(]/.test(t)){ last.label = tpCut(last.label + ' ' + t); continue; }
-    if (/:$/.test(t) && t.length < 80){ sec.items.push(last = { type: 'heading', label: tpCut(t.replace(/:$/, ''), 200) }); last = null; continue; }
-    const q = t.replace(/^\s*(\[\s*\]|☐|□|[-•·▪]|\d+[.)-])\s*/, '').replace(/[\s.:_]{3,}(si|sí|no|n\/a|ok)?[\s/]*(si|sí|no|n\/a)?[\s/]*(n\/a)?\s*$/i, '').trim();
-    if (q) sec.items.push(last = { type: 'yesno', label: tpCut(q) });
-  }
-  return { name: '', sections: secs, notes: ['No reconocí un formato conocido: cada renglón quedó como pregunta Sí/No. Revisá tipos y quitá lo que sobre.'] };
-}
-
 function tpClean(parsed){
-  let n = 0; const sections = [];
+  let n = 0; const sections = [], src = new Map();
   for (const [si, s] of parsed.sections.entries()){
     const items = [];
     for (const it of s.items){
       if (n >= TP_MAX_ITEMS) break;
       if (!ITEM_TYPES[it.type]) it.type = 'text';
       const o = { id: `s${si + 1}i${items.length + 1}`, type: it.type, label: tpCut(it.label, 400) || 'Pregunta' };
-      for (const k of ['required', 'photos', 'video', 'unit', 'good', 'multi', 'req_if']) if (it[k] !== undefined && it[k] !== false) o[k] = typeof it[k] === 'string' ? tpCut(it[k], 40) : it[k];
+      for (const k of ['required', 'photos', 'video', 'unit', 'good', 'default']) if (it[k] !== undefined && it[k] !== false) o[k] = typeof it[k] === 'string' ? tpCut(it[k], 40) : it[k];
       if (it.type === 'number'){ if (isFinite(it.min)) o.min = it.min; if (isFinite(it.max)) o.max = it.max; }
-      if (it.type === 'select') o.options = (it.options || []).map(x => tpCut(x, 120)).filter(Boolean).slice(0, 40);
-      if (it.cond) o.cond = { label: tpCut(it.cond.label, 200), eq: tpCut(it.cond.eq, 120) };
+      if (it.type === 'select' || it.type === 'multi') o.options = (it.options || []).map(x => tpCut(x, 120).replace(/\|/g, '/')).filter(Boolean).slice(0, 40);
+      Object.defineProperty(o, '_src', { value: it, enumerable: false }); src.set(it, o);
       if (it.ev_if) o.ev_if = [...new Set(it.ev_if)].map(x => tpCut(x, 120)).slice(0, 10);
       if (o.type === 'heading'){ delete o.required; delete o.photos; }
       items.push(o); if (o.type !== 'heading') n++;
@@ -177,6 +110,7 @@ function tpClean(parsed){
     if (items.some(i => i.type !== 'heading')) sections.push({ id: 's' + (sections.length + 1), title: tpCut(s.title, 150) || 'Sección', items });
   }
   sections.forEach((s, si) => s.items.forEach((it, ii) => it.id = `s${si + 1}i${ii + 1}`));
+  for (const s of sections) for (const o of s.items){ const sh = (o._src?._show || []).map(c => ({ q: src.get(c._p)?.id, eq: tpCut(c.eq, 120) })).filter(c => c.q && c.q !== o.id); if (sh.length) o.show = sh; }
   return { sections, n };
 }
 
@@ -213,34 +147,39 @@ function tpPreview(file, P){
     <div id="tp-list" style="max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px"></div>
     <div class="err" id="tp-err"></div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sec" id="tp-x">Cancelar</button><button class="btn" id="tp-go">Crear plantilla</button></div>`, { wide: true });
+  let byId = new Map();
   const draw = () => {
+    byId = new Map(def.sections.flatMap(s => s.items).map(i => [i.id, i]));
     const nq = def.sections.reduce((a, s) => a + s.items.filter(i => i.type !== 'heading').length, 0);
     $('#tp-cnt').innerHTML = `<b>${def.sections.length}</b> secciones · <b>${nq}</b> preguntas`;
     $('#tp-list').innerHTML = def.sections.map((s, si) => `<div style="margin:10px 0 4px;display:flex;gap:6px;align-items:center"><b class="muted sm">Sección</b><input data-st="${si}" value="${esc(s.title)}" style="font-weight:700"><button class="btn sec small" data-sdel="${si}" title="Quitar sección">✕</button></div>
       ${s.items.map((it, ii) => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0 3px ${it.type === 'heading' ? 0 : 14}px;flex-wrap:wrap">
         <select data-ty="${si}.${ii}" style="width:150px;flex:none">${types.map(([k, x]) => `<option value="${k}" ${it.type === k ? 'selected' : ''}>${x}</option>`).join('')}</select>
         <input data-lb="${si}.${ii}" value="${esc(it.label)}" style="flex:1;min-width:200px;${it.type === 'heading' ? 'font-weight:700' : ''}">
-        ${it.type === 'select' ? `<input data-op="${si}.${ii}" value="${esc((it.options || []).join(', '))}" title="Opciones separadas por coma" style="flex:1;min-width:160px">` : ''}
+        ${it.type === 'select' || it.type === 'multi' ? `<input data-op="${si}.${ii}" value="${esc((it.options || []).join(', '))}" title="Opciones separadas por coma" style="flex:1;min-width:160px">` : ''}
         ${it.type === 'number' ? `<span class="sm muted">${it.min ?? ''}${it.min !== undefined || it.max !== undefined ? '–' : ''}${it.max ?? ''} ${esc(it.unit || '')}</span>` : ''}
         ${it.type !== 'heading' ? `<label class="sm" style="font-weight:400;margin:0;display:flex;gap:4px;align-items:center"><input type="checkbox" data-rq="${si}.${ii}" style="width:auto" ${it.required ? 'checked' : ''}>Oblig.</label>
           <label class="sm" style="font-weight:400;margin:0;display:flex;gap:4px;align-items:center"><input type="checkbox" data-ph="${si}.${ii}" style="width:auto" ${it.photos ? 'checked' : ''}>Foto</label>` : ''}
-        <button class="btn sec small" data-del="${si}.${ii}" title="Quitar">✕</button></div>`).join('')}`).join('');
+        <button class="btn sec small" data-del="${si}.${ii}" title="Quitar">✕</button>
+        ${(it.show || []).length ? `<div class="sm" style="flex-basis:100%;color:#1D4ED8;margin:-2px 0 0 156px">🔀 aparece si ${it.show.map(c => `«${esc((byId.get(c.q)?.label || '¿pregunta quitada?').slice(0, 60))}» ${byId.get(c.q)?.type === 'multi' ? 'incluye' : '='} ${esc(COND_TXT[c.eq] || c.eq)}`).join(' o ')}</div>` : ''}${(it.ev_if || []).length ? `<div class="sm" style="flex-basis:100%;color:#B45309;margin:-2px 0 0 156px">📷 foto obligatoria si: ${esc(it.ev_if.map(e => COND_TXT[e] || e).join(', '))}</div>` : ''}${it.default ? `<div class="sm muted" style="flex-basis:100%;margin:-2px 0 0 156px">Se completa con ${esc(it.default)}</div>` : ''}</div>`).join('')}`).join('');
     const at = k => { const [a, b] = k.split('.').map(Number); return def.sections[a].items[b]; };
     m.el.querySelectorAll('[data-st]').forEach(i => i.oninput = () => def.sections[i.dataset.st].title = tpCut(i.value, 150));
     m.el.querySelectorAll('[data-lb]').forEach(i => i.oninput = () => at(i.dataset.lb).label = tpCut(i.value, 400));
     m.el.querySelectorAll('[data-op]').forEach(i => i.oninput = () => at(i.dataset.op).options = i.value.split(/[,;|]/).map(x => tpCut(x, 120)).filter(Boolean).slice(0, 40));
     m.el.querySelectorAll('[data-rq]').forEach(i => i.onchange = () => { const it = at(i.dataset.rq); if (i.checked) it.required = true; else delete it.required; });
     m.el.querySelectorAll('[data-ph]').forEach(i => i.onchange = () => { const it = at(i.dataset.ph); if (i.checked) it.photos = true; else delete it.photos; });
-    m.el.querySelectorAll('[data-ty]').forEach(i => i.onchange = () => { const it = at(i.dataset.ty); it.type = i.value; if (it.type === 'select' && !it.options) it.options = ['Opción 1', 'Opción 2']; if (it.type === 'heading'){ delete it.required; delete it.photos; } draw(); });
+    m.el.querySelectorAll('[data-ty]').forEach(i => i.onchange = () => { const it = at(i.dataset.ty); it.type = i.value; if ((it.type === 'select' || it.type === 'multi') && !it.options) it.options = ['Opción 1', 'Opción 2']; if (it.type === 'heading'){ delete it.required; delete it.photos; } draw(); });
     m.el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const [a, c] = b.dataset.del.split('.').map(Number); def.sections[a].items.splice(c, 1); draw(); });
     m.el.querySelectorAll('[data-sdel]').forEach(b => b.onclick = () => { def.sections.splice(+b.dataset.sdel, 1); draw(); });
   };
   draw();
   $('#tp-x').onclick = m.close;
   $('#tp-go').onclick = async () => {
-    const out = { sections: def.sections.map((s, si) => ({ id: 's' + (si + 1), title: s.title || 'Sección', items: s.items.map((it, ii) => ({ ...it, id: `s${si + 1}i${ii + 1}` })) })).filter(s => s.items.some(i => i.type !== 'heading')) };
+    // los ids se conservan (las condiciones apuntan a ellos); se quitan condiciones a preguntas borradas
+    const keep = new Set(def.sections.flatMap(s => s.items.map(i => i.id)));
+    const out = { sections: def.sections.map((s, si) => ({ id: 's' + (si + 1), title: s.title || 'Sección', items: s.items.map(it => { const o = { ...it }; if (o.show){ o.show = o.show.filter(c => keep.has(c.q)); if (!o.show.length) delete o.show; } return o; }) })).filter(s => s.items.some(i => i.type !== 'heading')) };
     if (!out.sections.length) return ($('#tp-err').textContent = 'La plantilla quedó sin preguntas.');
-    for (const s of out.sections) for (const it of s.items) if (it.type === 'select' && !(it.options || []).length) return ($('#tp-err').textContent = `"${it.label}" es de opciones pero no tiene opciones.`);
+    for (const s of out.sections) for (const it of s.items) if ((it.type === 'select' || it.type === 'multi') && !(it.options || []).length) return ($('#tp-err').textContent = `"${it.label}" es de opciones pero no tiene opciones.`);
     out.source = { kind: 'pdf', file: tpCut(file.name, 150), fmt: P.fmt, at: new Date().toISOString(), by: tpCut(me.full_name || me.email, 120) };
     $('#tp-go').disabled = true; $('#tp-go').textContent = 'Creando…';
     const { data, error } = await sb.from('templates').insert({ org_id: me.org_id, name: tpCut($('#tp-name').value, 150) || 'Plantilla importada', kind: $('#tp-kind').value,

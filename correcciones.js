@@ -112,6 +112,7 @@ function fixSheet(v, ins, def){
   const editor = () => {
     if (FX_YN[it.type]) return `<label>Respuesta</label><div class="fx-opts">${FX_YN[it.type].map(([k, t]) => `<button type="button" data-fv="${k}" class="${d.value === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
     if (it.type === 'select') return `<label>Respuesta</label><div class="fx-opts">${(it.options || []).map(o => `<button type="button" data-fv="${esc(o)}" class="${!d.na && d.value === o ? 'on' : ''}">${esc(o)}</button>`).join('')}<button type="button" data-fna class="${d.na ? 'on' : ''}">N/A</button></div>`;
+    if (it.type === 'multi'){ const sel = d.na ? [] : multiVals(d.value); return `<label>Respuesta (podés marcar varias)</label><div class="fx-opts">${(it.options || []).map(o => `<button type="button" data-fmv="${esc(o)}" class="${sel.includes(o) ? 'on' : ''}">${sel.includes(o) ? '☑' : '☐'} ${esc(o)}</button>`).join('')}<button type="button" data-fna class="${d.na ? 'on' : ''}">N/A</button></div>`; }
     if (it.type === 'number') return `<label for="fx-v">Valor${it.unit ? ' (' + esc(it.unit) + ')' : ''}</label><input id="fx-v" inputmode="decimal" value="${esc(d.na ? '' : d.value)}">`;
     if (it.type === 'date' || it.type === 'time') return `<label for="fx-v">Respuesta</label><input id="fx-v" type="${it.type}" value="${esc(d.value)}">`;
     if (it.type === 'text') return `<label for="fx-v">Respuesta</label>${it.long ? `<textarea id="fx-v" rows="3" maxlength="4000">${esc(d.value)}</textarea>` : `<input id="fx-v" maxlength="4000" value="${esc(d.value)}">`}`;
@@ -134,6 +135,8 @@ function fixSheet(v, ins, def){
     hydrate(r.querySelector('#fx-ths'));
     r.querySelector('#fx-it').onchange = e => { r._reason = r.querySelector('#fx-r').value; it = items.find(x => x.id === e.target.value); load(); paint(); };
     r.querySelectorAll('[data-fv]').forEach(b => b.onclick = () => { keep(); r._reason = r.querySelector('#fx-r').value; d.value = b.dataset.fv; d.na = false; paint(); });
+    r.querySelectorAll('[data-fmv]').forEach(b => b.onclick = () => { keep(); r._reason = r.querySelector('#fx-r').value; let sel = d.na ? [] : multiVals(d.value); const o = b.dataset.fmv;
+      sel = sel.includes(o) ? sel.filter(x => x !== o) : [...sel, o]; sel = (it.options || []).filter(x => sel.includes(x)); d.value = sel.join(MULTI_SEP); d.na = false; paint(); });
     r.querySelector('[data-fna]')?.addEventListener('click', () => { keep(); r._reason = r.querySelector('#fx-r').value; d.na = true; d.value = null; paint(); });
     r.querySelectorAll('[data-fk]').forEach(b => b.onclick = () => { keep(); r._reason = r.querySelector('#fx-r').value; const p = d.photos[+b.dataset.fk]; if (p.fix && p._new) d.photos.splice(+b.dataset.fk, 1); else p.keep = !p.keep; paint(); });
     r.querySelector('#fx-x').onclick = fxClose;
@@ -166,7 +169,7 @@ function fixSheet(v, ins, def){
       if (it.type === 'number' && !d.na && d.value !== '' && isNaN(Number(String(d.value).replace(',', '.')))) return (e.textContent = 'El valor tiene que ser un número.');
       if (it.type === 'number' && d.value !== '' && d.value != null) d.value = String(d.value).replace(',', '.');
       const ans = { note: d.note.trim(), photos: d.photos.filter(p => p.keep).map(({ keep, _new, _url, ...p }) => p) };
-      if (FX_YN[it.type] || ['select', 'number', 'date', 'time', 'text'].includes(it.type)){ ans.value = d.na ? null : (d.value === '' ? null : d.value); if (d.na) ans.na = true; }
+      if (FX_YN[it.type] || ['select', 'multi', 'number', 'date', 'time', 'text'].includes(it.type)){ ans.value = d.na ? null : (d.value === '' ? null : d.value); if (d.na) ans.na = true; }
       if (!needOnline()) return; const b = r.querySelector('#fx-ok'); b.disabled = true; b.textContent = 'Guardando…';
       const cur = (await loadInspection(ins.id)) || ins, prev = (cur.answers || {})[it.id] || {}, nx = { ...prev, note: ans.note, photos: ans.photos };
       if ('value' in ans){ nx.value = ans.value; delete nx.na; if (ans.na) nx.na = true; }

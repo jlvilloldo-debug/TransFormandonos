@@ -26,6 +26,11 @@ const HELP = [
     ['Elegir las planillas de un proyecto', 'Proyecto → Planillas → "Agregar desde la biblioteca". "Quitar" la saca del proyecto (no la borra).'],
     ['Crear una planilla nueva', 'Arriba → Plantillas (biblioteca de todas) → nueva. Después agregala al proyecto desde Planillas.'],
     ['Importar una planilla en PDF', 'Plantillas → "📄 Importar PDF". Lee plantillas exportadas de SafetyCulture, informes de InspectApp y otros PDF con texto. Revisás y corregís en la vista previa y tocás Crear. El PDF original queda guardado (botón "📄 PDF original" en la plantilla). Las preguntas condicionales quedan visibles con la aclaración «completar si…».'],
+    ['Preguntas que aparecen según la respuesta', 'Plantillas → Editar → en la pregunta, "🔀 Mostrar solo si" → elegí la pregunta y la opción (podés sumar varias con "o"). Las ocultas no cuentan para el puntaje y en el informe salen "No aplica".'],
+    ['Opción múltiple', 'Tipo "Opción múltiple (varias)": el técnico marca todas las que correspondan. Sirve como condición: "incluye MX68" abre la serie y la foto del MX68.'],
+    ['Foto obligatoria según la respuesta', 'En la pregunta: "📷 Foto obligatoria si responde" → marcá las respuestas (por ejemplo Deficiente). Con esa respuesta no deja terminar sin foto.'],
+    ['Completar solo con el sitio', 'Pregunta de texto → Valor por defecto: [sitio]. También [traza], [fecha], [técnico], [dirección del sitio].'],
+    ['Convertir una plantilla importada antes', 'Si la importaste de PDF con la versión anterior, en el editor aparece "⚡ Activar lógica": convierte esa misma plantilla. Después tocá Guardar.'],
     ['Terminar un borrador', 'Inspecciones → los que dicen "Borrador" → abrir y completar.']] },
   { id: 'mapa', ic: '🗺', t: 'Sitios, mapa y KMZ', hash: ['#/map', '#/sites', '/sit'], d: 'El mapa general muestra todo; cada proyecto tiene su mapa con sus sitios, trazas y radioenlaces.', q: [
     ['Subir o actualizar el KMZ del proyecto', 'Proyecto → Sitios y mapa → "📥 Subir / actualizar KMZ". Elegí qué es cada carpeta (sitio de radio, EPI, radioenlace, tramo de fibra o no importar). Volver a subirlo agrega lo nuevo y actualiza lo existente, sin duplicar.'],
@@ -63,6 +68,9 @@ const HELP = [
     ['Registrar una calibración', 'Instrumento → "✅ Registrar calibración": fecha, certificado (PDF), frecuencia. El vencimiento se calcula solo.'],
     ['Avisos de vencimiento', '"⚙ Responsables y avisos": mail, WhatsApp y días de aviso. "📣 Avisar" manda el aviso con un toque.'],
     ['Borrar un instrumento cargado mal', 'Instrumento → "🗑 Eliminar": pide motivo y la identificación. Queda constancia en "🗑 Eliminados".']] },
+  { id: 'agenda', ic: '📅', t: 'Agenda', hash: ['#/agenda'], d: 'La semana de cada persona y cuadrilla: tareas, guardias, francos y horas.', q: [
+    ['Ver las tareas de uno o varios técnicos', 'Agenda → "👥 Técnicos" → marcá a quiénes querés ver (con buscador) → Ver. Queda guardado en ese equipo hasta que lo cambies; "Ninguno" vuelve a mostrar a todos.'],
+    ['Filtrar por base, tipo o habilidad', 'Usá los filtros de arriba: base, propios o contratistas, y las habilidades (FO, OTDR, Energía…).']] },
   { id: 'jornada', ic: '⏱', t: 'Jornada y horas', hash: ['#/tools/hh', '#/tools/veh'], d: 'Inicio de jornada, vehículo y horas extra.', q: [
     ['Iniciar la jornada', 'Inicio → "Iniciar jornada": con o sin vehículo, km y foto.'],
     ['Pedir horas extra', 'Inicio → "Pedir horas extra" o los botones "Empiezo ahora / +1 h / +2 h".']] },

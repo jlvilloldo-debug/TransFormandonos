@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>InspectApp · Transformándonos</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-mzpql2wljHHut6YeD5Vmz9lBK9fCQTspb0Dav3LoYU0='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-P55JJjp9QTC+gZ49Tp4Wg9y6vWwujlrYlmjDbZJjD0c='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://iaysoqqzdwkmsgixqbub.supabase.co https://*.tile.openstreetmap.org; connect-src 'self' https://iaysoqqzdwkmsgixqbub.supabase.co wss://iaysoqqzdwkmsgixqbub.supabase.co https://api.open-meteo.com; media-src 'self' blob: https://iaysoqqzdwkmsgixqbub.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#0F2A4A">
 <meta name="mobile-web-app-capable" content="yes">
@@ -464,7 +464,7 @@ if (window.top !== window.self){ try { window.top.location = window.self.locatio
 const SUPABASE_URL = 'https://iaysoqqzdwkmsgixqbub.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_WmRavCR6O6jEpJiUfGl0mA_9tzkdwDH';
 const AUTH_STORAGE_KEY = 'sb-iaysoqqzdwkmsgixqbub-auth-token';
-const APP_VERSION = '5.28.0';
+const APP_VERSION = '5.29.0';
 /* Módulos y librerías que se cargan recién cuando hacen falta (la app arranca más liviana).
    Solo archivos propios de la app (misma dirección): la política de seguridad no deja cargar de otros sitios. */
 const LIBS = { xlsx: 'xlsx.full.min.js', jszip: 'jszip.min.js', jsqr: 'jsQR.js', qr: 'qrcode.js', donde: 'donde.js', control: 'control.js', stock: 'stock.js', sitios: 'sitios.js', hys: ['hys_data.js', 'hys.js'], agenda: 'agenda.js', recursos: 'recursos.js', red: 'red.js', gab: 'gabinete.js', fix: 'correcciones.js', bases: 'bases.js', instr: 'instrumental.js', help: 'help.js', tplpdf: 'tplpdf.js', pdfjs: 'pdf.min.js', dc: ['qrcode.js', 'datacenter.js'] };
@@ -1108,6 +1108,32 @@ function evalItem(it, a){
 const itNA = a => !!a && (a.value === 'na' || a.na === true);
 const needPhoto = it => !!it.photos && it.type !== 'photo' && it.type !== 'signature';
 const needVideo = it => !!it.video && it.type !== 'signature';
+/* ---------- lógica condicional (preguntas que aparecen según una respuesta) y opción múltiple ----------
+   it.show = [{q: id de la pregunta, eq: opción}] → se ve si se cumple alguna. it.ev_if = [opciones] → con esa respuesta la foto es obligatoria.
+   La opción múltiple guarda las elegidas en un texto separado por " | ". */
+const MULTI_SEP = ' | ';
+const multiVals = v => Array.isArray(v) ? v : (typeof v === 'string' && v ? v.split(MULTI_SEP) : []);
+const COND_EQ = { si: 'si', no: 'no', 'n/a': 'na', na: 'na', ok: 'ok', falla: 'falla', bueno: 'b', regular: 'r', malo: 'm' };
+const COND_TXT = { si: 'Sí', no: 'No', na: 'N/A', ok: 'OK', falla: 'Falla', b: 'Bueno', r: 'Regular', m: 'Malo' };
+const COND_PARENT = ['select', 'multi', 'yesno', 'okfail', 'brm'];
+function condHit(par, a, eq){
+  if (!par || !a || a.na === true) return false;
+  const v = a.value; if (v === undefined || v === null || v === '') return false;
+  if (par.type === 'multi') return multiVals(v).includes(eq);
+  if (['yesno', 'okfail', 'brm'].includes(par.type)) return v === (COND_EQ[norm(eq)] || eq);
+  return String(v) === String(eq);
+}
+function hiddenSet(def, answers){
+  const hid = new Set(), by = new Map();
+  for (const s of def?.sections || []) for (const it of s.items) by.set(it.id, it);
+  for (const s of def?.sections || []) for (const it of s.items){
+    const sh = Array.isArray(it.show) ? it.show.filter(c => by.has(c.q) && c.q !== it.id) : [];
+    if (!sh.length) continue;
+    if (!sh.some(c => !hid.has(c.q) && condHit(by.get(c.q), (answers || {})[c.q], c.eq))) hid.add(it.id);
+  }
+  return hid;
+}
+const evNeed = (it, a) => Array.isArray(it.ev_if) && it.ev_if.length && a && !itNA(a) ? it.ev_if.find(e => condHit(it, a, e)) : null;
 function isAnswered(it, a){
   if (!a) return false;
   if (a.na === true && it.type !== 'signature') return true;
@@ -1119,17 +1145,20 @@ function missingWhy(it, a){
   if (it.type === 'heading') return null;
   a = a || {};
   if (!isAnswered(it, a)) return it.type === 'signature' ? 'Falta la firma' : it.type === 'photo' ? 'Falta la foto (o marcá N/A)' : 'Falta responder (o marcá N/A)';
-  if (itNA(a) || a.media_na) return null;
+  if (itNA(a)) return null;
   const ph = a.photos || [], hasP = ph.some(p => p.kind !== 'video'), hasV = ph.some(p => p.kind === 'video');
+  const ev = evNeed(it, a); if (ev && !hasP) return `Falta la foto (obligatoria si la respuesta es «${COND_TXT[ev] || ev}»)`;
+  if (a.media_na) return null;
   const fP = needPhoto(it) && !hasP, fV = needVideo(it) && !hasV;
   return fP && fV ? 'Falta la foto y el video' : fP ? 'Falta la foto' : fV ? 'Falta el video' : null;
 }
 function computeScore(def, answers){
   let score=0, max=0, flagged=0, answered=0, total=0; const bySec = {}, flaggedItems = [];
+  const hid = hiddenSet(def, answers || {});
   for (const s of def.sections){
     let ss=0, sm=0;
     for (const it of s.items){
-      if (it.type === 'heading') continue;
+      if (it.type === 'heading' || hid.has(it.id)) continue;
       total++;
       const a = answers[it.id];
       if (isAnswered(it, a) || (a?.photos || []).length) answered++;
@@ -2016,7 +2045,8 @@ async function viewExecute(v, id){
   if (allItems.some(it => typeof answers[it.id]?.value === 'string' && answers[it.id].value.includes('['))){
     let st = null;
     try { const ss = await cached('sites-min2', () => pageAll(() => sb.from('sites').select('id,name,kind,traza,address,grupo').eq('active', true).order('name').order('id'))); st = ss.find(x => x.id === ins.site_id) || ss.find(x => x.name.toLowerCase() === String(ins.site_name || '').toLowerCase()); } catch {}
-    const tok = { 'dirección del sitio': st?.address || '', 'direccion del sitio': st?.address || '', 'sitio': ins.site_name || '', 'traza': ins.traza || st?.traza || '', 'grupo': st?.grupo || '' };
+    const tok = { 'dirección del sitio': st?.address || '', 'direccion del sitio': st?.address || '', 'sitio': ins.site_name || '', 'traza': ins.traza || st?.traza || '', 'grupo': st?.grupo || '',
+      'fecha': fmtDate(ins.started_at || new Date().toISOString()), 'hora': fmtTime(ins.started_at || new Date().toISOString()), 'tecnico': ins.inspector_name || me.full_name || '', 'técnico': ins.inspector_name || me.full_name || '' };
     allItems.forEach(it => { const a = answers[it.id]; if (typeof a?.value === 'string' && a.value.includes('[')) a.value = a.value.replace(/\[([^\]]+)\]/g, (m, k) => (k.toLowerCase() in tok ? tok[k.toLowerCase()] : m)).trim(); });
   }
 
@@ -2039,15 +2069,26 @@ async function viewExecute(v, id){
     const bar = $('#prog'); if (bar) bar.style.width = p + '%';
     const t = $('#prog-t'); if (t) t.textContent = `${sc.answered} de ${sc.total} respondidas · Puntaje ${pct(sc.score, sc.max)}${sc.flagged ? ' · ' + sc.flagged + ' señalados' : ''}`;
     def.sections.forEach(s => { const e = $('#ss-' + s.id); if (e) e.textContent = sc.bySec[s.id].max ? `${fmtPts(sc.bySec[s.id].score)} / ${sc.bySec[s.id].max}` : ''; });
+    applyVis();
     if (showMiss) markMissing();
+  }
+  // preguntas condicionales: se muestran u ocultan según las respuestas (las ocultas no cuentan y en el informe salen "No aplica")
+  function applyVis(){
+    const hid = hiddenSet(def, answers);
+    def.sections.forEach(s => {
+      let vis = 0;
+      s.items.forEach(it => { const el = $('#it-' + it.id); const h = hid.has(it.id); if (el) el.classList.toggle('hidden', h); if (!h && it.type !== 'heading') vis++; });
+      const card = $('#sc-' + s.id); if (card) card.classList.toggle('hidden', !vis && s.items.some(it => it.type !== 'heading'));
+    });
   }
   // faltantes: se marcan en rojo después de tocar "Completar" y se van apagando a medida que se responden
   let showMiss = false;
   function markMissing(){
     let tot = 0;
+    const hid = hiddenSet(def, answers);
     def.sections.forEach(s => {
       let n = 0;
-      s.items.forEach(it => { const why = missingWhy(it, answers[it.id]); const el = $('#it-' + it.id); if (it.type === 'heading') return;
+      s.items.forEach(it => { const why = hid.has(it.id) ? null : missingWhy(it, answers[it.id]); const el = $('#it-' + it.id); if (it.type === 'heading') return;
         if (why) n++;
         if (el){ el.classList.toggle('miss', !!why); const t = el.querySelector('.miss-t'); if (t){ t.textContent = why ? '⚠ ' + why : ''; t.classList.toggle('hidden', !why); } } });
       tot += n; const e = $('#sm-' + s.id); if (e) e.textContent = n ? `Faltan ${n}` : '';
@@ -2072,7 +2113,7 @@ async function viewExecute(v, id){
       <div class="req-ban">✱ <b>Todas las preguntas son obligatorias.</b> Si alguna no corresponde, marcá <b>N/A</b>. Si pide foto o video y no aplica, tocá <b>🚫 Sin foto/video</b>.</div>
     </div>
     ${def.sections.map((s, si) => `
-      <div class="card sec-card"><div class="sec-title"><span>${si+1}. ${esc(s.title)}</span><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="sm miss-sec" id="sm-${s.id}"></span><span class="sm" id="ss-${s.id}"></span>${s.items.some(it => !['heading','signature'].includes(it.type)) ? `<button type="button" class="sec-na" data-secna="${si}" title="Marca N/A las preguntas de esta sección que todavía no respondiste">N/A al resto</button>` : ''}</span></div>
+      <div class="card sec-card" id="sc-${s.id}"><div class="sec-title"><span>${si+1}. ${esc(s.title)}</span><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="sm miss-sec" id="sm-${s.id}"></span><span class="sm" id="ss-${s.id}"></span>${s.items.some(it => !['heading','signature'].includes(it.type)) ? `<button type="button" class="sec-na" data-secna="${si}" title="Marca N/A las preguntas de esta sección que todavía no respondiste">N/A al resto</button>` : ''}</span></div>
         ${s.items.map(it => renderItem(it)).join('')}
       </div>`).join('')}
     <div class="card"><div class="err" id="fin-err"></div>
@@ -2081,7 +2122,7 @@ async function viewExecute(v, id){
     <button type="button" class="miss-fab hidden" id="miss-next"></button>`;
 
   function renderItem(it){
-    if (it.type === 'heading') return `<div class="sub">${esc(it.label)}</div>`;
+    if (it.type === 'heading') return `<div class="sub" id="it-${it.id}">${esc(it.label)}</div>`;
     const a = answers[it.id] || {};
     const req = ' <span class="req">*</span>';
     const naB = it.type !== 'signature' && !['yesno', 'okfail', 'brm'].includes(it.type) ? `<button type="button" class="opt na ${a.na ? 'on' : ''}" data-na="${it.id}" style="flex:0 0 auto;min-width:80px">N/A</button>` : '';
@@ -2102,6 +2143,9 @@ async function viewExecute(v, id){
       ctl = `<div class="row" style="align-items:flex-start;flex-wrap:nowrap"><div style="flex:1" class="${a.na ? 'na-on' : ''}">${it.long ? `<textarea data-txt="${it.id}" ${a.na ? 'disabled' : ''}>${esc(a.value ?? '')}</textarea>` : `<input data-txt="${it.id}" value="${esc(a.value ?? '')}" ${a.na ? 'disabled' : ''}>`}</div>${naB}</div>`;
     } else if (it.type === 'select'){
       ctl = `<div class="opts">${(it.options||[]).map(o => `<button type="button" class="opt neutral ${a.value === o && !a.na ? 'on' : ''}" data-set="${it.id}" data-val="${esc(o)}">${esc(o)}</button>`).join('')}${naB}</div>`;
+    } else if (it.type === 'multi'){
+      const sel = a.na ? [] : multiVals(a.value);
+      ctl = `<div class="muted sm" style="margin:-2px 0 6px">Podés marcar varias.</div><div class="opts" style="flex-wrap:wrap">${(it.options||[]).map(o => `<button type="button" class="opt neutral ${sel.includes(o) ? 'on' : ''}" style="flex:1 1 140px" data-mset="${it.id}" data-val="${esc(o)}" aria-pressed="${sel.includes(o)}">${sel.includes(o) ? '☑' : '☐'} ${esc(o)}</button>`).join('')}${naB}</div>`;
     } else if (it.type === 'date'){
       ctl = `<div class="row"><input type="date" data-txt="${it.id}" value="${esc(a.value ?? '')}" style="max-width:200px" class="${a.na ? 'na-on' : ''}" ${a.na ? 'disabled' : ''}>${naB}</div>`;
     } else if (it.type === 'time'){
@@ -2119,7 +2163,7 @@ async function viewExecute(v, id){
       <div class="muted sm">${pd.task_id ? 'Tarea creada.' : online() ? 'Se crea como tarea al guardar.' : 'Se crea como tarea cuando vuelva la señal.'} Queda en el mapa con semáforo ${pd.priority === 'critica' ? 'rojo' : 'ámbar'}.</div>
       ${pd.task_id ? '' : `<button type="button" class="link" data-pendedit="${it.id}">Modificar</button> · <button type="button" class="link" data-pendrm="${it.id}">Quitar</button>`}</div>` : '';
     const why = showMiss ? missingWhy(it, a) : null;
-    const mNA = itNA(a), askP = needPhoto(it) || it.type === 'photo', askV = needVideo(it);
+    const mNA = itNA(a), askP = needPhoto(it) || it.type === 'photo' || !!evNeed(it, a), askV = needVideo(it);
     return `<div class="item ${flagged ? 'flag' : ''} ${why ? 'miss' : ''}" id="it-${it.id}">
       <div class="q">${esc(it.label)}${req}</div><div class="miss-t ${why ? '' : 'hidden'}">${why ? '⚠ ' + why : ''}</div>${ctl}${pendBox}
       ${tools ? `<div id="note-${it.id}" class="${a.note ? '' : 'hidden'}" style="margin-top:8px"><textarea data-note="${it.id}" placeholder="Nota u observación">${esc(a.note || '')}</textarea></div>
@@ -2128,19 +2172,26 @@ async function viewExecute(v, id){
         <button type="button" data-camadd="${it.id}">📷 Foto${askP && !mNA && !a.media_na ? ' (obligatoria)' : ''}</button><input type="file" accept="image/*" capture="environment" multiple data-phadd="${it.id}" id="cam-${it.id}" class="hidden">
         <button type="button" data-vidadd="${it.id}" title="Grabar un video corto (hasta ${VID_MAX_S} segundos)">🎥 Video${askV && !mNA && !a.media_na ? ' (obligatorio)' : ''}</button>
         <label title="Adjuntar fotos o un video corto ya guardados en el teléfono">🖼️ Galería<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple data-phadd="${it.id}" data-gal="1" class="hidden"></label>
-        ${(needPhoto(it) || askV) && !mNA ? `<button type="button" data-mna="${it.id}" class="${a.media_na ? 'on' : ''}" title="La foto o el video no corresponden en este caso">🚫 Sin foto/video${a.media_na ? ' ✔' : ''}</button>` : ''}
+        ${(needPhoto(it) || askV) && !mNA && !evNeed(it, a) ? `<button type="button" data-mna="${it.id}" class="${a.media_na ? 'on' : ''}" title="La foto o el video no corresponden en este caso">🚫 Sin foto/video${a.media_na ? ' ✔' : ''}</button>` : ''}
       </div>` : ''}
     </div>`;
   }
   const rerenderItem = itId => {
     const it = allItems.find(x => x.id === itId);
     const el = $('#it-' + itId); if (!el) return;
-    el.outerHTML = renderItem(it); const n = $('#it-' + itId); bindItems(n); hydrate(n); initSig(n);
+    el.outerHTML = renderItem(it); const n = $('#it-' + itId); bindItems(n); hydrate(n); initSig(n); applyVis();
   };
   function bindItems(scope){
     scope.querySelectorAll('[data-set]').forEach(b => b.onclick = () => {
       const itId = b.dataset.set; const cur = answers[itId] || {};
       answers[itId] = {...cur, na: undefined, value: cur.value === b.dataset.val && !cur.na ? null : b.dataset.val};
+      queueSave(); rerenderItem(itId);
+    });
+    scope.querySelectorAll('[data-mset]').forEach(b => b.onclick = () => {
+      const itId = b.dataset.mset, cur = answers[itId] || {}, o = b.dataset.val;
+      let sel = cur.na ? [] : multiVals(cur.value); sel = sel.includes(o) ? sel.filter(x => x !== o) : [...sel, o];
+      const it = allItems.find(x => x.id === itId); sel = (it?.options || []).filter(x => sel.includes(x));
+      answers[itId] = { ...cur, na: undefined, value: sel.length ? sel.join(MULTI_SEP) : null };
       queueSave(); rerenderItem(itId);
     });
     scope.querySelectorAll('[data-na]').forEach(b => b.onclick = () => {
@@ -2325,7 +2376,7 @@ async function viewReport(v, id){
   const ins = await loadInspection(id);
   const def = ins.template_snapshot || {sections:[]};
   const answers = ins.answers || {};
-  const sc = computeScore(def, answers);
+  const sc = computeScore(def, answers), rpHid = hiddenSet(def, answers);
   let n = 0; const media = [];
   const ansHTML = (it, a) => {
     const v_ = a?.value;
@@ -2348,6 +2399,7 @@ async function viewReport(v, id){
       return `<div class="a-val" style="${r.bad ? 'color:var(--no);font-weight:600' : ''}">${esc(v_)} ${esc(it.unit||'')}${rng}</div>`;
     }
     if (it.type === 'select' || it.type === 'date' || it.type === 'time') return v_ ? `<div class="a-val">${esc(v_)}</div>` : '<div></div>';
+    if (it.type === 'multi') return v_ ? `<div class="a-val">${esc(multiVals(v_).join(', '))}</div>` : '<div></div>';
     if (it.type === 'signature') return v_ ? `<div class="a-val rp-sig"><img data-path="${esc(v_)}"><small>${fmtDT(a.ts)}</small></div>` : '<div></div>';
     if (it.type === 'text' && !it.long) return `<div class="a-val">${esc(v_ ?? '')}</div>`;
     return '<div></div>';
@@ -2355,6 +2407,7 @@ async function viewReport(v, id){
   const body = def.sections.map((s, si) => `
     <div class="rp-sec"><span>${si+1}. ${esc(s.title)}</span><span class="sm" style="font-weight:400">${sc.bySec[s.id].max ? `${fmtPts(sc.bySec[s.id].score)} / ${sc.bySec[s.id].max} (${pct(sc.bySec[s.id].score, sc.bySec[s.id].max)})` : ''}</span></div>
     ${s.items.map(it => {
+      if (rpHid.has(it.id)) return it.type === 'heading' ? '' : `<div class="rp-item" data-it="${esc(it.id)}"><div class="lb">${esc(it.label)}</div><div class="rp-ans a-na">No aplica</div></div>`;
       if (it.type === 'heading') return `<div class="rp-subh"><span>${esc(it.label)}</span></div>`;
       const a = answers[it.id] || {};
       const longTxt = it.type === 'text' && it.long && a.value ? `<div class="rp-note">${esc(a.value)}</div>` : '';
@@ -3595,12 +3648,12 @@ function kmzInfoHtml(info){
    PLANTILLAS  (+ importar / exportar Excel)
    ========================================================= */
 const XL_HEAD = ['Sección','Pregunta','Tipo','Obligatoria','Pedir foto','Mínimo','Máximo','Unidad','Opciones','Respuesta correcta','Valor por defecto'];
-const XL_TYPE_OUT = {yesno:'Sí/No', okfail:'OK/Falla', brm:'B/R/M', number:'Número', text:'Texto', select:'Opciones', date:'Fecha', time:'Hora', photo:'Foto', signature:'Firma', heading:'Subtítulo'};
+const XL_TYPE_OUT = {yesno:'Sí/No', okfail:'OK/Falla', brm:'B/R/M', number:'Número', text:'Texto', select:'Opciones', multi:'Opción múltiple', date:'Fecha', time:'Hora', photo:'Foto', signature:'Firma', heading:'Subtítulo'};
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 function xlType(t){
   const n = norm(t).replace(/\s*\/\s*/g, '/').replace(/\/n\/?a$/, '');
   return ({'si/no':'yesno','sino':'yesno','si':'yesno','ok/falla':'okfail','ok':'okfail','b/r/m':'brm','brm':'brm','bueno/regular/malo':'brm','numero':'number','numerico':'number','texto':'text','texto corto':'text','texto largo':'textlong',
-    'opciones':'select','opcion':'select','lista':'select','fecha':'date','hora':'time','foto':'photo','fotos':'photo','firma':'signature','subtitulo':'heading','titulo':'heading'})[n];
+    'opciones':'select','opcion':'select','lista':'select','opcion multiple':'multi','opciones multiples':'multi','multiple':'multi','varias':'multi','fecha':'date','hora':'time','foto':'photo','fotos':'photo','firma':'signature','subtitulo':'heading','titulo':'heading'})[n];
 }
 const xlYes = v => ['si','x','1','true','verdadero','s','yes'].includes(norm(v));
 const xlNum = v => { if (v === '' || v === null || v === undefined) return undefined; const n = Number(String(v).replace(',', '.')); return isNaN(n) ? undefined : n; };
@@ -3634,7 +3687,7 @@ function rowsToTemplate(rows){
     if (xlYes(get(r, 'req'))) it.required = true;
     { const ev = norm(get(r, 'ph')); if (xlYes(ev) || /foto|ambas/.test(ev)) it.photos = true; if (/video|ambas/.test(ev)) it.video = true; }
     if (type === 'number'){ const mn = xlNum(get(r, 'min')), mx = xlNum(get(r, 'max')); if (mn !== undefined) it.min = mn; if (mx !== undefined) it.max = mx; if (String(get(r, 'unit')).trim()) it.unit = String(get(r, 'unit')).trim(); }
-    if (type === 'select'){ it.options = String(get(r, 'opts')).split(/[,;|]/).map(x => x.trim()).filter(Boolean); if (!it.options.length) warns.push(`Fila ${hi + i + 2}: "${label}" es de opciones pero no tiene opciones.`); }
+    if (type === 'select' || type === 'multi'){ it.options = String(get(r, 'opts')).split(/[,;|]/).map(x => x.trim()).filter(Boolean); if (!it.options.length) warns.push(`Fila ${hi + i + 2}: "${label}" es de opciones pero no tiene opciones.`); }
     if (type === 'yesno'){ const g = norm(get(r, 'good')); if (g === 'no') it.good = 'no'; else if (g.startsWith('ning')) it.good = 'none'; }
     if ((type === 'text' || type === 'textlong') && String(get(r, 'def') ?? '').trim()) it.default = String(get(r, 'def')).trim();
     cur.items.push(it); if (type !== 'heading') nq++;
@@ -3754,7 +3807,7 @@ async function viewTemplates(v){
   });
 }
 
-const ITEM_TYPES = {yesno:'Sí / No / N/A', okfail:'OK / Falla / N/A', brm:'Bueno / Regular / Malo / N/A', number:'Número', text:'Texto', select:'Opciones', photo:'Solo fotos', date:'Fecha', time:'Hora', signature:'Firma', heading:'Subtítulo'};
+const ITEM_TYPES = {yesno:'Sí / No / N/A', okfail:'OK / Falla / N/A', brm:'Bueno / Regular / Malo / N/A', number:'Número', text:'Texto', select:'Opciones (una)', multi:'Opción múltiple (varias)', photo:'Solo fotos', date:'Fecha', time:'Hora', signature:'Firma', heading:'Subtítulo'};
 async function viewTemplateEditor(v, id){
   const { data: t, error } = await sb.from('templates').select('*').eq('id', id).single();
   if (error) throw error;
@@ -3766,7 +3819,7 @@ async function viewTemplateEditor(v, id){
   const render = () => {
     v.innerHTML = `
       <div class="card"><div class="row between"><button class="btn sec small" data-go="#/tpl">← Plantillas</button>
-        <div class="row">${def.source?.path ? `<button class="btn sec small" id="t-src" title="${esc(def.source.file || '')}">📄 PDF original</button>` : ''}<button class="btn sec small" id="t-xl">Descargar Excel</button><button class="btn danger small" id="t-del">Eliminar</button><button class="btn" id="t-save">Guardar</button></div></div>
+        <div class="row">${oldLogic() ? '<button class="btn small" id="t-logic" title="Convierte esta plantilla importada a preguntas condicionales y opción múltiple">⚡ Activar lógica</button>' : ''}${def.source?.path ? `<button class="btn sec small" id="t-src" title="${esc(def.source.file || '')}">📄 PDF original</button>` : ''}<button class="btn sec small" id="t-xl">Descargar Excel</button><button class="btn danger small" id="t-del">Eliminar</button><button class="btn" id="t-save">Guardar</button></div></div>
         ${used ? `<div class="banner warn" style="margin:12px 0 0"><span class="dot"></span><div class="sm">Esta plantilla ya se usó en ${used} inspección${used===1?'':'es'}. Los cambios aplican solo a las inspecciones nuevas; las ya cargadas conservan su versión.</div></div>` : ''}
         <div class="row" style="margin-top:6px"><div class="grow"><label>Nombre</label><input id="t-name" value="${esc(t.name)}"></div>
           <div style="width:170px"><label>Tipo</label><select id="t-kind">${Object.entries(KIND_TXT).map(([k,x]) => `<option value="${k}" ${t.kind===k?'selected':''}>${x}</option>`).join('')}</select></div>
@@ -3785,9 +3838,11 @@ async function viewTemplateEditor(v, id){
                 ${it.type !== 'signature' ? `<label><input type="checkbox" data-iph="${si}.${ii}" ${it.photos?'checked':''}> Pedir foto</label><label><input type="checkbox" data-ivd="${si}.${ii}" ${it.video?'checked':''}> Pedir video</label>` : ''}
                 ${it.type === 'yesno' ? `<label>Respuesta correcta <select data-igood="${si}.${ii}"><option value="si" ${(it.good||'si')==='si'?'selected':''}>Sí</option><option value="no" ${it.good==='no'?'selected':''}>No</option><option value="none" ${it.good==='none'?'selected':''}>Ninguna (no puntúa)</option></select></label>` : ''}
                 ${it.type === 'number' ? `<label>Mín <input type="number" step="any" data-imin="${si}.${ii}" value="${it.min ?? ''}" style="width:90px"></label><label>Máx <input type="number" step="any" data-imax="${si}.${ii}" value="${it.max ?? ''}" style="width:90px"></label><label>Unidad <input data-iunit="${si}.${ii}" value="${esc(it.unit||'')}" style="width:90px"></label>` : ''}
-                ${it.type === 'select' ? `<label style="flex:1">Opciones (separadas por coma) <input data-iopts="${si}.${ii}" value="${esc((it.options||[]).join(', '))}" style="flex:1;min-width:200px"></label>` : ''}
-                ${it.type === 'text' ? `<label><input type="checkbox" data-ilong="${si}.${ii}" ${it.long?'checked':''}> Texto largo</label><label style="flex:1">Valor por defecto <input data-idef="${si}.${ii}" value="${esc(it.default ?? '')}" style="flex:1;min-width:180px" placeholder="Se completa solo; el técnico lo puede cambiar"></label>` : ''}
+                ${it.type === 'select' || it.type === 'multi' ? `<label style="flex:1">Opciones (separadas por coma) <input data-iopts="${si}.${ii}" value="${esc((it.options||[]).join(', '))}" style="flex:1;min-width:200px"></label>` : ''}
+                ${it.type === 'text' ? `<label><input type="checkbox" data-ilong="${si}.${ii}" ${it.long?'checked':''}> Texto largo</label><label style="flex:1">Valor por defecto <input data-idef="${si}.${ii}" value="${esc(it.default ?? '')}" style="flex:1;min-width:180px" placeholder="Se completa solo. Ej.: [sitio], [traza], [fecha], [técnico]"></label>` : ''}
+                ${condOpts(it).length ? `<label style="flex-wrap:wrap">📷 Foto obligatoria si responde: ${condOpts(it).map(([k, x]) => `<label style="font-weight:400"><input type="checkbox" data-iev="${si}.${ii}" value="${esc(k)}" ${(it.ev_if || []).includes(k) ? 'checked' : ''}> ${esc(x)}</label>`).join('')}</label>` : ''}
               </div>` : ''}
+              ${condEd(it, si, ii)}
             </div>`).join('')}
           <div class="row" style="margin-top:10px"><button class="btn sec small" data-iadd="${si}">+ Pregunta</button><button class="btn sec small" data-hadd="${si}">+ Subtítulo</button></div>
         </div>`).join('')}
@@ -3796,6 +3851,69 @@ async function viewTemplateEditor(v, id){
   };
   const at = k => { const [si, ii] = k.split('.').map(Number); return def.sections[si].items[ii]; };
   const num = x => x === '' ? undefined : Number(x);
+  // opciones que puede tener una respuesta (para condiciones y foto obligatoria)
+  function condOpts(it){
+    if (it.type === 'select' || it.type === 'multi') return (it.options || []).map(o => [o, o]);
+    if (it.type === 'yesno') return [['si', 'Sí'], ['no', 'No'], ['na', 'N/A']];
+    if (it.type === 'okfail') return [['ok', 'OK'], ['falla', 'Falla']];
+    if (it.type === 'brm') return [['b', 'Bueno'], ['r', 'Regular'], ['m', 'Malo']];
+    return [];
+  }
+  const prevParents = it => { const out = []; for (const s of def.sections) for (const x of s.items){ if (x === it) return out; if (COND_PARENT.includes(x.type) && condOpts(x).length) out.push(x); } return out; };
+  function condEd(it, si, ii){
+    const ps = prevParents(it); const sh = (it.show || []);
+    if (!ps.length && !sh.length) return '';
+    const k = `${si}.${ii}`;
+    return `<div class="ed-extra" style="border-top:1px dashed var(--line);padding-top:6px">
+      <span class="sm"><b>🔀 Mostrar solo si</b>${sh.length ? '' : ' <span class="muted">(siempre visible)</span>'}</span>
+      ${sh.map((c, ci) => { const par = ps.find(x => x.id === c.q); return `<span class="row" style="gap:4px;flex-wrap:nowrap">
+        <select data-cq="${k}.${ci}" style="max-width:260px">${par ? '' : '<option value="">— pregunta borrada —</option>'}${ps.map(x => `<option value="${esc(x.id)}" ${x.id === c.q ? 'selected' : ''}>${esc(x.label.slice(0, 60) || 'Pregunta')}</option>`).join('')}</select>
+        <span class="sm">${par?.type === 'multi' ? 'incluye' : '='}</span>
+        <select data-ce="${k}.${ci}" style="max-width:200px">${(par ? condOpts(par) : []).map(([v, x]) => `<option value="${esc(v)}" ${v === c.eq ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+        <button class="btn sec small" data-cdel="${k}.${ci}" title="Quitar condición">✕</button>${ci < sh.length - 1 ? '<span class="sm muted">o</span>' : ''}</span>`; }).join('')}
+      ${ps.length ? `<button class="btn sec small" data-cadd="${k}">+ ${sh.length ? 'Otra condición (o)' : 'Condición'}</button>` : ''}</div>`;
+  }
+  // plantillas importadas de PDF con la versión anterior: pasar las aclaraciones a lógica real
+  const oldLogic = () => def.sections.some(s => s.items.some(i => (i.type === 'heading' && i.multi) || (i.cond && !i.show) || / — completar si «.*»$/.test(i.label || '')));
+  function convertLogic(){
+    const all = []; let nM = 0, nC = 0;
+    const kidMap = new Map();
+    for (const s of def.sections){
+      const out = [];
+      for (let i = 0; i < s.items.length; i++){
+        const it = s.items[i];
+        if (it.type === 'heading' && it.multi){
+          const kids = []; let j = i + 1;
+          while (j < s.items.length && s.items[j].type === 'yesno' && s.items[j].good === 'none' && !s.items[j].cond && !s.items[j].multi) kids.push(s.items[j++]);
+          if (kids.length){
+            const m = { id: it.id, type: 'multi', label: it.label.replace(/\s*\(marcar los que correspondan\)\s*$/, ''), options: kids.map(k => k.label.replace(/\|/g, '/').trim()).filter(Boolean) };
+            if (it.cond) m.cond = it.cond;
+            kids.forEach(k => kidMap.set(k.id, { q: m.id, eq: k.label.replace(/\|/g, '/').trim() }));
+            out.push(m); all.push(m); nM++; i = j - 1; continue;
+          }
+          delete it.multi;
+        }
+        out.push(it); all.push(it);
+      }
+      s.items = out;
+    }
+    const base = l => String(l || '').replace(/ — completar si «.*»$/, '').replace(/\s*\(foto obligatoria si: [^)]*\)\s*$/, '').trim();
+    all.forEach((it, idx) => {
+      const ev = /\(foto obligatoria si: ([^)]*)\)\s*$/.exec(it.label || '');
+      let c = it.cond; const m = / — completar si «(.*)»$/.exec(it.label || '');
+      if (!c && m){ const t = m[1]; const k = t.lastIndexOf(': '), e = t.lastIndexOf(' = '); c = e > k ? { label: t.slice(0, e), eq: t.slice(e + 3) } : k > 0 ? { label: t.slice(0, k), eq: t.slice(k + 2) } : null; }
+      it.label = base(it.label);
+      if (ev && !it.ev_if) it.ev_if = ev[1].split(',').map(x => x.trim()).filter(Boolean);
+      if (it.ev_if){ if (['yesno', 'okfail', 'brm'].includes(it.type)) it.ev_if = it.ev_if.map(x => COND_EQ[norm(x)] || x); delete it.photos; }
+      if (c){
+        let par = null;
+        for (let j = idx - 1; j >= 0; j--){ const x = all[j]; if (COND_PARENT.includes(x.type) && norm(base(x.label)) === norm(c.label)){ par = x; break; } }
+        if (par){ const eq = ['yesno', 'okfail', 'brm'].includes(par.type) ? (COND_EQ[norm(c.eq)] || c.eq) : c.eq; it.show = [...(it.show || []), { q: par.id, eq }]; nC++; }
+        delete it.cond; if (it.req_if){ it.required = true; delete it.req_if; }
+      }
+    });
+    return { nM, nC };
+  }
   function bind(){
     v.querySelectorAll('[data-stitle]').forEach(i => i.oninput = () => def.sections[i.dataset.stitle].title = i.value);
     v.querySelectorAll('[data-ilabel]').forEach(i => i.oninput = () => at(i.dataset.ilabel).label = i.value);
@@ -3810,7 +3928,24 @@ async function viewTemplateEditor(v, id){
     v.querySelectorAll('[data-iopts]').forEach(i => i.oninput = () => at(i.dataset.iopts).options = i.value.split(',').map(x => x.trim()).filter(Boolean));
     v.querySelectorAll('[data-ilong]').forEach(i => i.onchange = () => at(i.dataset.ilong).long = i.checked || undefined);
     v.querySelectorAll('[data-idef]').forEach(i => i.oninput = () => at(i.dataset.idef).default = i.value || undefined);
-    v.querySelectorAll('[data-idel]').forEach(b => b.onclick = () => { const [si, ii] = b.dataset.idel.split('.').map(Number); def.sections[si].items.splice(ii, 1); render(); });
+    v.querySelectorAll('[data-idel]').forEach(b => b.onclick = () => { const [si, ii] = b.dataset.idel.split('.').map(Number); const gone = def.sections[si].items.splice(ii, 1)[0];
+      def.sections.forEach(s => s.items.forEach(x => { if (x.show){ x.show = x.show.filter(c => c.q !== gone?.id); if (!x.show.length) delete x.show; } })); render(); });
+    v.querySelectorAll('[data-iev]').forEach(i => i.onchange = () => { const it = at(i.dataset.iev); const set = new Set(it.ev_if || []); i.checked ? set.add(i.value) : set.delete(i.value); it.ev_if = set.size ? [...set] : undefined; });
+    const atc = k => { const [si, ii, ci] = k.split('.').map(Number); return [def.sections[si].items[ii], ci]; };
+    v.querySelectorAll('[data-cadd]').forEach(b => b.onclick = () => { const it = at(b.dataset.cadd); const ps = prevParents(it); const par = ps[ps.length - 1]; if (!par) return; (it.show ||= []).push({ q: par.id, eq: condOpts(par)[0][0] }); render(); });
+    v.querySelectorAll('[data-cq]').forEach(i => i.onchange = () => { const [it, ci] = atc(i.dataset.cq); const par = prevParents(it).find(x => x.id === i.value); if (!par) return; it.show[ci] = { q: par.id, eq: condOpts(par)[0]?.[0] }; render(); });
+    v.querySelectorAll('[data-ce]').forEach(i => i.onchange = () => { const [it, ci] = atc(i.dataset.ce); it.show[ci].eq = i.value; });
+    v.querySelectorAll('[data-cdel]').forEach(b => b.onclick = () => { const [it, ci] = atc(b.dataset.cdel); it.show.splice(ci, 1); if (!it.show.length) delete it.show; render(); });
+    $('#t-logic')?.addEventListener('click', () => {
+      const m = modal(`<h2>⚡ Activar la lógica</h2><p>Esta plantilla se importó antes de que la app tuviera preguntas condicionales. Al convertirla:</p>
+        <ul class="sm" style="line-height:1.6"><li>Las listas de <b>Sí/No por equipo</b> pasan a ser <b>opción múltiple</b> (se marcan varias).</li>
+        <li>Las preguntas con <b>«completar si…»</b> pasan a <b>aparecer solo cuando corresponde</b>, y se quita la aclaración del texto.</li>
+        <li>La <b>foto obligatoria si…</b> pasa a exigirse solo con esa respuesta.</li></ul>
+        <p class="sm"><b>Se convierte esta misma plantilla</b> (no se crea otra). Las inspecciones ya hechas no cambian: conservan su versión. Después revisá y tocá <b>Guardar</b>.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn sec" id="lg-x">Cancelar</button><button class="btn" id="lg-ok">Convertir</button></div>`);
+      $('#lg-x').onclick = m.close;
+      $('#lg-ok').onclick = () => { const r = convertLogic(); m.close(); render(); toast(`Listo: ${r.nM} preguntas de opción múltiple y ${r.nC} condiciones. Revisá y tocá Guardar.`); };
+    });
     v.querySelectorAll('[data-imove]').forEach(b => b.onclick = () => { const [si, ii] = b.dataset.imove.split('.').map(Number); const arr = def.sections[si].items; const j = ii + Number(b.dataset.dir); if (j < 0 || j >= arr.length) return; [arr[ii], arr[j]] = [arr[j], arr[ii]]; render(); });
     v.querySelectorAll('[data-iadd]').forEach(b => b.onclick = () => { def.sections[b.dataset.iadd].items.push({ id: newId('i'), type: 'yesno', label: '' }); render(); });
     v.querySelectorAll('[data-hadd]').forEach(b => b.onclick = () => { def.sections[b.dataset.hadd].items.push({ id: newId('h'), type: 'heading', label: 'Subtítulo' }); render(); });
