@@ -1473,7 +1473,7 @@ async function eqExport(ctx){
   await eqPlaces();
   const byId = new Map(equip.map(e => [e.id, e]));
   let evs = [];
-  try { evs = await pageAll(() => sb.from('equip_events').select('equip_id,at,by_name,kind,text').eq('project_id', p.id).order('id')); } catch {}
+  try { const r = await pageAll(() => sb.from('equip_events').select('equip_id,at,by_name,kind,text').eq('project_id', p.id).order('id')); evs = r?.data || []; } catch {}
   const lastMv = new Map(); evs.forEach(v => lastMv.set(v.equip_id, v));
   const dk = [...new Set(equip.flatMap(x => Object.keys(x.data || {})))].slice(0, 30);
   const rows = equip.map(x => [siteById.get(x.site_id)?.name || '', x.name || elName(x.element), x.serial || '', x.ip || '', eqStName(x.status), x.notes || '',

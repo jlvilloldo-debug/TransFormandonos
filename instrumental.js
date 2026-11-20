@@ -428,8 +428,8 @@ async function inImport(file){
 }
 async function inExport(){
   let loans = [], cals = [];
-  try { loans = await pageAll(() => sb.from('instr_loans').select('asset_id,out_date,to_name,out_by,obra,back_date,back_by,note').order('out_date').order('id')); } catch {}
-  try { cals = await pageAll(() => sb.from('instr_cals').select('asset_id,cal_date,due,cert_no,lab,result,by_name').order('cal_date').order('id')); } catch {}
+  try { const r = await pageAll(() => sb.from('instr_loans').select('asset_id,out_date,to_name,out_by,obra,back_date,back_by,note').order('out_date').order('id')); loans = r?.data || []; } catch {}
+  try { const r = await pageAll(() => sb.from('instr_cals').select('asset_id,cal_date,due,cert_no,lab,result,by_name').order('cal_date').order('id')); cals = r?.data || []; } catch {}
   const byId = new Map(IN.list.map(a => [a.id, a])), resp = (IN.cfg?.resp || []).map(r => r.name).join(', ');
   const d = s => s ? fmtDate(s + 'T12:00:00') : '';
   xlSave(`DO-05-02 Listado de instrumentos ${todayStr()}`, [
