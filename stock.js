@@ -673,17 +673,18 @@ async function stkAUso(box, { a, evs }){
 /* ---------- materiales por cantidad ---------- */
 function stkMatTab(box, sc){
   const B = STK.base, w = stkCan(2), pid = stkScopeProj(sc);
-  const bal = stkBalances().filter(b => sc.kind === 'gen' ? !b.project : sc.kind === 'prj' ? b.project === sc.id : sc.kind === 'place' ? b.place === sc.id : sc.kind === 'site' ? B.placeById.get(b.place)?.site_id === sc.id : false);
+  // en el stock general se ve el total de la empresa: lo general y lo que está asignado a cada proyecto
+  const bal = stkBalances().filter(b => sc.kind === 'gen' ? true : sc.kind === 'prj' ? b.project === sc.id : sc.kind === 'place' ? b.place === sc.id : sc.kind === 'site' ? B.placeById.get(b.place)?.site_id === sc.id : false);
   const items = B.items.filter(i => i.active).map(i => { const bs = bal.filter(b => b.item === i.id && b.qty > 1e-9); return { i, bs, tot: bs.reduce((s, b) => s + b.qty, 0) }; });
-  const used = items.filter(x => x.tot > 0 || sc.kind === 'gen');
+  const used = items.filter(x => x.tot > 0 || (sc.kind === 'gen' && STK.mZero));
   box.innerHTML = `<div class="row between" style="gap:8px;flex-wrap:wrap"><p class="muted sm" style="margin:0">Cable, conectores, cajas… por cantidad. El saldo sale de los movimientos: nadie lo cambia a mano.</p>
       <div class="row" style="gap:6px">${w && ['gen', 'prj', 'place'].includes(sc.kind) ? `<button class="btn" id="sm-mv" style="margin:0">🔁 Registrar movimiento</button><button class="btn sec" id="sm-new" style="margin:0">+ Material</button>` : ''}${w && ['gen', 'prj'].includes(sc.kind) ? `<label class="btn sec" style="margin:0" title="Planilla con Descripción, Código, Unidad, Categoría, Stock y Ubicación">⬆ Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="sm-xl" class="hidden"></label>` : ''}<button class="btn sec" id="sm-exp" style="margin:0">⬇ Exportar</button></div></div>
-    ${used.length ? `<input id="sm-q" type="search" placeholder="🔍 Buscar material, código o depósito…" value="${esc(STK.mq || '')}" style="max-width:340px;margin-top:10px"><span class="muted sm" id="sm-qn" style="margin-left:8px"></span>
-    <div class="tblwrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>Material</th><th class="num">Saldo</th><th>Dónde</th></tr></thead><tbody>${used.map(({ i, bs, tot }) => {
+    ${used.length ? `<input id="sm-q" type="search" placeholder="🔍 Buscar material, código o depósito…" value="${esc(STK.mq || '')}" style="max-width:340px;margin-top:10px"><span class="muted sm" id="sm-qn" style="margin-left:8px"></span>${sc.kind === 'gen' ? `<label class="sm" style="display:inline-flex;gap:6px;align-items:center;font-weight:400;margin-left:12px"><input type="checkbox" id="sm-zero" style="width:auto" ${STK.mZero ? 'checked' : ''}> Mostrar también los que están en cero</label>` : ''}
+    <div class="tblwrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>Material</th><th class="num">${sc.kind === 'gen' ? 'Saldo (toda la empresa)' : 'Saldo'}</th><th>Dónde</th></tr></thead><tbody>${used.map(({ i, bs, tot }) => {
       const lowQ = i.min_qty != null && tot < Number(i.min_qty);
       return `<tr class="click" data-mi="${i.id}" data-mq="${esc(stkNorm([i.name, i.code, i.notes, ...bs.map(b => B.placeById.get(b.place)?.name)].filter(Boolean).join(' ')))}"><td><b>${esc(i.name)}</b>${i.code ? `<div class="muted sm">${esc(i.code)}</div>` : ''}${lowQ ? `<div class="sm" style="color:var(--red)">⚠ Bajo el mínimo (${stkFmtQty(i.min_qty)} ${esc(i.unit)})</div>` : ''}</td>
         <td class="num"><b style="font-size:18px;color:${lowQ ? 'var(--red)' : 'inherit'}">${stkFmtQty(tot)}</b> <span class="muted sm">${esc(i.unit)}</span></td>
-        <td class="sm">${bs.map(b => { const p = B.placeById.get(b.place); return `<span class="pill" style="background:#ECFEFF;color:#0E7490;margin:2px">${(STK_PLACE_KIND[p?.kind] || STK_PLACE_KIND.otro)[0]} ${esc(p?.name || '?')} · ${stkFmtQty(b.qty)}</span>`; }).join('') || '<span class="muted">sin saldo</span>'}</td></tr>`; }).join('')}</tbody></table></div>`
+        <td class="sm">${bs.map(b => { const p = B.placeById.get(b.place); return `<span class="pill" style="background:${b.project ? '#F5F3FF;color:#5B21B6' : '#ECFEFF;color:#0E7490'};margin:2px" title="${b.project ? 'Asignado al proyecto ' + esc(stkProjName(b.project)) : 'Stock general'}">${(STK_PLACE_KIND[p?.kind] || STK_PLACE_KIND.otro)[0]} ${esc(p?.name || '?')}${sc.kind === 'gen' && b.project ? ' · 📁 ' + esc(stkProjName(b.project).slice(0, 28)) : ''} · ${stkFmtQty(b.qty)}</span>`; }).join('') || '<span class="muted">sin saldo</span>'}</td></tr>`; }).join('')}</tbody></table></div>`
       : `<div class="empty">${B.items.length ? 'No hay saldo de materiales en este stock.' : 'Todavía no hay materiales.'}${w ? ' Empezá con <b>+ Material</b> y después <b>Registrar movimiento → Ingreso</b>.' : ''}</div>`}`;
   $('#sm-new')?.addEventListener('click', () => stkItemEdit(null));
   $('#sm-mv')?.addEventListener('click', () => stkMoveModal(sc));
@@ -697,6 +698,7 @@ function stkMatTab(box, sc){
     box.querySelectorAll('[data-mq]').forEach(tr => { const ok = ws.every(w => tr.dataset.mq.includes(w)); tr.classList.toggle('hidden', !ok); if (ok) n++; });
     $('#sm-qn').textContent = ws.length ? `${n} de ${used.length}` : ''; };
   if (mq){ mq.oninput = () => { STK.mq = mq.value; mfilt(); }; if (STK.mq) mfilt(); }
+  $('#sm-zero')?.addEventListener('change', e => { STK.mZero = e.target.checked; stkMatTab(box, sc); });
   if (STK.openItem){ const id = STK.openItem; STK.openItem = null; if (B.itemById.has(id)) stkItemModal(id, sc); }
 }
 const stkMvSide = (pl, pj) => pl ? `${STK.base.placeById.get(pl)?.name || '?'}${pj ? ' (' + stkProjName(pj) + ')' : ' (general)'}` : '—';
