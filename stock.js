@@ -678,9 +678,10 @@ function stkMatTab(box, sc){
   const used = items.filter(x => x.tot > 0 || sc.kind === 'gen');
   box.innerHTML = `<div class="row between" style="gap:8px;flex-wrap:wrap"><p class="muted sm" style="margin:0">Cable, conectores, cajas… por cantidad. El saldo sale de los movimientos: nadie lo cambia a mano.</p>
       <div class="row" style="gap:6px">${w && ['gen', 'prj', 'place'].includes(sc.kind) ? `<button class="btn" id="sm-mv" style="margin:0">🔁 Registrar movimiento</button><button class="btn sec" id="sm-new" style="margin:0">+ Material</button>` : ''}${w && ['gen', 'prj'].includes(sc.kind) ? `<label class="btn sec" style="margin:0" title="Planilla con Descripción, Código, Unidad, Categoría, Stock y Ubicación">⬆ Importar Excel<input type="file" accept=".xlsx,.xls,.csv" id="sm-xl" class="hidden"></label>` : ''}<button class="btn sec" id="sm-exp" style="margin:0">⬇ Exportar</button></div></div>
-    ${used.length ? `<div class="tblwrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>Material</th><th class="num">Saldo</th><th>Dónde</th></tr></thead><tbody>${used.map(({ i, bs, tot }) => {
+    ${used.length ? `<input id="sm-q" type="search" placeholder="🔍 Buscar material, código o depósito…" value="${esc(STK.mq || '')}" style="max-width:340px;margin-top:10px"><span class="muted sm" id="sm-qn" style="margin-left:8px"></span>
+    <div class="tblwrap" style="margin-top:10px"><table class="tbl"><thead><tr><th>Material</th><th class="num">Saldo</th><th>Dónde</th></tr></thead><tbody>${used.map(({ i, bs, tot }) => {
       const lowQ = i.min_qty != null && tot < Number(i.min_qty);
-      return `<tr class="click" data-mi="${i.id}"><td><b>${esc(i.name)}</b>${i.code ? `<div class="muted sm">${esc(i.code)}</div>` : ''}${lowQ ? `<div class="sm" style="color:var(--red)">⚠ Bajo el mínimo (${stkFmtQty(i.min_qty)} ${esc(i.unit)})</div>` : ''}</td>
+      return `<tr class="click" data-mi="${i.id}" data-mq="${esc(stkNorm([i.name, i.code, i.notes, ...bs.map(b => B.placeById.get(b.place)?.name)].filter(Boolean).join(' ')))}"><td><b>${esc(i.name)}</b>${i.code ? `<div class="muted sm">${esc(i.code)}</div>` : ''}${lowQ ? `<div class="sm" style="color:var(--red)">⚠ Bajo el mínimo (${stkFmtQty(i.min_qty)} ${esc(i.unit)})</div>` : ''}</td>
         <td class="num"><b style="font-size:18px;color:${lowQ ? 'var(--red)' : 'inherit'}">${stkFmtQty(tot)}</b> <span class="muted sm">${esc(i.unit)}</span></td>
         <td class="sm">${bs.map(b => { const p = B.placeById.get(b.place); return `<span class="pill" style="background:#ECFEFF;color:#0E7490;margin:2px">${(STK_PLACE_KIND[p?.kind] || STK_PLACE_KIND.otro)[0]} ${esc(p?.name || '?')} · ${stkFmtQty(b.qty)}</span>`; }).join('') || '<span class="muted">sin saldo</span>'}</td></tr>`; }).join('')}</tbody></table></div>`
       : `<div class="empty">${B.items.length ? 'No hay saldo de materiales en este stock.' : 'Todavía no hay materiales.'}${w ? ' Empezá con <b>+ Material</b> y después <b>Registrar movimiento → Ingreso</b>.' : ''}</div>`}`;
@@ -692,6 +693,10 @@ function stkMatTab(box, sc){
     ['Movimientos', [['Fecha', 'Material', 'Movimiento', 'Cantidad', 'Desde', 'Hacia', 'Sitio', 'Nota', 'Quién'], ...B.moves.filter(x => sc.kind === 'gen' ? (!x.from_project && x.from_place) || (!x.to_project && x.to_place) : sc.kind === 'prj' ? x.from_project === sc.id || x.to_project === sc.id : x.from_place === sc.id || x.to_place === sc.id)
       .map(x => [fmtDT(x.at), B.itemById.get(x.item_id)?.name || '', STK_MOVE[x.kind]?.[1] || x.kind, Number(x.qty), stkMvSide(x.from_place, x.from_project), stkMvSide(x.to_place, x.to_project), x.site_id ? B.siteById.get(x.site_id)?.name || '' : '', x.note || '', x.by_name || ''])], [16, 26, 16, 8, 30, 30, 20, 30, 18]]]);
   box.querySelectorAll('[data-mi]').forEach(tr => tr.onclick = () => stkItemModal(tr.dataset.mi, sc));
+  const mq = $('#sm-q'), mfilt = () => { const ws = stkNorm(mq.value).split(' ').filter(Boolean); let n = 0;
+    box.querySelectorAll('[data-mq]').forEach(tr => { const ok = ws.every(w => tr.dataset.mq.includes(w)); tr.classList.toggle('hidden', !ok); if (ok) n++; });
+    $('#sm-qn').textContent = ws.length ? `${n} de ${used.length}` : ''; };
+  if (mq){ mq.oninput = () => { STK.mq = mq.value; mfilt(); }; if (STK.mq) mfilt(); }
   if (STK.openItem){ const id = STK.openItem; STK.openItem = null; if (B.itemById.has(id)) stkItemModal(id, sc); }
 }
 const stkMvSide = (pl, pj) => pl ? `${STK.base.placeById.get(pl)?.name || '?'}${pj ? ' (' + stkProjName(pj) + ')' : ' (general)'}` : '—';
@@ -1154,7 +1159,10 @@ async function stkMatImport(file, sc){
     const H = R[hi].map(stkNorm); C = {}; for (const [k, al] of Object.entries(STK_MCOLS)) C[k] = H.findIndex(h => al.includes(h));
     rows = R.slice(hi + 1); sheet = sn; break;
   }
-  if (!rows) return toast('No encontré una hoja con las columnas Descripción y Stock.');
+  if (!rows){
+    const isAssets = wb.SheetNames.some(sn => sheetRows(wb.Sheets[sn]).slice(0, 15).some(r => r.map(stkNorm).some(h => ['identificacion unica', 'id unico', 'codigo unico'].includes(h))));
+    return toast(isAssets ? 'Esa planilla es de equipos y herramientas: importala en la pestaña 📡 Equipos → Importar Excel.' : 'No encontré una hoja con las columnas Descripción y Stock.');
+  }
   const g = (r, k) => C[k] < 0 ? '' : xlStr(r[C[k]]);
   const num = v => { const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : NaN; };
   const itemByName = new Map(B.items.map(i => [stkNorm(i.name), i])), placeByName = new Map(B.places.filter(p => p.active).map(p => [stkNorm(p.name), p]));
