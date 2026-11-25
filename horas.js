@@ -1,5 +1,5 @@
 /* =====================================================================
-   InspectApp · Transformándonos — v4.5
+   InspectApp · Transformándonos — v4.5 (+ v5.30: aviso del día 16 y resumen de guardias)
    Herramientas → Validación de horas y tareas
    · El técnico carga su tarea del día y pide horas extra o de viaje
      (también urgentes: arranca y se valida en el día).
@@ -232,11 +232,124 @@ async function hhToolCount(box){
 }
 async function hhHomeAlert(box){
   if (!box || !isManager() || !online()) return;
+  hhGuardAlert(box).catch(() => {});
   try { const od = await hhOverdue(); if (!od.length) return;
     const el = document.createElement('div'); el.className = 'banner off'; el.style.cursor = 'pointer';
     el.innerHTML = `<span class="dot"></span><div><b>${od.length} tarea(s) u hora(s) sin validar de días anteriores</b><div class="sm">La validación tiene que ser en el día. Tocá para ir a la bandeja.</div></div>`;
     el.onclick = () => { location.hash = '#/tools/hh/bandeja'; }; box.prepend(el);
   } catch {}
+}
+
+/* =====================================================================
+   v5.30 · AVISO DEL DÍA 16 Y RESUMEN DE GUARDIAS PARA RRHH
+   Desde el día de inicio del período (16) aparece un aviso en Inicio y en Agenda con el
+   período que acaba de cerrar (16 → 15). "Ver resumen" abre la planilla para RRHH
+   (misma tabla que se presenta cada mes); "Ya lo presenté" apaga el aviso.
+   Todo texto que viene de la base pasa por esc().
+   ===================================================================== */
+const hhPKey = (y, m) => y + '-' + String(m).padStart(2, '0');
+function hhClosedPeriod(){
+  const P = Number(HHS.cfg?.period_day || 16), t = new Date();
+  if (P < 2 || t.getDate() < P) return null;
+  const y = t.getFullYear(), m = t.getMonth() + 1;
+  return { y, m, ...hhPeriod(y, m), key: hhPKey(y, m) };
+}
+function hhRepIsSent(key){
+  if (HHS.cfg?.rep_sent === key) return true;
+  try { return localStorage.getItem('hh-rep-sent') === key; } catch { return false; }
+}
+async function hhRepMarkSent(key){
+  const { error } = await sb.from('hh_settings').upsert({ rep_sent: key }, { onConflict: 'org_id' });
+  if (error){ try { localStorage.setItem('hh-rep-sent', key); } catch {} toast('Quedó marcado solo en este dispositivo. Para que valga en todos, falta cargar 50_aviso_guardias.sql en Supabase.'); return false; }
+  await hhDrop('hh-cfg'); await hhLoadBase(); return true;
+}
+/* totales rápidos del período (sin horas): días de guardia, fin de semana / feriado y días sin dato */
+async function hhGuardBrief(from, to){
+  const k = from + to, now = Date.now();
+  if (HHS.gb && HHS.gb.k === k && now - HHS.gb.t < 300000) return HHS.gb.b;
+  const staff = HHS.staff.filter(s => s.liquidate);
+  const g = await hhItems(sb.from('hh_guard').select('staff_id,day,code').gte('day', from).lte('day', to).limit(20000));
+  const days = hhDays(from, to), G = new Map(g.map(x => [x.staff_id + '|' + x.day, x.code]));
+  let gd = 0, gw = 0, nodata = 0; const miss = [];
+  staff.forEach(s => { let n = 0; days.forEach(d => { const c = G.get(s.id + '|' + d); if (c === 'G'){ gd++; if (hhIsOff(d)) gw++; } if (!c) n++; }); if (n){ nodata += n; miss.push(s.name + ' (' + n + ')'); } });
+  const b = { staff: staff.length, gd, gw, nodata, miss }; HHS.gb = { k, t: now, b }; return b;
+}
+async function hhGuardAlert(box){
+  if (!box || !isManager() || !can('rrhh') || !online()) return;
+  if (!HHS.cfg || !HHS.staff.length) await hhLoadBase();
+  const p = hhClosedPeriod(); if (!p) return;
+  const old = box.querySelector('#hh-gal'); if (old) old.remove();
+  if (hhRepIsSent(p.key)) return;
+  const b = await hhGuardBrief(p.from, p.to);
+  if (!b.staff) return;
+  const el = document.createElement('div'); el.id = 'hh-gal'; el.className = 'banner ' + (b.nodata ? 'warn' : 'trial');
+  el.innerHTML = `<span class="dot"></span><div style="flex:1"><b>📣 Hoy toca presentar las guardias a RRHH</b>
+    <div class="sm">Período ${esc(fmtD(p.from))} al ${esc(fmtD(p.to))} · ${b.staff} técnicos · ${b.gd} días de guardia (${b.gw} en fines de semana o feriados)${b.nodata ? ` · <b>⚠ ${b.nodata} día(s) sin dato:</b> ${esc(b.miss.join(', '))}` : ''}</div>
+    <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn small" id="hh-gal-v">Ver resumen</button>${canWrite() ? '<button class="btn sec small" id="hh-gal-ok">Ya lo presenté</button>' : ''}</div></div>`;
+  box.prepend(el);
+  el.querySelector('#hh-gal-v').onclick = () => { HHS.rper = { from: p.from, to: p.to, y: p.y, m: p.m }; HHS.rmode = 'res'; location.hash = '#/tools/hh/reporte'; };
+  el.querySelector('#hh-gal-ok')?.addEventListener('click', async () => {
+    if (!confirm(`¿Marcar como presentado el informe de guardias ${HH_MONTHS[p.m - 1]} ${p.y}? El aviso se apaga hasta el 16 del mes que viene.`)) return;
+    await hhRepMarkSent(p.key); el.remove();
+  });
+}
+const hhRepModeBar = mode => `<div class="hh-noprint row" style="gap:6px;margin-bottom:10px"><button class="btn small ${mode === 'res' ? '' : 'sec'}" data-hrm="res">📋 Resumen de guardias</button><button class="btn small ${mode === 'full' ? '' : 'sec'}" data-hrm="full">⏱ Guardias y horas</button></div>`;
+const hhRepModeBind = body => body.querySelectorAll('[data-hrm]').forEach(b => { b.onclick = () => { HHS.rmode = b.dataset.hrm; hhViewReport(body); }; });
+async function hhViewResumen(body, D, def, title, per){
+  const key = hhPKey(def.y, def.m), sent = hhRepIsSent(key);
+  const miss = D.rows.filter(r => r.nodata);
+  const mm = String(def.m).padStart(2, '0');
+  const g = 'background:#C9C9C9;border:1px solid #000;padding:7px 10px;text-align:center;font-weight:700';
+  const gr = 'background:#70A03F;border:1px solid #000;padding:7px 10px;text-align:center;font-weight:700;font-size:16px';
+  const cp = hhCurPeriod();
+  body.innerHTML = hhRepModeBar('res') + `
+    <div class="card hh-noprint"><div class="row between"><div class="row" style="gap:6px;flex-wrap:wrap">
+      <select id="hr-m" style="width:auto">${HH_MONTHS.map((n, i) => `<option value="${i + 1}" ${i + 1 === def.m ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <select id="hr-y" style="width:auto">${[cp.y - 1, cp.y, cp.y + 1].map(y => `<option ${y === def.y ? 'selected' : ''}>${y}</option>`).join('')}</select>
+      <span class="muted sm">Período ${esc(per)}</span></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn" id="hs-x">⬇ Excel del resumen</button><button class="btn sec" id="hs-p">🖨️ PDF</button><button class="btn sec" id="hs-mail">✉️ Enviar a RRHH</button>${canWrite() ? `<button class="btn sec" id="hs-ok" ${sent ? 'disabled' : ''}>${sent ? '✓ Presentado' : '✔ Marcar como presentado'}</button>` : ''}</div></div>
+      ${miss.length ? `<div class="banner warn" style="margin:10px 0 0"><span class="dot"></span><div><b>Revisá antes de presentar</b><div class="sm">Días sin dato de guardia: ${esc(miss.map(r => r.s.name + ' (' + r.nodata + ')').join(', '))}. Completalos en la pestaña Guardias.</div></div></div>` : '<p class="sm" style="color:var(--green-d);margin:8px 0 0">✓ Todos los técnicos tienen dato de guardia todos los días del período.</p>'}
+    </div>
+    <div class="hh-rep" id="hh-rep" style="background:#fff;padding:14px;overflow:auto"><table style="border-collapse:collapse;width:100%;max-width:780px;margin:0 auto;font-size:15px">
+      <tr><td colspan="3" style="border:1px solid #000;padding:9px;text-align:center;font-weight:700;font-size:18px">DIAS DE GUARDIA MES ${esc(HH_MONTHS[def.m - 1].toUpperCase())} ${def.y}</td></tr>
+      <tr><td style="${g}"></td><td style="${g};font-weight:400">GUARDIAS</td><td style="${g};font-weight:400">GUARDIAS</td></tr>
+      <tr><td style="${g};text-align:center">Obras</td><td rowspan="2" style="${g};font-size:16px">DIAS DE GUARDIA TOTALES</td><td rowspan="2" style="${g};font-size:16px">DIAS DE GUARDIA FINES DE SEMANAS / FERIADOS</td></tr>
+      <tr><td style="${g};text-align:left">fecha ${mm}/${def.y}</td></tr>
+      ${D.rows.map(r => `<tr><td style="${gr}">${esc(r.s.name)}</td><td style="${gr}">${r.gd}</td><td style="${gr}">${r.gw}</td></tr>`).join('') || '<tr><td colspan="3" class="muted" style="padding:10px">No hay técnicos marcados para liquidar (Recursos).</td></tr>'}
+    </table><p class="sm muted hh-noprint" style="max-width:780px;margin:8px auto 0">Fines de semana / feriados = sábado, domingo o feriado cargado en Guardias → Feriados. Cuentan solo los días marcados G (guardia).</p></div>`;
+  hhRepModeBind(body);
+  const setP = (y, m) => { const p = hhPeriod(y, m); HHS.rper = { ...p, y, m }; hhViewReport(body); };
+  $('#hr-m').onchange = $('#hr-y').onchange = () => setP(Number($('#hr-y').value), Number($('#hr-m').value));
+  $('#hs-p').onclick = () => window.print();
+  $('#hs-x').onclick = async () => { $('#hs-x').disabled = true; try { await hhExportResumen(D, def, title); } catch (x){ toast('Excel: ' + errText(x)); } $('#hs-x').disabled = false; };
+  $('#hs-mail').onclick = () => {
+    const to = HHS.cfg.rrhh_email; if (!to) return toast('Cargá el mail de Recursos Humanos en Ajustes.');
+    const lines = [`Hola, les envío el resumen de días de guardia de ${title} (período ${per}).`, '', ...D.rows.map(r => `• ${r.s.name}: ${r.gd} días de guardia, ${r.gw} en fines de semana o feriados`), '', 'Adjunto la planilla.', '', 'Saludos,', me.full_name || ''];
+    if (confirm('Primero se descarga el Excel para que lo adjuntes al mail. ¿Seguimos?')) $('#hs-x').click();
+    location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent('Días de guardia · ' + title + ' (' + per + ')')}&body=${encodeURIComponent(lines.join('\n'))}`;
+  };
+  $('#hs-ok')?.addEventListener('click', async () => { if (await hhRepMarkSent(key)) toast('Marcado como presentado'); HHS.gb = null; hhViewReport(body); });
+}
+/* La misma planilla que se presenta cada mes: título, Obras / fecha, un renglón verde por técnico */
+async function hhExportResumen(D, def, title){
+  await hhLoadExcelJS();
+  const X = s => typeof s === 'string' && /^[=+\-@\t\r]/.test(s) ? "'" + s : s;   // sin fórmulas escondidas
+  const wb = new ExcelJS.Workbook(); wb.creator = 'InspectApp'; wb.created = new Date();
+  const ws = wb.addWorksheet(`${HH_MONTHS[def.m - 1].toUpperCase()} ${String(def.y).slice(2)}`, { views: [{ showGridLines: false }], pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 1, paperSize: 9 } });
+  ws.columns = [{ width: 2 }, { width: 32 }, { width: 28 }, { width: 38 }];
+  const GR = 'FFC0C0C0', GN = 'FF70A03F', th = { style: 'thin', color: { argb: 'FF000000' } }, bd = { top: th, bottom: th, left: th, right: th };
+  const put = (r, c, v, o = {}) => { const x = ws.getCell(r, c); x.value = v; x.border = bd; x.alignment = { horizontal: o.h || 'center', vertical: 'middle', wrapText: true }; x.font = { bold: !!o.b, size: o.s || 12, color: { argb: 'FF000000' } }; if (o.f) x.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: o.f } }; };
+  const mm = String(def.m).padStart(2, '0');
+  [2, 3, 4].forEach(c => put(3, c, c === 2 ? `DIAS DE GUARDIA MES ${HH_MONTHS[def.m - 1].toUpperCase()} ${def.y}` : null, { b: 1, s: 14 }));
+  put(4, 2, null, { f: GR }); put(4, 3, 'GUARDIAS', { f: GR }); put(4, 4, 'GUARDIAS', { f: GR });
+  put(5, 2, 'Obras', { b: 1, f: GR }); put(5, 3, 'DIAS DE GUARDIA TOTALES', { b: 1, f: GR }); put(5, 4, 'DIAS DE GUARDIA FINES DE SEMANAS / FERIADOS', { b: 1, f: GR });
+  put(6, 2, `fecha ${mm}/${def.y}`, { b: 1, f: GR, h: 'left' }); put(6, 3, null, { f: GR }); put(6, 4, null, { f: GR });
+  ws.mergeCells('B3:D3'); ws.mergeCells('C5:C6'); ws.mergeCells('D5:D6');
+  D.rows.forEach((r, i) => { const n = 7 + i; put(n, 2, X(r.s.name), { b: 1, f: GN, s: 13 }); put(n, 3, r.gd, { b: 1, f: GN, s: 13 }); put(n, 4, r.gw, { b: 1, f: GN, s: 13 }); ws.getRow(n).height = 20; });
+  ws.getRow(3).height = 24; ws.getRow(5).height = 22; ws.getRow(6).height = 22;
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = `Guardias RRHH - ${title}.xlsx`.replace(/[\\/:*?"<>|]/g, ''); document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
 }
 
 /* =====================================================================
@@ -773,8 +886,9 @@ async function hhViewReport(body){
   const D = await hhReportData(def.from, def.to);
   const T = k => Math.round(D.rows.reduce((a, r) => a + Number(r[k] || 0), 0) * 100) / 100;
   const per = `${fmtD(def.from)} al ${fmtD(def.to)}`, title = `${HH_MONTHS[def.m - 1]} ${def.y}`;
+  if (HHS.rmode === 'res') return hhViewResumen(body, D, def, title, per);
   const warn = D.rows.filter(r => r.pend || r.nodata);
-  body.innerHTML = `
+  body.innerHTML = hhRepModeBar('full') + `
     <div class="card hh-noprint"><div class="row between"><div class="row" style="gap:6px;flex-wrap:wrap">
       <select id="hr-m" style="width:auto">${HH_MONTHS.map((n, i) => `<option value="${i + 1}" ${i + 1 === def.m ? 'selected' : ''}>${n}</option>`).join('')}</select>
       <select id="hr-y" style="width:auto">${[cp.y - 1, cp.y, cp.y + 1].map(y => `<option ${y === def.y ? 'selected' : ''}>${y}</option>`).join('')}</select>
@@ -789,6 +903,7 @@ async function hhViewReport(body){
       <p class="sm muted" style="padding:8px 14px;margin:0">Solo horas validadas por coordinación. Horas extra al 100%: domingos, feriados, sábados desde las ${hhT(HHS.cfg.sat_from)} y de ${hhT(HHS.cfg.night_start)} a ${hhT(HHS.cfg.night_end)}. Al 50%: el resto. Guardias de fin de semana / feriado = sábado, domingo o feriado cargado.</p></div>
     <div id="hr-cmp"></div>
     <div class="card hh-noprint" id="hr-stat"><h2 style="margin:0">Estadística ${def.y}</h2><p class="muted sm">Horas validadas por período de liquidación (extra + viaje).</p><div class="muted">Calculando…</div></div>`;
+  hhRepModeBind(body);
   const setP = (from, to, y, m) => { HHS.rper = { from, to, y, m }; hhViewReport(body); };
   $('#hr-m').onchange = $('#hr-y').onchange = () => { const y = Number($('#hr-y').value), m = Number($('#hr-m').value), p = hhPeriod(y, m); setP(p.from, p.to, y, m); };
   $('#hr-f').onchange = $('#hr-t').onchange = () => { const f = $('#hr-f').value, t = $('#hr-t').value; if (f && t && f <= t && hhDays(f, t).length <= 400) setP(f, t, def.y, def.m); else toast('Rango inválido.'); };

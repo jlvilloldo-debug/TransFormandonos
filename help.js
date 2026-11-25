@@ -70,7 +70,8 @@ const HELP = [
     ['Borrar un instrumento cargado mal', 'Instrumento → "🗑 Eliminar": pide motivo y la identificación. Queda constancia en "🗑 Eliminados".']] },
   { id: 'agenda', ic: '📅', t: 'Agenda', hash: ['#/agenda'], d: 'La semana de cada persona y cuadrilla: tareas, guardias, francos y horas.', q: [
     ['Ver las tareas de uno o varios técnicos', 'Agenda → "👥 Técnicos" → marcá a quiénes querés ver (con buscador) → Ver. Queda guardado en ese equipo hasta que lo cambies; "Ninguno" vuelve a mostrar a todos.'],
-    ['Filtrar por base, tipo o habilidad', 'Usá los filtros de arriba: base, propios o contratistas, y las habilidades (FO, OTDR, Energía…).']] },
+    ['Filtrar por base, tipo o habilidad', 'Usá los filtros de arriba: base, propios o contratistas, y las habilidades (FO, OTDR, Energía…).'],
+    ['Informe de guardias del día 16', 'Desde el 16 de cada mes aparece un aviso arriba (Agenda e Inicio) con el período 16 al 15. "Ver resumen" abre la planilla para RRHH: Excel, PDF o mail. Después tocá "Ya lo presenté" y el aviso se apaga.']] },
   { id: 'jornada', ic: '⏱', t: 'Jornada y horas', hash: ['#/tools/hh', '#/tools/veh'], d: 'Inicio de jornada, vehículo y horas extra.', q: [
     ['Iniciar la jornada', 'Inicio → "Iniciar jornada": con o sin vehículo, km y foto.'],
     ['Pedir horas extra', 'Inicio → "Pedir horas extra" o los botones "Empiezo ahora / +1 h / +2 h".']] },

@@ -1,6 +1,6 @@
 /* =====================================================================
    InspectApp · Transformándonos — v5.17
-   AGENDA DE CUADRILLAS: la planilla semanal de asignación, dentro de la app.
+   AGENDA DE CUADRILLAS (v5.30: aviso del día 16 con las guardias para RRHH): la planilla semanal de asignación, dentro de la app.
    Filas = personas (Horas y guardias → Personal) y contratistas; columnas = días.
    Las tareas son tareas comunes de la app (tabla tasks): el técnico las ve en "Mis tareas".
    Bandeja "Por asignar" = tareas sin asignar (las de la agenda, pendientes de inspecciones, tickets…).
@@ -181,12 +181,14 @@ function agRender(v){
         <label class="btn sec" style="margin:0;cursor:pointer">⬆ Subir Excel<input type="file" id="ag-xi" accept=".xlsx,.xls,.csv" class="hidden"></label></div>` : ''}</div>
     <div class="ag-head"><div class="ag-weeknav"><button data-agw="-1" aria-label="Semana anterior">‹</button><b>${lbl}</b><button data-agw="1" aria-label="Semana siguiente">›</button><button data-agw="0">Esta semana</button></div>
       ${mgr ? `<div class="ag-seg">${[['week', 'Semana'], ['day', 'Día'], ['tech', 'Vista del técnico']].map(([k, l]) => `<button data-agv="${k}" class="${AG.view === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}</div>
+    <div id="ag-alert"></div>
     ${mgr ? agKpis() : ''}
     ${mgr && AG.view !== 'tech' ? agFilters() : ''}
     <div id="ag-pick"></div><div id="ag-body"></div>
     ${AG.view !== 'tech' ? `<div class="ag-legend"><span><i style="background:#EDE9FE;border:1px solid #7C3AED"></i>De guardia</span><span><i style="background:#E5E7EB;border:1px solid #475569"></i>Franco</span><span><i style="background:#FEF3C7;border:1px solid #D97706"></i>Licencia / vacaciones</span><span><i style="background:#ECFDF5;border:1px solid #059669"></i>Hoy</span>${Object.values(AG_TYPES).map(T => `<span><i style="background:${T.c}"></i>${T.n}</span>`).join('')}</div>
       <p class="muted sm">La disponibilidad sale de <a href="#/tools/hh/guardias">Horas y guardias</a>. Tocá el nombre de una persona para cargar su base y habilidades.</p>` : ''}`;
   agBody(); agBind(v);
+  if (mgr && typeof hhGuardAlert === 'function') hhGuardAlert($('#ag-alert')).catch(() => {});   // aviso del día 16: guardias para RRHH
 }
 function agKpis(){
   const D = AG.data, days = agDays(), today = todayStr();
